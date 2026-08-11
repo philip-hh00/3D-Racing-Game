@@ -1,0 +1,37 @@
+# Entwicklungsinstanz des Relays — nach
+# /etc/systemd/system/rennspiel-dev.service kopieren.
+#
+# Bewusst eine eigene Unit neben der des Live-Servers und nicht dieselbe mit
+# anderen Werten: so lässt sich die eine neu starten, ohne die andere
+# anzufassen. Genau dafür gibt es den Dev-Server.
+
+[Unit]
+Description=2D-Rennspiel Relay (Entwicklung, Kennzeichen T)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gameuser
+Group=gameuser
+WorkingDirectory=/home/gameuser/racing-server-dev/server
+EnvironmentFile=/etc/rennspiel-dev.env
+ExecStart=/usr/bin/python3 server.py
+Restart=on-failure
+RestartSec=5
+
+# Die Entwicklungsinstanz darf den Live-Server nicht verdrängen. Sie läuft auf
+# derselben Maschine, und ein Versuch, der aus dem Ruder läuft, soll höchstens
+# sich selbst treffen.
+MemoryMax=512M
+CPUWeight=20
+
+# Sie schreibt nichts außerhalb ihres eigenen Verzeichnisses.
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/gameuser/racing-server-dev
+
+[Install]
+WantedBy=multi-user.target

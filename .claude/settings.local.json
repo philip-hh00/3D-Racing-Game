@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "PowerShell(Get-ChildItem F:\\\\3D-Racing-Game -Force | Select-Object Name,Length,LastWriteTime | Format-Table -AutoSize; \"--- DRIVES ---\"; Get-PSDrive -PSProvider FileSystem | Select-Object Name,@{n='FreeGB';e={[math]::Round\\($_.Free/1GB,1\\)}},@{n='UsedGB';e={[math]::Round\\($_.Used/1GB,1\\)}} | Format-Table -AutoSize)",
-      "Bash(python -c ' *)"
-    ]
-  }
-}

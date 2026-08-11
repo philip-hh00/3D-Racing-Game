@@ -1,4 +1,4 @@
-﻿"""Lackmaske - dieselbe Rechnung wie im 2D-Spiel (src/core/lack.py)."""
+"""Lackmaske - dieselbe Rechnung wie im 2D-Spiel (src/core/lack.py)."""
 import numpy as np
 import pytest
 from PIL import Image

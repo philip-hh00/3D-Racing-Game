@@ -1,0 +1,39 @@
+# Die Testsuite bei jedem Push. Rund zwei Minuten, und sie laeuft auf einem
+# frischen Rechner statt auf dem Entwicklungsrechner — ein "bei mir geht es"
+# wegen einer nur oertlich installierten Bibliothek faellt hier sofort auf.
+#
+# SDL braucht Attrappen fuer Bild und Ton, sonst sucht pygame einen Bildschirm,
+# den ein Bauknecht nicht hat.
+name: Tests
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_call:          # der Release-Ablauf ruft diesen hier auf
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy
+      SDL_AUDIODRIVER: dummy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhaengigkeiten
+        # Beide Dateien: requirements.txt ist, was das Spiel braucht,
+        # requirements-dev.txt, was nur die Werkzeuge und die Suite brauchen
+        # (scipy, pytest). Aus der zweiten installiert der Build nicht — sonst
+        # landete sie im ausgelieferten Buendel.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Testsuite
+        run: python -m pytest -q -p no:cacheprovider

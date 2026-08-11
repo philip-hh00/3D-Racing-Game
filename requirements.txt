@@ -22,9 +22,13 @@ sounddevice>=0.4.6
 # darueber gelegt. So bleiben rund 33.000 Zeilen pygame-Code unberuehrt.
 moderngl>=5.10.0
 
-# --- Asset-Aufbereitung (trellis_import.py) ----------------------------------
+# --- Modelle laden -----------------------------------------------------------
+# Das Spiel liest die GLB-Fahrzeuge zur Laufzeit (src/render3d/mesh.py), also
+# gehoeren trimesh und pillow ins ausgelieferte Buendel.
+#
+# scipy steht bewusst NICHT hier, sondern in requirements-dev.txt: es wird nur
+# von trellis_import.py gebraucht (orientierte Bounding-Box), also auf dem
+# Entwicklungsrechner. Diese Grenze verwischt leicht und wird von
+# tests/test_auslieferung.py namentlich bewacht.
 trimesh>=4.0.0
 pillow>=10.0.0
-# trimesh braucht scipy fuer die orientierte Bounding-Box. Ohne scipy
-# scheitert orient.ausrichten mit "Points must be coplanar".
-scipy>=1.11.0

@@ -1,87 +1,171 @@
 # =============================================================================
-#  Was ins Repo gehoert: Quelltext, Konfiguration, Spieldaten in Textform.
-#  Was nicht: alles Grosse und alles Reproduzierbare.
+#  Grundlage sind die Regeln des 2D-Projekts. Sie sind nicht ausgedacht,
+#  sondern erarbeitet - hinter mehreren steht ein Vorfall. Sie werden hier
+#  uebernommen und nicht neu erfunden.
 #
-#  Das 2D-Projekt hat 223 MB unter data/ - davon 122 MB Menuemedien, 49 MB
-#  Texturen und 29 MB Audio. Git kann Binaerdateien weder zusammenfassen noch
-#  spaeter wieder loswerden; einmal eingecheckt bleiben sie in jeder Kopie des
-#  Repos. Deshalb bleiben sie draussen und kommen ueber den Ablageordner.
+#  Darunter kommt, was nur das 3D-Projekt betrifft: die Erzeugungsseite und
+#  die grossen Medien.
 # =============================================================================
 
-# --- Erzeugungsseite: ComfyUI, Modelle, venv (rund 40 GB) --------------------
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- PyInstaller -------------------------------------------------------------
+*.manifest
+*.spec
+
+# --- Tests und Abdeckung -----------------------------------------------------
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# --- Umgebungen --------------------------------------------------------------
+.env
+.venv
+.venv*/
+env/
+venv/
+ENV/
+
+# Die Bauumgebung des macOS-Skripts. Sie lag im 2D-Projekt bis zum 05.08.2026
+# versehentlich im Repo und war die einzige Stelle, an der ein blosser
+# Skriptlauf den Arbeitsbaum schmutzig machte. pyvenv.cfg und die
+# activate-Skripte tragen den absoluten Pfad des Rechners, auf dem sie
+# entstanden sind - auf keinem anderen war das je benutzbar.
+.venv-build/
+
+# --- Werkzeuge und Betriebssystem --------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+.aider*
+.aider.tags.cache.v4/
+.claude/
+
+# --- Was der Spieler selbst erzeugt - gehoert ihm, nicht dem Repo ------------
+# Es ist persoenlich (in einem Ghost steckt der eigene Fahrname), und es
+# rauscht (jede Testfahrt schreibt einen Ghost neu).
+data/saves/
+data/tracks/custom/
+data/tracks/drafts/
+data/tracks/online/
+data/ghosts/
+*.log
+
+# --- Was das Spiel im Betrieb schreibt ---------------------------------------
+# Nichts davon darf versioniert sein: sonst macht jeder Start den Arbeitsbaum
+# schmutzig und der naechste Pull geht nicht mehr durch.
+data/settings/instanz.lock
+data/settings/klangmitschnitt/
+data/settings/profile.json
+data/settings/profile.json.tmp
+data/settings/profile.bak
+data/settings/build_stamp.json
+data/settings/servers.json
+data/settings/netlog_*.csv
+server/racing-server.service
+
+# --- Bauergebnisse -----------------------------------------------------------
+# Release/ ist beides: die Bauanleitung (versioniert) und das Gebaute (nicht).
+# Deshalb gezielt das Gebaute, nicht der ganze Ordner - sonst waeren die
+# Skripte und Spezifikationen darin unsichtbar.
+/Release/ausgabe/
+/Release/hoerproben/
+/build_tmp/
+build_tmp/
+*.exe
+*.app
+*.dmg
+*_internal/
+
+# Von Hand gepflegte Bauwerkzeuge behalten (hebt *.spec und *.bat oben auf).
+# Der ganze Ordner, nicht Datei fuer Datei: eine neu dazukommende .bat waere
+# sonst unsichtbar, ohne dass es jemand merkt.
+!Release/skripte/
+!Release/skripte/*.bat
+!Release/pyinstaller/game.spec
+!Release/pyinstaller/game_macos.spec
+
+# --- Zugangsdaten. Gehoeren niemals in ein Repo ------------------------------
+Servereinstellungen/
+Hugging-Face/
+*token*.txt
+*Token*.txt
+*.pem
+*.key
+*SSH-Keys/
+implementation_plan.txt
+
+# =============================================================================
+#  Nur 3D-Projekt
+# =============================================================================
+
+# --- Erzeugungsseite: ComfyUI, TRELLIS, Torch, Modelle (rund 40 GB) ----------
 tools/ComfyUI/
 
 # --- Roh-Output von TRELLIS, aus den Quellbildern reproduzierbar -------------
 rohdaten/
 
-# --- 3D-Meshes: 24 MB je Fahrzeug, mal 15 --------------------------------
-# Erzeugt aus rohdaten/ mit trellis_import.py. Die Kennwerte daneben
-# (Lackmaske, Teileliste) sind klein und bleiben versioniert.
+# --- 3D-Meshes: 24 MB je Fahrzeug, mal 15 ------------------------------------
+# Erzeugt aus rohdaten/ mit trellis_import.py. Lackmaske und Teileliste sind
+# klein und bleiben versioniert.
 assets/**/*.glb
 assets/**/*.gltf
 assets/**/*.bin
-# Diagnosebilder, jederzeit neu erzeugbar
 assets/**/*_kontrolle.png
 
-# --- Grosse Spielmedien aus dem 2D-Projekt -----------------------------------
+# --- Grosse Spielmedien ------------------------------------------------------
 # Nicht im Repo, aber zum Spielen noetig. Siehe docs/assets.md.
 data/menu/
 data/textures/
 data/audio/
 data/vehicles/*.png
-data/ghosts/
 
-# --- Was aus data/ ausdruecklich mitkommt ------------------------------------
-!data/vehicles/*.json
-!data/tracks/**
-!data/i18n/**
-!data/settings/**
-!data/ai_settings/**
+# segoeui.ttf ist eine Systemschrift von Microsoft. Sie liegt lokal und wird
+# vom Spiel geladen, weiterverbreiten darf man sie nicht.
+data/fonts/
 
-# --- Werbematerial des 2D-Spiels ---------------------------------------------
-# Teaser-Video (71 MB) und Bildschirmfotos gehoeren zur Verkaufsseite des
-# 2D-Spiels, nicht zum Quelltext. Die Textfassungen (ITCHIO_RELEASE.md,
-# itchio_page.html) bleiben drin - auf die greifen Tests zu.
+# Teaser-Video (71 MB) und Bildschirmfotos der Verkaufsseite des 2D-Spiels.
+# Die Textfassungen bleiben drin, auf die greifen Tests zu.
 Documentation/Screenshots - cover - teaser/
 Documentation/**/*.mp4
 
-# --- Schriftart --------------------------------------------------------------
-# segoeui.ttf ist eine Systemschrift von Microsoft. Sie liegt lokal und wird
-# vom Spiel geladen, aber weiterverbreiten darf man sie nicht - und genau das
-# waere ein oeffentliches Repo.
-data/fonts/
-
-# --- Nutzerdaten, gehoeren niemandem ausser dem Rechner, auf dem sie liegen --
-data/tracks/drafts/
-data/profile*.json
-data/*.log
-
-# --- Python ------------------------------------------------------------------
-__pycache__/
-*.py[cod]
-*.egg-info/
-.venv/
-venv/
-.pytest_cache/
-.coverage
-htmlcov/
-
-# --- Bauen und Ausliefern ----------------------------------------------------
-build/
-build_tmp/
-dist/
-Release/
-*.spec.bak
-
-# --- Werkzeuge und Betriebssystem --------------------------------------------
-.idea/
-.vscode/
-Thumbs.db
-desktop.ini
-*.tmp
-
-# --- Zugangsdaten. Gehoeren niemals in ein Repo. ---
-Hugging-Face/
-*token*.txt
-*Token*.txt
-.env
+# --- Die Werkzeuge dieses Projekts bleiben versioniert -----------------------
+# Sie sind das, was der Aufbau reproduzierbar macht: Installer, Starter,
+# Freistellung, Workflow-Erzeugung. Ohne diese Ausnahmen faengt sie die
+# *.bat-Regel des 2D-Projekts ein.
+!tools/*.bat
+!tools/*.py

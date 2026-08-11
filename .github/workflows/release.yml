@@ -1,0 +1,156 @@
+# Bauen, aber erst nachdem die Testsuite grün war.
+#
+# Zwei Wege hinein, beide nur mit git — es braucht keine zusaetzliche Software
+# auf dem Entwicklungsrechner:
+#
+#   v1.0.0                 → echtes Release. Baut, haengt beide Pakete an einen
+#                            GitHub-Release und traegt die Version im Namen.
+#   test-1.0.0-0806-1432   → Testbuild. Baut dasselbe, legt aber **kein**
+#                            Release an; die Pakete liegen als Artefakt am Lauf.
+#
+# Der Unterschied ist Absicht: ein Testbuild traegt dieselbe Version aus
+# version.py und unterscheidet sich nur in der eingebrannten Bauzeit. Er soll
+# deshalb nichts veroeffentlichen, was mit einem echten Release zu verwechseln
+# waere.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "test-*"
+
+permissions:
+  contents: write          # fuer das Anlegen des GitHub-Releases
+
+jobs:
+  # Kein Build ohne gruene Tests. Schlaegt das hier fehl, laufen die teuren
+  # Bau-Auftraege gar nicht erst an.
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  version-pruefen:
+    # Ein echtes Release muss zu dem passen, was im Spiel steht. Sonst baust du
+    # v1.0.1 aus einem Stand, der sich intern 1.0.0 nennt — und das faellt erst
+    # auf, wenn ein Spieler die falsche Nummer meldet.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tag gegen version.py
+        # version.py zieht nur die Standardbibliothek, deshalb geht der Import
+        # hier ohne installierte Abhaengigkeiten — und er liest denselben Wert,
+        # den das Spiel spaeter anzeigt, statt ihn aus der Datei zu klauben.
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          IM_SPIEL="$(python -c 'from src.core import version; print(version.VERSION)')"
+          echo "Tag: $TAG   version.py: $IM_SPIEL"
+          case "$TAG" in
+            test-*)
+              echo "Testbuild — die Version wird nicht geprueft." ;;
+            v*)
+              if [ "${TAG#v}" != "$IM_SPIEL" ]; then
+                echo "::error::Tag $TAG passt nicht zu VERSION=$IM_SPIEL in src/core/version.py"
+                exit 1
+              fi
+              echo "Version stimmt ueberein." ;;
+          esac
+
+  bauen:
+    needs: [tests, version-pruefen]
+    strategy:
+      fail-fast: false      # ein kaputter macOS-Build soll den Windows-Build nicht verschlucken
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: macos-latest
+            name: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # der Baustempel will den Commit-Kurznamen
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Abhaengigkeiten
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller pillow
+
+      - name: Bauzeit einbrennen
+        env:
+          RACE_BUILD_QUELLE: ${{ github.ref_name }}
+        # Ueber den Dateipfad wie in den Bauskripten: -m haengt daran, dass
+        # das Arbeitsverzeichnis im Suchpfad liegt.
+        run: python tools/baustempel.py
+
+      - name: Windows — Programm packen
+        if: matrix.name == 'windows'
+        run: python -m PyInstaller Release/pyinstaller/game.spec --distpath build_tmp/stage --workpath build_tmp --noconfirm
+
+      - name: Windows — Installer bauen
+        if: matrix.name == 'windows'
+        shell: pwsh
+        run: |
+          # Inno Setup liegt auf dem Bauknecht nicht vor und wird geholt.
+          # Auf dem Bauknecht ist Inno oft schon da; dann meldet choco einen
+          # Rueckgabewert ungleich 0, und das ist kein Fehler.
+          choco install innosetup --no-progress -y
+          $global:LASTEXITCODE = 0
+          $version = python -c "from src.core import version; print(version.VERSION)"
+          $stempel = Get-Date -Format "yyyy-MM-dd_HHmm"
+          $name    = "2D-Racing-Game_Setup_v${version}_${stempel}"
+          New-Item -ItemType Directory -Force -Path Release/ausgabe | Out-Null
+          # Absolute Pfade: Inno loest relative gegen das Verzeichnis der
+          # .iss-Datei auf, nicht gegen das Arbeitsverzeichnis.
+          $quelle = Join-Path $PWD "build_tmp\stage\2D-Racing-Game"
+          $ziel   = Join-Path $PWD "Release\ausgabe"
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" /Q `
+            "/DMyAppVersion=$version" `
+            "/DSourceDir=$quelle" `
+            "/O$ziel" "/F$name" `
+            Release\installer\installer.iss
+
+      - name: macOS — bauen und verpacken
+        if: matrix.name == 'macos'
+        run: |
+          chmod +x Release/skripte/build_macos.sh
+          ./Release/skripte/build_macos.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: |
+            Release/ausgabe/*.exe
+            Release/ausgabe/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
+  veroeffentlichen:
+    # Nur fuer echte Versionstags. Ein Testbuild bleibt als Artefakt am Lauf
+    # haengen und wird nicht veroeffentlicht.
+    if: startsWith(github.ref_name, 'v')
+    needs: bauen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: pakete
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: pakete/**/*
+          draft: true          # als Entwurf: du siehst die Pakete, bevor jemand anders sie sieht
+          generate_release_notes: true
+          body: |
+            Gebaut aus ${{ github.ref_name }}.
+
+            **Nicht signiert** — Windows und macOS melden beim ersten Start
+            einen unbekannten Autor. Das ist erwartet und so entschieden.
