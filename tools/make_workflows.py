@@ -31,8 +31,21 @@ SERVER = "http://127.0.0.1:8188"
 SEED_STEUERUNG = ("fixed", "increment", "decrement", "randomize")
 
 #: Eingaenge dieser Typen sind immer Verbindungen, nie Widgets.
-LINK_TYPEN = {"TRELLIS2PIPELINE", "IMAGE_COND", "COORDS", "SHAPE_SLAT",
-              "TRIMESH", "IMAGE", "MASK", "MESH", "TRELLIS2VOXELMESH"}
+LINK_TYPEN = {"TRELLIS2PIPELINE", "IMAGE_COND", "IMAGE_CONDS", "VIEWS_LIST",
+              "COORDS", "SHAPE_SLAT", "TEXTURE_SLAT", "TRIMESH", "IMAGE",
+              "MASK", "MESH", "MESHWITHVOXEL", "BVH", "TRELLIS2VOXELMESH"}
+
+VORLAGE_MV = (HIER / "ComfyUI" / "custom_nodes" / "ComfyUI-Trellis2"
+              / "example_workflows" / "MeshWithTexturing_MultiView.json")
+
+#: Knoten des Multi-View-Beispiels, die als Muster fuer weitere Ansichten
+#: geklont werden: das Bild und seine Vorverarbeitung.
+MV_MUSTER_BILD = 3
+MV_MUSTER_VORBEREITUNG = 5
+#: Der Knoten, der die Ansichten zusammenfuehrt.
+MV_SAMMLER = 6
+#: Eingangsplatz je Ansicht an :data:`MV_SAMMLER`.
+MV_PLATZ = {"front": 1, "heck": 2, "links": 3, "rechts": 4}
 
 
 def object_info(klasse: str) -> dict:
@@ -154,11 +167,173 @@ def bauen(kaskade: int, schritte: int, quelle: str, name: str,
         if n["type"] == "Preview3D":
             n["widgets_values"] = ["", ""]
 
+    return schreiben(graph, name)
+
+
+def pruefen(graph: dict) -> list[str]:
+    """Den fertigen Graphen gegenlesen, bevor er geschrieben wird.
+
+    Noetig, weil fuer die Multi-View-Vorlagen Knoten und Verbindungen im
+    Programm entstehen. Ein falsch gesetzter Verbindungs-Index faellt sonst
+    erst auf, wenn die Datei in ComfyUI landet - und dort als stiller Fehler,
+    weil ein nicht verbundener Eingang einfach leer bleibt.
+    """
+    fehler: list[str] = []
+    ids = [n["id"] for n in graph["nodes"]]
+    if len(ids) != len(set(ids)):
+        fehler.append("doppelte Node-IDs")
+    byid = {n["id"]: n for n in graph["nodes"]}
+    links = {l[0]: l for l in graph["links"]}
+    if len(links) != len(graph["links"]):
+        fehler.append("doppelte Link-IDs")
+
+    for lid, (_, src, sslot, dst, dslot, _typ) in links.items():
+        if src not in byid or dst not in byid:
+            fehler.append(f"Link {lid} zeigt auf einen fehlenden Knoten")
+            continue
+        if sslot >= len(byid[src].get("outputs") or []):
+            fehler.append(f"Link {lid}: Ausgang {sslot} an #{src} gibt es nicht")
+        if dslot >= len(byid[dst].get("inputs") or []):
+            fehler.append(f"Link {lid}: Eingang {dslot} an #{dst} gibt es nicht")
+
+    for n in graph["nodes"]:
+        for i, eingang in enumerate(n.get("inputs") or []):
+            lid = eingang.get("link")
+            if lid is None:
+                continue
+            if lid not in links:
+                fehler.append(f"#{n['id']}.{eingang['name']}: Link {lid} fehlt")
+            elif links[lid][3] != n["id"] or links[lid][4] != i:
+                fehler.append(f"#{n['id']}.{eingang['name']}: Link {lid} zeigt woanders hin")
+        for i, ausgang in enumerate(n.get("outputs") or []):
+            for lid in (ausgang.get("links") or []):
+                if lid not in links:
+                    fehler.append(f"#{n['id']} Ausgang {ausgang['name']}: Link {lid} fehlt")
+                elif links[lid][1] != n["id"] or links[lid][2] != i:
+                    fehler.append(f"#{n['id']} Ausgang {ausgang['name']}: Link {lid} passt nicht")
+
+    if ids and max(ids) > graph.get("last_node_id", 0):
+        fehler.append("last_node_id ist zu klein")
+    if links and max(links) > graph.get("last_link_id", 0):
+        fehler.append("last_link_id ist zu klein")
+    return fehler
+
+
+def schreiben(graph: dict, name: str) -> Path:
+    """Pruefen und schreiben. Ein kaputter Graph wird nicht abgelegt."""
+    fehler = pruefen(graph)
+    if fehler:
+        raise ValueError(f"{name} ist fehlerhaft: " + "; ".join(fehler[:5]))
     ZIEL_DIR.mkdir(parents=True, exist_ok=True)
     ziel = ZIEL_DIR / name
     ziel.write_text(json.dumps(graph, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"  geschrieben: {ziel}")
     return ziel
+
+
+def _knoten(graph: dict, node_id: int) -> dict:
+    for n in graph["nodes"]:
+        if n["id"] == node_id:
+            return n
+    raise KeyError(f"Node #{node_id} nicht gefunden")
+
+
+def ansicht_ergaenzen(graph: dict, ansicht: str, dateiname: str,
+                      versatz: float) -> None:
+    """Eine weitere Ansicht in den Multi-View-Graphen einsetzen.
+
+    Geklont werden Bildknoten und Vorverarbeitung des Musters, damit Groesse,
+    Eigenschaften und Version genau denen entsprechen, die der Node erwartet -
+    von Hand zusammengesetzte Knoten sind eine Fehlerquelle, die niemand
+    braucht.
+    """
+    from copy import deepcopy
+
+    bild = deepcopy(_knoten(graph, MV_MUSTER_BILD))
+    vorb = deepcopy(_knoten(graph, MV_MUSTER_VORBEREITUNG))
+
+    neue_id = int(graph["last_node_id"])
+    bild["id"] = neue_id + 1
+    vorb["id"] = neue_id + 2
+    graph["last_node_id"] = neue_id + 2
+
+    neue_verbindung = int(graph["last_link_id"])
+    bild_zu_vorb = neue_verbindung + 1
+    vorb_zu_sammler = neue_verbindung + 2
+    graph["last_link_id"] = neue_verbindung + 2
+
+    bild["pos"] = [bild["pos"][0], bild["pos"][1] + versatz]
+    vorb["pos"] = [vorb["pos"][0], vorb["pos"][1] + versatz]
+    bild["title"] = f"Bild {ansicht}"
+    bild["widgets_values"] = [dateiname, "image"]
+
+    # Ausgang 2 des Bildknotens ist image_with_alpha - der Weg, auf dem die
+    # Transparenz erhalten bleibt.
+    for i, ausgang in enumerate(bild["outputs"]):
+        ausgang["links"] = [bild_zu_vorb] if i == 2 else None
+    vorb["inputs"][0]["link"] = bild_zu_vorb
+    vorb["outputs"][0]["links"] = [vorb_zu_sammler]
+
+    sammler = _knoten(graph, MV_SAMMLER)
+    sammler["inputs"][MV_PLATZ[ansicht]]["link"] = vorb_zu_sammler
+
+    graph["nodes"] += [bild, vorb]
+    graph["links"] += [
+        [bild_zu_vorb, bild["id"], 2, vorb["id"], 0, "IMAGE"],
+        [vorb_zu_sammler, vorb["id"], 0, MV_SAMMLER, MV_PLATZ[ansicht], "IMAGE"],
+    ]
+    print(f"  ergaenzt: Ansicht {ansicht} -> {dateiname}")
+
+
+def bauen_multiview(ansichten: tuple[str, ...], name: str,
+                    beschreibung: str) -> Path:
+    """Multi-View-Vorlage aus dem Beispiel des Nodes.
+
+    Mehrere Ansichten sind der wirksamste Hebel ueberhaupt: was TRELLIS sieht,
+    muss es nicht erfinden. Mit einer Frontansicht allein wird das Heck aus der
+    Silhouette erschlossen - Rueckleuchten, Stossfaenger und Heckklappe sind
+    dann geraten.
+    """
+    graph = json.loads(VORLAGE_MV.read_text(encoding="utf-8"))
+    print(f"\n=== {name}  ({beschreibung})")
+
+    setzen(graph, "Trellis2LoadModel", "backend", "sdpa")
+    setzen(graph, "Trellis2LoadModel", "conv_backend", "flex_gemm")
+    setzen(graph, "Trellis2LoadModel", "low_vram", True)
+
+    # Renders bringen keine Transparenz mit, siehe nodes.py:2675.
+    setzen(graph, "Trellis2PreProcessImage", "remove_background", True)
+
+    setzen(graph, "Trellis2SparseMultiViewGenerator",
+           "sparse_structure_resolution", 64)
+    setzen(graph, "Trellis2ShapeMultiViewGenerator", "resolution", 1024)
+    setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "from_resolution", 512)
+    setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "to_resolution", 1536)
+
+    setzen(graph, "Trellis2SparseMultiViewGenerator", "sparse_structure_steps", 25)
+    setzen(graph, "Trellis2ShapeMultiViewGenerator", "shape_steps", 25)
+    setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "shape_steps", 25)
+    setzen(graph, "Trellis2TexSlatMultiViewGenerator", "texture_steps", 25)
+
+    primitive_setzen(graph, 23, 1000000)      # Simplify-Ziel
+    primitive_setzen(graph, 26, 2048)         # texture_size
+    primitive_setzen(graph, 22, "rookie")     # Dateiname der Ausgabe
+
+    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
+           "rookie_3d_front.png", node_id=2)
+    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
+           "rookie_3d_heck.png", node_id=MV_MUSTER_BILD)
+
+    for nummer, ansicht in enumerate(a for a in ansichten
+                                     if a not in ("front", "heck")):
+        ansicht_ergaenzen(graph, ansicht, f"rookie_3d_{ansicht}.png",
+                          versatz=600.0 * (nummer + 1))
+
+    for n in graph["nodes"]:
+        if n["type"] == "Preview3D":
+            n["widgets_values"] = ["", ""]
+
+    return schreiben(graph, name)
 
 
 def main() -> int:
@@ -178,6 +353,11 @@ def main() -> int:
               "3D-Render, Durchlauf ueber alle 15 Fahrzeuge")
         bauen(1536, 25, "render", "Fahrzeug_Render_HQ.json",
               "3D-Render, Einzelstueck, auf 16 GB knapp")
+        bauen_multiview(("front", "heck"), "Fahrzeug_MultiView_2.json",
+                        "Front und Heck")
+        bauen_multiview(("front", "heck", "links", "rechts"),
+                        "Fahrzeug_MultiView_4.json",
+                        "Front, Heck und beide Flanken")
     except (KeyError, OSError, urllib.error.URLError) as fehler:
         print(f"FEHLER: {fehler}", file=sys.stderr)
         print("Laeuft ComfyUI? tools\\start_gui.bat", file=sys.stderr)

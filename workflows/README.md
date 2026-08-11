@@ -2,21 +2,32 @@
 
 Beide Dateien per **Drag & Drop** auf die ComfyUI-Fläche ziehen.
 
-Vier Vorlagen, zwei Achsen: **woher das Bild kommt** und **wieviel Zeit es
-kosten darf.**
-
-| | Serie (Kaskade 1024, steps 15) | HQ (Kaskade 1536, steps 25) |
+| Vorlage | Bilder | Kaskade / steps |
 |---|---|---|
-| **Top-Down-Sprite** | `Fahrzeug_TopDown_Serie.json` | `Fahrzeug_TopDown_HQ.json` |
-| **3D-Render** | `Fahrzeug_Render_Serie.json` | `Fahrzeug_Render_HQ.json` |
+| `Fahrzeug_MultiView_4.json` | **4** — Front, Heck, links, rechts | 1536 / 25 |
+| `Fahrzeug_MultiView_2.json` | **2** — Front, Heck | 1536 / 25 |
+| `Fahrzeug_Render_HQ.json` | 1 — 3/4-Render | 1536 / 25 |
+| `Fahrzeug_Render_Serie.json` | 1 — 3/4-Render | 1024 / 15 |
+| `Fahrzeug_TopDown_HQ.json` | 1 — Sprite | 1536 / 25 |
+| `Fahrzeug_TopDown_Serie.json` | 1 — Sprite | 1024 / 15 |
 
-**Nimm die Render-Vorlagen, wenn du ein 3/4-Bild hast.** Der Unterschied im
-Ergebnis ist größer als alles, was sich an Einstellungen drehen lässt: aus einem
-Top-Down-Sprite muss TRELLIS die komplette Flanke erfinden, aus einem
-3/4-Render sieht es sie. Radhäuser, Türgriffe, Schweller und Scheinwerfer sitzen
-dann tatsächlich statt geraten zu werden.
+**Die Zahl der Ansichten schlägt jede Einstellung.** Was TRELLIS sieht, muss es
+nicht erfinden. Aus einem Top-Down-Sprite wird die ganze Flanke geraten, aus
+einer 3/4-Frontansicht immer noch das Heck — Rückleuchten, Stoßfänger und
+Heckklappe kommen dann aus der Silhouette. Mit Front und Heck fällt das weg, mit
+allen vier Ansichten bleibt nichts Ungesehenes übrig.
 
-Der einzige Unterschied in der Datei ist `remove_background` — und der ist keine
+Die Bilder heißen in den Multi-View-Vorlagen:
+
+```
+rookie_3d_front.png   rookie_3d_heck.png   rookie_3d_links.png   rookie_3d_rechts.png
+```
+
+**Alle vier Bilder müssen vorhanden sein**, sonst bricht der Lauf am fehlenden
+Bild ab. Wer nur zwei hat, nimmt `Fahrzeug_MultiView_2.json`.
+
+Alle Vorlagen außer den Sprite-Varianten erwarten Renders **ohne** eigene
+Transparenz und stellen sie über `remove_background` selbst frei — das ist keine
 Geschmacksfrage, sondern Pflicht (siehe unten).
 
 Beide heben `sparse_structure_resolution` auf 64 — das ist die Einstellung, die
@@ -91,6 +102,24 @@ Danach:
 python trellis_import.py tools\ComfyUI\output\<key>_Textured_00001_.glb --fahrzeug <key>
 ```
 
+## Die Ansichten aufnehmen
+
+Die vier Ansichten müssen **dasselbe Fahrzeug in derselben Größe und aus
+derselben Höhe** zeigen — TRELLIS führt sie über eine gemeinsame
+Blickrichtungsliste zusammen und rechnet nicht aus, dass die Heckansicht
+zufällig näher aufgenommen wurde.
+
+| Ansicht | Blickrichtung |
+|---|---|
+| `front` | schräg von vorne, das Fahrzeug 3/4 im Bild |
+| `heck` | die gegenüberliegende Ecke, also schräg von hinten |
+| `links` | Seitenansicht der linken Flanke |
+| `rechts` | Seitenansicht der rechten Flanke |
+
+Der Parameter `front_axis` steht in allen Multi-View-Nodes auf `z` und legt
+fest, entlang welcher Achse die Frontansicht blickt. Kommt das Modell verdreht
+heraus, ist das der erste Schalter — nicht die Bilder neu aufnehmen.
+
 ## Wie die Vorlagen entstanden sind
 
 Nicht von Hand, sondern über `tools\make_workflows.py` aus dem Beispiel
@@ -105,6 +134,14 @@ Nach einem `git pull` im Node also einmal:
 ```
 python tools\make_workflows.py
 ```
+
+Für die Multi-View-Vorlagen entstehen Knoten und Verbindungen im Programm — die
+zusätzlichen Bildpfade für links und rechts gibt es im Beispiel des Nodes nicht.
+Deshalb liest `make_workflows.py` jeden fertigen Graphen gegen: doppelte IDs,
+Verbindungen ins Leere, Ein- und Ausgänge, die nicht zueinander passen. Ein
+fehlerhafter Graph wird gar nicht erst geschrieben. Ohne diese Prüfung fällt ein
+falscher Verbindungsindex erst in ComfyUI auf, und dort als stiller Fehler —
+ein nicht verbundener Eingang bleibt einfach leer.
 
 ## Was gegenüber dem Beispiel geändert wurde
 
