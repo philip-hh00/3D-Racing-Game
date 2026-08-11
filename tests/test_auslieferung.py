@@ -52,7 +52,33 @@ OPTIONAL = {
     # tools/video_ton_extrahieren.py — bringt ein eigenes ffmpeg mit. Einmalig
     # gebraucht, um den Ton aus einer Videoaufnahme zu ziehen.
     "imageio_ffmpeg",
+    # tools/freistellen.py — stellt ein Bild frei, bevor es an TRELLIS geht.
+    # Der Import steht in der Funktion, nicht am Dateianfang: rembg zieht
+    # onnxruntime nach (mehrere hundert Megabyte) und wird nur von diesem
+    # einen Werkzeug gebraucht. Es liegt bereits in der ComfyUI-Umgebung
+    # (tools/ComfyUI/venv), aus der das Werkzeug auch gestartet wird —
+    # tools/freistellen.bat ruft genau dieses Python auf. In die
+    # Entwicklungsanforderungen gehoert es deshalb nicht: sonst installiert
+    # jeder, der nur die Tests laufen lassen will, ein halbes Gigabyte mit.
+    "rembg",
 }
+
+
+def _versionierte_dateien() -> "set[str] | None":
+    """Alle vom Repo verfolgten Pfade, relativ zur Wurzel.
+
+    ``None``, wenn git nicht erreichbar ist — dann wird nicht gefiltert, und
+    der Test ist eher zu streng als zu locker.
+    """
+    import subprocess
+    try:
+        fertig = subprocess.run(["git", "ls-files"], cwd=_ROOT,
+                                capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if fertig.returncode != 0:
+        return None
+    return {os.path.normpath(z) for z in fertig.stdout.splitlines() if z.strip()}
 
 
 def _fremdmodule(wurzeln: list[str]) -> dict[str, set[str]]:
@@ -63,6 +89,7 @@ def _fremdmodule(wurzeln: list[str]) -> dict[str, set[str]]:
     ``soundfile`` erst beim Laden der Aufnahmen), und genau die hätte ein
     Zeilenmuster am Dateianfang übersehen.
     """
+    versioniert = _versionierte_dateien()
     treffer: dict[str, set[str]] = {}
     for wurzel in wurzeln:
         dateien = [wurzel] if wurzel.endswith(".py") else [
@@ -70,6 +97,16 @@ def _fremdmodule(wurzeln: list[str]) -> dict[str, set[str]]:
             for o, _u, ns in os.walk(wurzel) for n in ns if n.endswith(".py")
         ]
         for pfad in dateien:
+            # Nur was im Repo liegt. Seit dem 11.08.2026 steht unter
+            # tools/ComfyUI/ eine vollstaendige Fremdanwendung mit rund 40 GB
+            # (die Erzeugungsseite der 3D-Modelle, siehe
+            # tools/install_trellis2.bat). Sie ist bewusst nicht versioniert,
+            # und ihre Abhaengigkeiten sind nicht unsere: torch, comfy,
+            # folder_paths und ein halbes Hundert weitere. Ueber "versioniert"
+            # statt ueber eine Ausschlussliste, damit die naechste eingerichtete
+            # Fremdanwendung nicht dieselbe Aenderung noch einmal braucht.
+            if versioniert is not None and os.path.relpath(pfad, _ROOT) not in versioniert:
+                continue
             with open(pfad, encoding="utf-8") as fh:
                 baum = ast.parse(fh.read(), filename=pfad)
             for knoten in ast.walk(baum):
