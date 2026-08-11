@@ -1,0 +1,28 @@
+# Was zum Entwickeln und Prüfen gebraucht wird — NICHT zum Spielen.
+#
+# Getrennt von requirements.txt, und das ist der ganze Zweck: aus dieser Datei
+# installiert der Build **nicht**. Was hier steht, landet nie im ausgelieferten
+# Bündel und bläht es nicht auf.
+#
+# Angelegt am 06.08.2026, nachdem die frisch eingerichtete Pipeline beim ersten
+# Lauf genau so etwas gefunden hat: `tools/motor_import.py` importiert `scipy`
+# auf Modulebene, `tests/test_motor_import.py` importiert dieses Werkzeug — und
+# auf dem Bauknecht gab es kein scipy. Auf dem Entwicklungsrechner fiel es nicht
+# auf, weil es dort ohnehin installiert ist. Dieselbe Sorte Fehler wie
+# `soundfile` am 04.08., nur aus der anderen Richtung.
+#
+# Installiert wird sie in .github/workflows/tests.yml zusätzlich zu
+# requirements.txt. Wer die Suite von Hand laufen lässt, braucht sie auch —
+# ohne sie überspringen sich die betroffenen Tests, statt fehlzuschlagen.
+
+# Die Testsuite selbst.
+pytest>=8.0.0
+
+# Signalverarbeitung der Klangwerkzeuge (tools/motor_import.py und vier weitere:
+# Neuabtastung der Aufnahmen über resample_poly). Das Spiel selbst benutzt es
+# nicht — es liest fertige Schleifen.
+scipy>=1.11.0
+
+# Die Bauwerkzeuge stehen bewusst NICHT hier, sondern in den Bauskripten
+# (pyinstaller, pillow). Sie gehören zum Packen, nicht zum Entwickeln, und wer
+# nur Tests laufen lassen will, soll sie nicht mitinstallieren müssen.

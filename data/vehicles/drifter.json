@@ -1,0 +1,91 @@
+{
+  "name": "Drifter",
+  "description": "Hecklastiger Drifter für enge Kurven",
+  "visual_type": "drifter",
+  "width_px": 27,
+  "height_px": 58,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    14.0,
+    9.92,
+    7.028,
+    4.98,
+    3.528,
+    2.5
+  ],
+  "physics": {
+    "mass": 1800.0,
+    "engine_power": 42713.700252750416,
+    "max_speed": 723.4719,
+    "grip": 0.75,
+    "brake_force": 56600.0,
+    "turn_speed": 2.2,
+    "drift_threshold": 0.62,
+    "drag_coefficient": 0.24,
+    "roll_coefficient": 0.012,
+    "wheelbase": 3.074,
+    "wheelbase_ratio": 0.662,
+    "com_bias": -0.1,
+    "wheel_diameter": 0.65,
+    "idle_rpm": 900.0,
+    "redline_rpm": 6800.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      120.0
+    ],
+    [
+      1200.0,
+      140.0
+    ],
+    [
+      2000.0,
+      400.0
+    ],
+    [
+      2500.0,
+      580.0
+    ],
+    [
+      4000.0,
+      580.0
+    ],
+    [
+      5000.0,
+      560.0
+    ],
+    [
+      6000.0,
+      500.0
+    ],
+    [
+      6800.0,
+      320.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.45
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.36,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.16,
+    "helligkeit_max": 0.76,
+    "kantenweichheit": 0.0,
+    "deckkraft": 1.0
+  }
+}

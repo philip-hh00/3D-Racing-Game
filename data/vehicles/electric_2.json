@@ -1,0 +1,83 @@
+{
+  "name": "E-Racer",
+  "description": "Elektrischer Rennwagen mit sofortigem Drehmoment und tiefem Schwerpunkt.",
+  "visual_type": "electric_2",
+  "width_px": 27,
+  "height_px": 63,
+  "color_primary": [
+    30,
+    200,
+    150
+  ],
+  "color_secondary": [
+    20,
+    40,
+    60
+  ],
+  "gear_ratios": [
+    18.0,
+    10.0
+  ],
+  "physics": {
+    "mass": 2420.0,
+    "engine_power": 67302.5536982504,
+    "max_speed": 666.1108,
+    "grip": 0.74,
+    "brake_force": 70000.0,
+    "turn_speed": 2.1,
+    "drift_threshold": 0.67,
+    "drag_coefficient": 0.22,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.992,
+    "wheelbase_ratio": 0.594,
+    "com_bias": -0.06,
+    "wheel_diameter": 0.73,
+    "idle_rpm": 0.0,
+    "redline_rpm": 16000.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      0.0,
+      840.0
+    ],
+    [
+      2800.0,
+      840.0
+    ],
+    [
+      5600.0,
+      840.0
+    ],
+    [
+      8150.0,
+      580.0
+    ],
+    [
+      10000.0,
+      470.0
+    ],
+    [
+      14000.0,
+      335.0
+    ],
+    [
+      16000.0,
+      293.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.6
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.0,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.39,
+    "helligkeit_max": 1.0,
+    "kantenweichheit": 1.5,
+    "deckkraft": 1.0
+  }
+}

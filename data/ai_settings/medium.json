@@ -1,0 +1,22 @@
+{
+  "name": "Medium",
+  "max_throttle": 0.86,
+  "look_ahead": 150.0,
+  "brake_threshold": 0.32,
+  "waypoint_reach_distance": 30.0,
+  "steering_noise": 0.0,
+  "rubber_banding": false,
+  "racing_skill": 1.0,
+  "line_deviation": 0.0,
+  "aggression": 0.55,
+  "grip_usage": 0.65,
+  "brake_confidence": 0.84,
+  "steer_confidence": 0.6,
+  "wall_margin": 26.0,
+  "corner_cutting": 0.48,
+  "speed_scale": 0.96,
+  "overtake_dist": 90.0,
+  "brake_dist": 90.0,
+  "draft_dist": 150.0,
+  "block_dist": 60.0
+}

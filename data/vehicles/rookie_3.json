@@ -1,0 +1,92 @@
+{
+  "name": "Kompakt RS",
+  "description": "Sportlich abgestimmter Kompakter mit strafferem Fahrwerk und mehr Drehfreude.",
+  "visual_type": "rookie_3",
+  "width_px": 27,
+  "height_px": 55,
+  "color_primary": [
+    45,
+    180,
+    220
+  ],
+  "color_secondary": [
+    30,
+    30,
+    40
+  ],
+  "gear_ratios": [
+    17.0,
+    10.417,
+    6.383,
+    3.912,
+    2.397,
+    1.469,
+    0.9
+  ],
+  "physics": {
+    "mass": 1400.0,
+    "engine_power": 24010.79470207943,
+    "max_speed": 886.1112,
+    "grip": 0.84,
+    "brake_force": 47300.0,
+    "turn_speed": 2.2,
+    "drift_threshold": 0.79,
+    "drag_coefficient": 0.27,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.674,
+    "wheelbase_ratio": 0.608,
+    "com_bias": 0.08,
+    "wheel_diameter": 0.65,
+    "idle_rpm": 800.0,
+    "redline_rpm": 6600.0,
+    "drive_type": "fwd"
+  },
+  "torque_curve": [
+    [
+      800.0,
+      144.0
+    ],
+    [
+      1840.0,
+      144.0
+    ],
+    [
+      2880.0,
+      240.0
+    ],
+    [
+      3920.0,
+      321.0
+    ],
+    [
+      4960.0,
+      340.0
+    ],
+    [
+      6000.0,
+      279.0
+    ],
+    [
+      6600.0,
+      140.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": -0.45
+  },
+  "paint": {
+    "verfahren": "dominant",
+    "saettigungsschwelle": 0.03,
+    "referenzfarbe": [
+      7,
+      148,
+      128
+    ],
+    "farbtoleranz": 1.0,
+    "helligkeit_min": 0.53,
+    "helligkeit_max": 0.99,
+    "kantenweichheit": 2.5,
+    "deckkraft": 1.0
+  }
+}

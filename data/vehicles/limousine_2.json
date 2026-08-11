@@ -1,0 +1,93 @@
+{
+  "name": "Business-Limousine",
+  "description": "Schwere Reiselimousine mit langem Radstand und kräftigem Durchzug.",
+  "visual_type": "limousine_2",
+  "width_px": 27,
+  "height_px": 64,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    21.0,
+    13.39,
+    8.538,
+    5.444,
+    3.472,
+    2.214,
+    1.411,
+    0.9
+  ],
+  "physics": {
+    "mass": 1880.0,
+    "engine_power": 48408.86028645047,
+    "max_speed": 949.1662,
+    "grip": 0.9,
+    "brake_force": 68300.0,
+    "turn_speed": 1.95,
+    "drift_threshold": 0.88,
+    "drag_coefficient": 0.27,
+    "roll_coefficient": 0.012,
+    "wheelbase": 3.174,
+    "wheelbase_ratio": 0.62,
+    "com_bias": -0.07,
+    "wheel_diameter": 0.68,
+    "idle_rpm": 900.0,
+    "redline_rpm": 6800.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      120.0
+    ],
+    [
+      1200.0,
+      160.0
+    ],
+    [
+      2000.0,
+      480.0
+    ],
+    [
+      2500.0,
+      740.0
+    ],
+    [
+      4000.0,
+      730.0
+    ],
+    [
+      5000.0,
+      680.0
+    ],
+    [
+      6400.0,
+      500.0
+    ],
+    [
+      6800.0,
+      310.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.0
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.02,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.26,
+    "helligkeit_max": 0.68,
+    "kantenweichheit": 2.0,
+    "deckkraft": 1.0
+  }
+}

@@ -1,0 +1,13 @@
+Traceback (most recent call last):
+  File "F:\Fahr-Rennspiel-2D\main.py", line 151, in main
+    game.run()
+  File "F:\Fahr-Rennspiel-2D\src\core\game.py", line 195, in run
+    self.state_machine.render(virt)
+  File "F:\Fahr-Rennspiel-2D\src\core\state_machine.py", line 186, in render
+    self._current.render(screen)
+  File "F:\Fahr-Rennspiel-2D\src\states\vehicle_lab_state.py", line 729, in render
+    self._draw_params(screen)
+  File "F:\Fahr-Rennspiel-2D\src\states\vehicle_lab_state.py", line 839, in _draw_params
+    marker = f"{theme.ZEIGER} " if sel else "  "
+                ^^^^^
+NameError: name 'theme' is not defined

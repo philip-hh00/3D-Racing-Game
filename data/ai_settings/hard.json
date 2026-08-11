@@ -1,0 +1,22 @@
+{
+  "name": "Hard",
+  "max_throttle": 1.02,
+  "look_ahead": 150.0,
+  "brake_threshold": 0.32,
+  "waypoint_reach_distance": 30.0,
+  "steering_noise": 0.0,
+  "rubber_banding": false,
+  "racing_skill": 1.0,
+  "line_deviation": 0.0,
+  "aggression": 0.85,
+  "grip_usage": 0.7,
+  "brake_confidence": 0.88,
+  "steer_confidence": 0.65,
+  "wall_margin": 40.0,
+  "corner_cutting": 0.45,
+  "speed_scale": 0.88,
+  "overtake_dist": 70.0,
+  "brake_dist": 65.0,
+  "draft_dist": 180.0,
+  "block_dist": 120.0
+}

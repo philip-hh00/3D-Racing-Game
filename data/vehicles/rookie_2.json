@@ -1,0 +1,92 @@
+{
+  "name": "Stadtflitzer",
+  "description": "Wendiger Kleinwagen für enge Kurse. Leicht, spritzig und gutmütig am Limit.",
+  "visual_type": "rookie_2",
+  "width_px": 26,
+  "height_px": 53,
+  "color_primary": [
+    45,
+    180,
+    220
+  ],
+  "color_secondary": [
+    30,
+    30,
+    40
+  ],
+  "gear_ratios": [
+    18.0,
+    10.925,
+    6.631,
+    4.025,
+    2.443,
+    1.483,
+    0.9
+  ],
+  "physics": {
+    "mass": 1310.0,
+    "engine_power": 21185.995325364205,
+    "max_speed": 851.389,
+    "grip": 0.82,
+    "brake_force": 42500.0,
+    "turn_speed": 2.2,
+    "drift_threshold": 0.79,
+    "drag_coefficient": 0.27,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.674,
+    "wheelbase_ratio": 0.631,
+    "com_bias": 0.08,
+    "wheel_diameter": 0.64,
+    "idle_rpm": 800.0,
+    "redline_rpm": 6600.0,
+    "drive_type": "fwd"
+  },
+  "torque_curve": [
+    [
+      800.0,
+      144.0
+    ],
+    [
+      1840.0,
+      144.0
+    ],
+    [
+      2880.0,
+      240.0
+    ],
+    [
+      3920.0,
+      295.0
+    ],
+    [
+      4960.0,
+      300.0
+    ],
+    [
+      6000.0,
+      240.0
+    ],
+    [
+      6600.0,
+      160.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.0
+  },
+  "paint": {
+    "verfahren": "dominant",
+    "saettigungsschwelle": 0.25,
+    "referenzfarbe": [
+      57,
+      112,
+      128
+    ],
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.0,
+    "helligkeit_max": 0.42,
+    "kantenweichheit": 3.0,
+    "deckkraft": 1.0
+  }
+}

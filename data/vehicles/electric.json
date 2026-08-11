@@ -1,0 +1,83 @@
+{
+  "name": "Elektro-Prototyp",
+  "description": "Futuristischer Prototyp mit rein elektrischem Direktantrieb. Dreht bis auf extreme 14000 U/min.",
+  "visual_type": "electric",
+  "width_px": 27,
+  "height_px": 62,
+  "color_primary": [
+    30,
+    200,
+    150
+  ],
+  "color_secondary": [
+    20,
+    40,
+    60
+  ],
+  "gear_ratios": [
+    16.0,
+    8.0
+  ],
+  "physics": {
+    "mass": 2250.0,
+    "engine_power": 63821.38712765125,
+    "max_speed": 666.1108,
+    "grip": 0.74,
+    "brake_force": 65000.0,
+    "turn_speed": 2.05,
+    "drift_threshold": 0.65,
+    "drag_coefficient": 0.2,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.942,
+    "wheelbase_ratio": 0.593,
+    "com_bias": -0.01,
+    "wheel_diameter": 0.73,
+    "idle_rpm": 0.0,
+    "redline_rpm": 16000.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      0.0,
+      800.0
+    ],
+    [
+      2800.0,
+      800.0
+    ],
+    [
+      5600.0,
+      800.0
+    ],
+    [
+      8150.0,
+      550.0
+    ],
+    [
+      10000.0,
+      445.0
+    ],
+    [
+      14000.0,
+      310.0
+    ],
+    [
+      16000.0,
+      220.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.45
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.77,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.04,
+    "helligkeit_max": 1.0,
+    "kantenweichheit": 1.5,
+    "deckkraft": 1.0
+  }
+}

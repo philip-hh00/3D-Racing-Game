@@ -1,0 +1,22 @@
+{
+  "name": "Easy",
+  "max_throttle": 0.6,
+  "look_ahead": 150.0,
+  "brake_threshold": 0.32,
+  "waypoint_reach_distance": 30.0,
+  "steering_noise": 0.0,
+  "rubber_banding": true,
+  "racing_skill": 1.0,
+  "line_deviation": 0.0,
+  "aggression": 0.25,
+  "grip_usage": 0.58,
+  "brake_confidence": 0.78,
+  "steer_confidence": 0.55,
+  "wall_margin": 32.0,
+  "corner_cutting": 0.55,
+  "speed_scale": 0.9,
+  "overtake_dist": 90.0,
+  "brake_dist": 80.0,
+  "draft_dist": 150.0,
+  "block_dist": 0.0
+}

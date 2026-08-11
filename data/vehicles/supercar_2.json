@@ -1,0 +1,103 @@
+{
+  "name": "Hypersport GT",
+  "description": "Kompromissloser Hypersportler mit gewaltigem Vortrieb und viel Abtrieb.",
+  "visual_type": "supercar_2",
+  "width_px": 29,
+  "height_px": 60,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    14.0,
+    9.669,
+    6.678,
+    4.612,
+    3.185,
+    2.2
+  ],
+  "physics": {
+    "mass": 1560.0,
+    "engine_power": 48294.95708577647,
+    "max_speed": 914.444,
+    "grip": 0.9,
+    "brake_force": 55900.0,
+    "turn_speed": 2.1,
+    "drift_threshold": 0.96,
+    "drag_coefficient": 0.22,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.624,
+    "wheelbase_ratio": 0.547,
+    "com_bias": -0.03,
+    "wheel_diameter": 0.64,
+    "idle_rpm": 900.0,
+    "redline_rpm": 8500.0,
+    "drive_type": "awd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      112.0
+    ],
+    [
+      1200.0,
+      135.0
+    ],
+    [
+      2000.0,
+      412.0
+    ],
+    [
+      2500.0,
+      608.0
+    ],
+    [
+      4000.0,
+      605.0
+    ],
+    [
+      5000.0,
+      555.0
+    ],
+    [
+      6000.0,
+      530.0
+    ],
+    [
+      6400.0,
+      530.0
+    ],
+    [
+      8000.0,
+      400.0
+    ],
+    [
+      8500.0,
+      320.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.0
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.36,
+    "referenzfarbe": [
+      114,
+      68,
+      122
+    ],
+    "farbtoleranz": 0.54,
+    "helligkeit_min": 0.0,
+    "helligkeit_max": 0.74,
+    "kantenweichheit": 0.5,
+    "deckkraft": 1.0
+  }
+}

@@ -1,7 +1,30 @@
-# Abhaengigkeiten von trellis_import.py. Nicht zu verwechseln mit dem venv
-# unter tools/ComfyUI - das ist die Generierungsseite und viel groesser.
-trimesh
-numpy
-pillow
-scipy      # trimesh braucht es fuer die orientierte Bounding-Box
-pytest
+# =============================================================================
+#  Laufzeitabhaengigkeiten. Zwei Bloecke: das Spiel und die Asset-Aufbereitung.
+#  Die Erzeugungsseite (ComfyUI, TRELLIS, Torch) hat ihre eigene Umgebung unter
+#  tools/ComfyUI/venv und steht hier bewusst nicht drin.
+# =============================================================================
+
+# --- Spiel, uebernommen aus dem 2D-Projekt -----------------------------------
+pygame-ce>=2.4.0
+pymunk>=6.8.0
+numpy>=1.26.0
+opencv-python>=4.8.0
+# Liest die Motoraufnahmen (src/core/sfx.py, Schichten._laden).
+soundfile>=0.12.0
+# Audiofaden fuer den Motorklang (src/core/tonausgabe.py). PortAudio liefert
+# den Rueckruf, den pygame.mixer nicht hat. Unter Linux muss die
+# Systembibliothek vorhanden sein; fehlt sie, faellt das Spiel zurueck.
+sounddevice>=0.4.6
+
+# --- 3D-Darstellung ----------------------------------------------------------
+# ModernGL rendert die Szene in dasselbe pygame-Fenster. pygame behaelt
+# Fenster, Eingabe, Audio, HUD und Menues - die HUD-Flaeche wird als Textur
+# darueber gelegt. So bleiben rund 33.000 Zeilen pygame-Code unberuehrt.
+moderngl>=5.10.0
+
+# --- Asset-Aufbereitung (trellis_import.py) ----------------------------------
+trimesh>=4.0.0
+pillow>=10.0.0
+# trimesh braucht scipy fuer die orientierte Bounding-Box. Ohne scipy
+# scheitert orient.ausrichten mit "Points must be coplanar".
+scipy>=1.11.0

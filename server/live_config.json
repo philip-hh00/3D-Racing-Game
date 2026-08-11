@@ -1,0 +1,125 @@
+{
+  "required_version": "0.9.0-beta",
+  "announcements": [
+    {
+      "id": "2026-07-17-welcome",
+      "date": "2026-07-17",
+      "title": {
+        "de": "Willkommen zur Beta!",
+        "en": "Welcome to the beta!"
+      },
+      "text": {
+        "de": "Danke fürs Testen. Bei Problemen bitte Bugs über GitHub melden.",
+        "en": "Thanks for testing. Please report any issues via GitHub."
+      }
+    },
+    {
+      "id": "2026-07-17-neue-version-0-2-0-beta",
+      "date": "2026-07-17",
+      "title": {
+        "de": "Neue Version 0.2.0-beta",
+        "en": "New version 0.2.0-beta"
+      },
+      "text": {
+        "de": "Anpassungen an den Spielmodi, Einstellung der Fahrer-KI anpassungen an den Spielmodi.",
+        "en": "Adjustments to the game modes, adjustments to the driver AI, and adjustments to the game modes."
+      }
+    },
+    {
+      "id": "19.07.2026-anpassung-online-mp",
+      "date": "2026-07-19",
+      "title": {
+        "de": "Anpassung Online MP",
+        "en": "Adjustments Online MP"
+      },
+      "text": {
+        "de": "1. Vorgefertigte Strecke nicht übertragen\n2. Fahrzeug erst nach Wechsel sichtbar\n3. Rejoin → Platz 3 + KI-Overlap\n4. KI übernimmt Host-Auto mitten im Rennen\n5. Client fliegt raus, Host-Ergebnis ohne Client",
+        "en": "1. Pre-set track not transferred\n2. Vehicle not visible until after the switch\n3. Rejoin → 3rd place + AI overlap\n4. AI takes over the host's car in the middle of the race\n5. Client gets kicked out; host's result without the client"
+      }
+    },
+    {
+      "id": "2026-07-23-neue-version-0-4-0-beta",
+      "date": "2026-07-23",
+      "title": {
+        "de": "Neue Version 0.4.0-beta",
+        "en": "New Version 0.4.0-beta"
+      },
+      "text": {
+        "de": "Neuer Online Multispieler Modus verfügbar: Team Zeitfahren.",
+        "en": "New online multiplayer mode available: Team Time Trial."
+      }
+    },
+    {
+      "id": "2026-07-25-neuer-server-verf-gbar-hamburg",
+      "date": "2026-07-25",
+      "title": {
+        "de": "Neue Version 0.5.0-beta",
+        "en": "New version 0.5.0-beta"
+      },
+      "text": {
+        "de": "Neuer Server verfügbar: Hamburg",
+        "en": "New server availible: Hamburg"
+      }
+    },
+    {
+      "id": "2026-07-29-neue-version-0-6-0-beta",
+      "date": "2026-07-29",
+      "title": {
+        "de": "Neue Version 0.6.0-beta",
+        "en": "New version 0.6.0-beta"
+      },
+      "text": {
+        "de": "Neuer Modus Grand Prix verfügbar in:\nEinzelspieler\nLokaler Mehrspieler\nOnline Merhspieler\n\nEigens erstelle Strecken können im Grand Prix Modus mit anderen User geteielt werden.",
+        "en": "New Grand Prix mode available in:\nSingle-player\nLocal multiplayer\nOnline multiplayer\n\nCustom tracks can be shared with other users in Grand Prix mode."
+      }
+    },
+    {
+      "id": "2026-08-05-neue-version-0-7-0-beta",
+      "date": "2026-08-05",
+      "title": {
+        "de": "Neue Version 0.7.0-beta",
+        "en": "New Version 0.7.0-beta"
+      },
+      "text": {
+        "de": "Neu Hinzugefügt:\n- Werkstatt: Passe den Lack von deinem Fahrzeug nach deinen Wünschen an. Schalte bestimmte Lackierungen mit Spielfortschritt frei. \n- Profil: Übersicht über den Spielfortschritt und den Bestzeiten zu allen Strecken. \n- Online Multiplayer: Anpassungen der Relaislogik und Verbesserung von Sicherheitsfeatures. Das Akteulle Update wird benötigt um Online zu Spielen.",
+        "en": "New Features:\n- Workshop: Customize your vehicle's paint job to your liking. Unlock specific paint schemes as you progress through the game.\n- Profile: Overview of your game progress and best times on all tracks.\n- Online Multiplayer: Adjustments to the relay logic and improvements to security features. The latest update is required to play online."
+      }
+    },
+    {
+      "id": "2026-08-07-neue-version-0-7-1-beta",
+      "date": "2026-08-07",
+      "title": {
+        "de": "Neue Version 0.7.1-beta",
+        "en": "New version 0.7.1-beta"
+      },
+      "text": {
+        "de": "",
+        "en": ""
+      }
+    },
+    {
+      "id": "2026-08-08-neue-version-0-8-0-beta",
+      "date": "2026-08-08",
+      "title": {
+        "de": "Neue Version 0.8.0-beta",
+        "en": "New version 0.8.0-beta"
+      },
+      "text": {
+        "de": "Vorveröffentlichung",
+        "en": "Pre-Release"
+      }
+    },
+    {
+      "id": "2026-08-10-neue-version-0-9-0-beta",
+      "date": "2026-08-10",
+      "title": {
+        "de": "Neue Version 0.9.0-beta",
+        "en": "New version 0.9.0-beta"
+      },
+      "text": {
+        "de": "Erststart\n\n- Das Spiel startet nach einer Neuinstallation auf Englisch. Deutsch bleibt in den Einstellungen einen Klick entfernt; bestehende Profile behalten ihre Sprachwahl.\n- Bei einer Neuinstallation erscheinen keine alten Ankündigungen mehr. Nur was danach neu veröffentlicht wird, wird angezeigt.\n\nSicherheit\n\n- Die DNS-Abfrage zur Serversuche nutzt jetzt einen kryptografisch sicheren Zufall — gefälschte Antworten lassen sich nicht mehr über eine erratbare Kennung unterschieben.",
+        "en": "First Launch\n\n- After a fresh installation, the game launches in English. German is just a click away in the settings; existing profiles retain their language selection.\n- After a fresh installation, old announcements no longer appear. Only new announcements published afterward are displayed.\n\nSecurity\n\n- The DNS query for server discovery now uses a cryptographically secure random number—fake responses can no longer be injected using a guessable identifier."
+      }
+    }
+  ]
+}

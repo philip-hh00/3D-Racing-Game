@@ -1,0 +1,99 @@
+{
+  "name": "Renn-Edition",
+  "description": "Rennstrecken-Version mit reduziertem Gewicht und aggressiver Übersetzung.",
+  "visual_type": "supercar_3",
+  "width_px": 28,
+  "height_px": 61,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    16.0,
+    10.759,
+    7.235,
+    4.865,
+    3.272,
+    2.2
+  ],
+  "physics": {
+    "mass": 1430.0,
+    "engine_power": 49206.18269116848,
+    "max_speed": 983.8884,
+    "grip": 0.9,
+    "brake_force": 53800.0,
+    "turn_speed": 2.1,
+    "drift_threshold": 0.96,
+    "drag_coefficient": 0.22,
+    "roll_coefficient": 0.011,
+    "wheelbase": 2.574,
+    "wheelbase_ratio": 0.527,
+    "com_bias": -0.1,
+    "wheel_diameter": 0.64,
+    "idle_rpm": 900.0,
+    "redline_rpm": 8500.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      120.0
+    ],
+    [
+      1200.0,
+      140.0
+    ],
+    [
+      2000.0,
+      400.0
+    ],
+    [
+      2500.0,
+      600.0
+    ],
+    [
+      4000.0,
+      600.0
+    ],
+    [
+      5000.0,
+      540.0
+    ],
+    [
+      6000.0,
+      540.0
+    ],
+    [
+      6400.0,
+      540.0
+    ],
+    [
+      8000.0,
+      400.0
+    ],
+    [
+      8500.0,
+      320.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": -0.45
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.35,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.08,
+    "helligkeit_max": 1.0,
+    "kantenweichheit": 0.0,
+    "deckkraft": 1.0
+  }
+}

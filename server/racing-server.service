@@ -1,0 +1,49 @@
+# systemd unit for the relay server.
+#
+# The server needs no external packages (stdlib only, Python >= 3.10), so the
+# system interpreter is enough — no venv required.
+#
+# Install:
+#   sudo cp racing-server.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/racing-server.service   # adjust User + paths
+#   sudo systemctl daemon-reload && sudo systemctl enable --now racing-server
+#
+# Per-deployment values (everything else is identical):
+#
+#   Helsinki (Hetzner)          Hamburg (home server, behind playit.gg)
+#   ------------------------    --------------------------------------
+#   User=gameuser               User=user
+#   /home/gameuser/racing-...   /home/user/racing-...
+#   RACE_SERVER_TAG=H           RACE_SERVER_TAG=D
+#   RACE_TCP_PORTS=7777,7778    RACE_TCP_PORTS=7778
+#   RACE_UDP_PORT=7777          RACE_UDP_PORT=7777
+#
+# Helsinki keeps TCP 7777 alongside 7778 so already-shipped clients, which only
+# know 7777, still reach the version check instead of "connection refused".
+# Hamburg needs exactly 7778 because that is where its playit TCP tunnel points;
+# its UDP tunnel points at 7777.
+#
+# RACE_SERVER_TAG is the first character of every lobby code this server hands
+# out — it is how a joining client picks the right relay. Two servers must never
+# share a tag, and a new tag has to be added to RESERVED_TAGS in server.py and
+# to the client catalogue (tools/pack_servers.py).
+
+[Unit]
+Description=2D Racing Game Relay Server
+After=network.target
+
+[Service]
+Type=simple
+User=gameuser
+WorkingDirectory=/home/gameuser/racing-server
+Environment=RACE_SERVER_TAG=H
+Environment=RACE_TCP_PORTS=7777,7778
+Environment=RACE_UDP_PORT=7777
+ExecStart=/usr/bin/python3 /home/gameuser/racing-server/server/server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

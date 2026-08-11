@@ -38,6 +38,19 @@ data/ghosts/
 !data/settings/**
 !data/ai_settings/**
 
+# --- Werbematerial des 2D-Spiels ---------------------------------------------
+# Teaser-Video (71 MB) und Bildschirmfotos gehoeren zur Verkaufsseite des
+# 2D-Spiels, nicht zum Quelltext. Die Textfassungen (ITCHIO_RELEASE.md,
+# itchio_page.html) bleiben drin - auf die greifen Tests zu.
+Documentation/Screenshots - cover - teaser/
+Documentation/**/*.mp4
+
+# --- Schriftart --------------------------------------------------------------
+# segoeui.ttf ist eine Systemschrift von Microsoft. Sie liegt lokal und wird
+# vom Spiel geladen, aber weiterverbreiten darf man sie nicht - und genau das
+# waere ein oeffentliches Repo.
+data/fonts/
+
 # --- Nutzerdaten, gehoeren niemandem ausser dem Rechner, auf dem sie liegen --
 data/tracks/drafts/
 data/profile*.json

@@ -1,0 +1,171 @@
+{
+  "_hinweis": "Lackpalette und Finishes fuer die Werkstatt (Releaseplan D1). Von Hand aenderbar: Farben ergaenzen oder Kennzahlen der Finishes nachjustieren, ohne Code anzufassen. Reihenfolge der Farben ist die Reihenfolge in der Werkstatt. Fahrzeugbezogene Maskenwerte stehen NICHT hier, sondern im paint-Block der jeweiligen data/vehicles/<key>.json.",
+  "farben": [
+    {
+      "key": "rubinrot",
+      "name": "Rubinrot",
+      "rgb": [
+        200,
+        30,
+        40
+      ]
+    },
+    {
+      "key": "signalorange",
+      "name": "Signalorange",
+      "rgb": [
+        240,
+        110,
+        20
+      ]
+    },
+    {
+      "key": "sonnengelb",
+      "name": "Sonnengelb",
+      "rgb": [
+        240,
+        200,
+        40
+      ]
+    },
+    {
+      "key": "limettengruen",
+      "name": "Limettengrün",
+      "rgb": [
+        140,
+        200,
+        50
+      ]
+    },
+    {
+      "key": "waldgruen",
+      "name": "Waldgrün",
+      "rgb": [
+        30,
+        130,
+        70
+      ]
+    },
+    {
+      "key": "tuerkis",
+      "name": "Türkis",
+      "rgb": [
+        20,
+        180,
+        180
+      ]
+    },
+    {
+      "key": "eisblau",
+      "name": "Eisblau",
+      "rgb": [
+        90,
+        170,
+        230
+      ]
+    },
+    {
+      "key": "kobaltblau",
+      "name": "Kobaltblau",
+      "rgb": [
+        30,
+        70,
+        190
+      ]
+    },
+    {
+      "key": "violett",
+      "name": "Violett",
+      "rgb": [
+        120,
+        60,
+        190
+      ]
+    },
+    {
+      "key": "magenta",
+      "name": "Magenta",
+      "rgb": [
+        210,
+        50,
+        150
+      ]
+    },
+    {
+      "key": "anthrazit",
+      "name": "Anthrazit",
+      "rgb": [
+        55,
+        58,
+        65
+      ]
+    },
+    {
+      "key": "perlweiss",
+      "name": "Perlweiß",
+      "rgb": [
+        235,
+        238,
+        240
+      ]
+    }
+  ],
+  "finishes": [
+    {
+      "key": "standard",
+      "name": "Standard",
+      "bedingung": null
+    },
+    {
+      "key": "metallic",
+      "name": "Metallic",
+      "bedingung": "5 Rennen gefahren (erste drei Farben), 20 für alle zwölf",
+      "kontrast": 1.6,
+      "freischaltung": {
+        "zaehler": "rennen",
+        "erste": 5,
+        "alle": 20
+      }
+    },
+    {
+      "key": "neon",
+      "name": "Neon",
+      "bedingung": "5 Rennen gewonnen (erste drei Farben), 20 für alle zwölf — nur bunte Grundfarben",
+      "saum_breite": 3,
+      "saum_faktor": 1.5,
+      "saum_offset": 26,
+      "freischaltung": {
+        "zaehler": "siege",
+        "erste": 5,
+        "alle": 20
+      },
+      "nur_bunte": true
+    },
+    {
+      "key": "zweifarbig",
+      "name": "Zweifarbig",
+      "bedingung": "1 eigenen Ghost geschlagen (erste drei Farben), 3 für alle zwölf",
+      "band_anteil": 0.22,
+      "zweitfarbe_hell": [
+        235,
+        238,
+        240
+      ],
+      "zweitfarbe_dunkel": [
+        55,
+        58,
+        65
+      ],
+      "freischaltung": {
+        "zaehler": "ghosts",
+        "erste": 1,
+        "alle": 3
+      }
+    }
+  ],
+  "erste_farben": [
+    "rubinrot",
+    "kobaltblau",
+    "perlweiss"
+  ]
+}

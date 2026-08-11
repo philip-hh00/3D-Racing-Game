@@ -1,0 +1,97 @@
+{
+  "name": "Luxus-Limousine",
+  "description": "Schwere Limousine mit extrem viel Drehmoment und einem 8-Gang Automatikgetriebe. Dreht nur bis 5500 U/min.",
+  "visual_type": "limousine",
+  "width_px": 27,
+  "height_px": 65,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    21.0,
+    13.39,
+    8.538,
+    5.444,
+    3.472,
+    2.214,
+    1.411,
+    0.9
+  ],
+  "physics": {
+    "mass": 2080.0,
+    "engine_power": 49832.650294875486,
+    "max_speed": 983.8884,
+    "grip": 0.9,
+    "brake_force": 70000.0,
+    "turn_speed": 1.9,
+    "drift_threshold": 0.92,
+    "drag_coefficient": 0.28,
+    "roll_coefficient": 0.013,
+    "wheelbase": 3.274,
+    "wheelbase_ratio": 0.63,
+    "com_bias": 0.02,
+    "wheel_diameter": 0.69,
+    "idle_rpm": 900.0,
+    "redline_rpm": 6800.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      120.0
+    ],
+    [
+      1200.0,
+      160.0
+    ],
+    [
+      2000.0,
+      480.0
+    ],
+    [
+      2500.0,
+      780.0
+    ],
+    [
+      4000.0,
+      780.0
+    ],
+    [
+      5000.0,
+      700.0
+    ],
+    [
+      6400.0,
+      500.0
+    ],
+    [
+      6800.0,
+      310.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": 0.45
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.19,
+    "referenzfarbe": [
+      169,
+      174,
+      189
+    ],
+    "farbtoleranz": 0.27,
+    "helligkeit_min": 0.44,
+    "helligkeit_max": 1.0,
+    "kantenweichheit": 0.0,
+    "deckkraft": 1.0
+  }
+}

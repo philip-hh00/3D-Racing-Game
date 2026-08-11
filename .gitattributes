@@ -1,0 +1,13 @@
+# Shell scripts must use LF line endings so they run on macOS/Linux.
+*.sh text eol=lf
+
+# Windows scripts keep CRLF.
+*.bat text eol=crlf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.mp3 binary
+*.mp4 binary
+*.ttf binary
+*.ico binary
+*.icns binary

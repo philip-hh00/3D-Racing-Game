@@ -1,0 +1,93 @@
+{
+  "name": "Grand Tourer",
+  "description": "Sportliche Oberklasse: hohes Gewicht, aber viel Leistung für lange Geraden.",
+  "visual_type": "limousine_3",
+  "width_px": 27,
+  "height_px": 65,
+  "color_primary": [
+    40,
+    50,
+    80
+  ],
+  "color_secondary": [
+    30,
+    30,
+    30
+  ],
+  "gear_ratios": [
+    21.0,
+    13.39,
+    8.538,
+    5.444,
+    3.472,
+    2.214,
+    1.411,
+    0.9
+  ],
+  "physics": {
+    "mass": 1750.0,
+    "engine_power": 44137.49026117542,
+    "max_speed": 983.8884,
+    "grip": 0.9,
+    "brake_force": 63200.0,
+    "turn_speed": 1.9,
+    "drift_threshold": 0.92,
+    "drag_coefficient": 0.28,
+    "roll_coefficient": 0.013,
+    "wheelbase": 3.274,
+    "wheelbase_ratio": 0.63,
+    "com_bias": 0.02,
+    "wheel_diameter": 0.69,
+    "idle_rpm": 900.0,
+    "redline_rpm": 6800.0,
+    "drive_type": "rwd"
+  },
+  "torque_curve": [
+    [
+      900.0,
+      120.0
+    ],
+    [
+      1200.0,
+      140.0
+    ],
+    [
+      2000.0,
+      450.0
+    ],
+    [
+      2500.0,
+      700.0
+    ],
+    [
+      4000.0,
+      700.0
+    ],
+    [
+      5000.0,
+      620.0
+    ],
+    [
+      6400.0,
+      450.0
+    ],
+    [
+      6800.0,
+      310.0
+    ]
+  ],
+  "klang": {
+    "tonhoehe": 1.0,
+    "faerbung": -0.45
+  },
+  "paint": {
+    "verfahren": "saettigung",
+    "saettigungsschwelle": 0.01,
+    "referenzfarbe": null,
+    "farbtoleranz": 0.18,
+    "helligkeit_min": 0.44,
+    "helligkeit_max": 0.94,
+    "kantenweichheit": 1.0,
+    "deckkraft": 1.0
+  }
+}
