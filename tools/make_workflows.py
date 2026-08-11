@@ -89,7 +89,7 @@ def primitive_setzen(graph: dict, node_id: int, wert) -> None:
     raise KeyError(f"Node #{node_id} nicht gefunden")
 
 
-def bauen(kaskade: int, name: str, beschreibung: str) -> Path:
+def bauen(kaskade: int, schritte: int, name: str, beschreibung: str) -> Path:
     graph = json.loads(VORLAGE.read_text(encoding="utf-8"))
     print(f"\n=== {name}  ({beschreibung})")
 
@@ -114,12 +114,14 @@ def bauen(kaskade: int, name: str, beschreibung: str) -> Path:
     setzen(graph, "Trellis2ShapeCascadeGenerator", "to_resolution", kaskade)
 
     # --- Schritte -----------------------------------------------------------
-    # 12 ist auf Durchsatz ausgelegt. Bei 15 Fahrzeugen einmalig zaehlt die
-    # Sauberkeit der Kanten mehr als die Laufzeit.
-    setzen(graph, "Trellis2SparseGenerator", "sparse_structure_steps", 25)
-    setzen(graph, "Trellis2ShapeGenerator", "shape_steps", 25)
-    setzen(graph, "Trellis2ShapeCascadeGenerator", "shape_steps", 25)
-    setzen(graph, "Trellis2MeshTexturing", "texture_steps", 25)
+    # Gemessen am Lauf vom 11.08.2026 (Standardwerte, 19:18 gesamt): die
+    # Abtastung macht rund 7 Minuten aus, der Rest sind Rekonstruktion, Loecher
+    # und xatlas. Die Schrittzahl schlaegt also linear auf diese 7 Minuten
+    # durch - die Voxelaufloesung dagegen auf alles.
+    setzen(graph, "Trellis2SparseGenerator", "sparse_structure_steps", schritte)
+    setzen(graph, "Trellis2ShapeGenerator", "shape_steps", schritte)
+    setzen(graph, "Trellis2ShapeCascadeGenerator", "shape_steps", schritte)
+    setzen(graph, "Trellis2MeshTexturing", "texture_steps", schritte)
 
     # --- Textur -------------------------------------------------------------
     # Die Flanken des Fahrzeugs sind im Top-Down-Bild nicht zu sehen und werden
@@ -153,10 +155,14 @@ def main() -> int:
         print(f"FEHLER: {VORLAGE} nicht gefunden", file=sys.stderr)
         return 2
     try:
-        bauen(1536, "Fahrzeug_TopDown_HQ.json",
-              "hoechste Qualitaet, kann auf 16 GB knapp werden")
-        bauen(1024, "Fahrzeug_TopDown_Sicher.json",
-              "Rueckfall bei out of memory")
+        # Der Unterschied zwischen den beiden ist vor allem Laufzeit. Beide
+        # heben sparse_structure_resolution auf 64 - das ist die Einstellung,
+        # die ueber runde Reifen entscheidet, und sie ist in keiner Variante
+        # verhandelbar.
+        bauen(1024, 15, "Fahrzeug_TopDown_Serie.json",
+              "fuer den Durchlauf ueber alle 15 Fahrzeuge")
+        bauen(1536, 25, "Fahrzeug_TopDown_HQ.json",
+              "Einzelstueck, deutlich laenger und auf 16 GB knapp")
     except (KeyError, OSError, urllib.error.URLError) as fehler:
         print(f"FEHLER: {fehler}", file=sys.stderr)
         print("Laeuft ComfyUI? tools\\start_gui.bat", file=sys.stderr)
