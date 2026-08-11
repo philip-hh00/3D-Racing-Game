@@ -1,16 +1,68 @@
-# Toolchain: ComfyUI, venv, Modelle (~15-40 GB) gehoeren nicht ins Repo
+# =============================================================================
+#  Was ins Repo gehoert: Quelltext, Konfiguration, Spieldaten in Textform.
+#  Was nicht: alles Grosse und alles Reproduzierbare.
+#
+#  Das 2D-Projekt hat 223 MB unter data/ - davon 122 MB Menuemedien, 49 MB
+#  Texturen und 29 MB Audio. Git kann Binaerdateien weder zusammenfassen noch
+#  spaeter wieder loswerden; einmal eingecheckt bleiben sie in jeder Kopie des
+#  Repos. Deshalb bleiben sie draussen und kommen ueber den Ablageordner.
+# =============================================================================
+
+# --- Erzeugungsseite: ComfyUI, Modelle, venv (rund 40 GB) --------------------
 tools/ComfyUI/
 
-# Roh-Output von TRELLIS, wird aus den Quellbildern reproduziert
+# --- Roh-Output von TRELLIS, aus den Quellbildern reproduzierbar -------------
 rohdaten/
 
-# Python
+# --- 3D-Meshes: 24 MB je Fahrzeug, mal 15 --------------------------------
+# Erzeugt aus rohdaten/ mit trellis_import.py. Die Kennwerte daneben
+# (Lackmaske, Teileliste) sind klein und bleiben versioniert.
+assets/**/*.glb
+assets/**/*.gltf
+assets/**/*.bin
+# Diagnosebilder, jederzeit neu erzeugbar
+assets/**/*_kontrolle.png
+
+# --- Grosse Spielmedien aus dem 2D-Projekt -----------------------------------
+# Nicht im Repo, aber zum Spielen noetig. Siehe docs/assets.md.
+data/menu/
+data/textures/
+data/audio/
+data/vehicles/*.png
+data/ghosts/
+
+# --- Was aus data/ ausdruecklich mitkommt ------------------------------------
+!data/vehicles/*.json
+!data/tracks/**
+!data/i18n/**
+!data/settings/**
+!data/ai_settings/**
+
+# --- Nutzerdaten, gehoeren niemandem ausser dem Rechner, auf dem sie liegen --
+data/tracks/drafts/
+data/profile*.json
+data/*.log
+
+# --- Python ------------------------------------------------------------------
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 .pytest_cache/
+.coverage
+htmlcov/
 
-# OS
+# --- Bauen und Ausliefern ----------------------------------------------------
+build/
+build_tmp/
+dist/
+Release/
+*.spec.bak
+
+# --- Werkzeuge und Betriebssystem --------------------------------------------
+.idea/
+.vscode/
 Thumbs.db
 desktop.ini
+*.tmp
