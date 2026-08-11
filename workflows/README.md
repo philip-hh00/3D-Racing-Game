@@ -2,14 +2,42 @@
 
 Beide Dateien per **Drag & Drop** auf die ComfyUI-Fläche ziehen.
 
-| Vorlage | Bilder | Kaskade / steps |
-|---|---|---|
-| `Fahrzeug_MultiView_4.json` | **4** — Front, Heck, links, rechts | 1536 / 25 |
-| `Fahrzeug_MultiView_2.json` | **2** — Front, Heck | 1536 / 25 |
-| `Fahrzeug_Render_HQ.json` | 1 — 3/4-Render | 1536 / 25 |
-| `Fahrzeug_Render_Serie.json` | 1 — 3/4-Render | 1024 / 15 |
-| `Fahrzeug_TopDown_HQ.json` | 1 — Sprite | 1536 / 25 |
-| `Fahrzeug_TopDown_Serie.json` | 1 — Sprite | 1024 / 15 |
+| Vorlage | Bilder | Kaskade / steps | Textur |
+|---|---|---|---|
+| `Fahrzeug_MultiView4_1_Form.json` → `..._2_Textur.json` | **4** — Front, Heck, links, rechts | 1536 / 25 | 1536 |
+| `Fahrzeug_MultiView2_1_Form.json` → `..._2_Textur.json` | **2** — Front, Heck | 1536 / 25 | 1536 |
+| `Fahrzeug_Render_HQ.json` | 1 — 3/4-Render | 1536 / 25 | 1536 |
+| `Fahrzeug_Render_Serie.json` | 1 — 3/4-Render | 1024 / 15 | 1536 |
+| `Fahrzeug_TopDown_HQ.json` | 1 — Sprite | 1536 / 25 | 1536 |
+| `Fahrzeug_TopDown_Serie.json` | 1 — Sprite | 1024 / 15 | 1536 |
+
+## Multi-View läuft in zwei Stufen
+
+Erst die Form, dann die Textur — zwei Dateien nacheinander:
+
+1. **`Fahrzeug_MultiView4_1_Form.json`** ziehen, Run. Ergebnis:
+   `tools\ComfyUI\output\rookie_form_00001_.glb` (Geometrie, unbemalt).
+2. **`Fahrzeug_MultiView4_2_Textur.json`** ziehen. Im Node `Trellis2LoadMesh`
+   steht der Pfad aus Schritt 1 bereits eingetragen — nur die laufende Nummer
+   prüfen. Run. Ergebnis: `rookie_00001_.glb` mit Textur.
+
+**Warum getrennt und nicht in einem Durchlauf?** Weil die beiden Wege über
+verschiedene Nodes texturieren, und einer davon weniger kann:
+
+| Node | maximale Texturauflösung |
+|---|---|
+| `Trellis2TexSlatMultiViewGenerator` — im kombinierten Beispiel | **1024** |
+| `Trellis2MeshTexturingMultiView` — getrennte Stufe | **1536** |
+| `Trellis2MeshTexturing` — Einzelbild-Weg | **1536** |
+
+Das kombinierte Multi-View-Beispiel des Nodes benutzt den ersten. Ein Modell aus
+zwei Ansichten konnte deshalb **schlechter texturiert** aussehen als eines aus
+einer einzigen — die bessere Form kam mit der schlechteren Textur. Getrennt
+bekommt die Form alle Ansichten und die Textur die volle Auflösung.
+
+Zweiter Vorteil: Die Form ist der teure Teil. Eine Textur lässt sich neu rechnen,
+ohne die Form noch einmal zu erzeugen — etwa mit anderen Parametern oder
+schärferen Bildern.
 
 **Die Zahl der Ansichten schlägt jede Einstellung.** Was TRELLIS sieht, muss es
 nicht erfinden. Aus einem Top-Down-Sprite wird die ganze Flanke geraten, aus

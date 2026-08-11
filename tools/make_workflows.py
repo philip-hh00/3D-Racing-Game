@@ -35,17 +35,38 @@ LINK_TYPEN = {"TRELLIS2PIPELINE", "IMAGE_COND", "IMAGE_CONDS", "VIEWS_LIST",
               "COORDS", "SHAPE_SLAT", "TEXTURE_SLAT", "TRIMESH", "IMAGE",
               "MASK", "MESH", "MESHWITHVOXEL", "BVH", "TRELLIS2VOXELMESH"}
 
-VORLAGE_MV = (HIER / "ComfyUI" / "custom_nodes" / "ComfyUI-Trellis2"
-              / "example_workflows" / "MeshWithTexturing_MultiView.json")
+BEISPIELE = (HIER / "ComfyUI" / "custom_nodes" / "ComfyUI-Trellis2"
+             / "example_workflows")
 
-#: Knoten des Multi-View-Beispiels, die als Muster fuer weitere Ansichten
-#: geklont werden: das Bild und seine Vorverarbeitung.
-MV_MUSTER_BILD = 3
-MV_MUSTER_VORBEREITUNG = 5
-#: Der Knoten, der die Ansichten zusammenfuehrt.
-MV_SAMMLER = 6
-#: Eingangsplatz je Ansicht an :data:`MV_SAMMLER`.
-MV_PLATZ = {"front": 1, "heck": 2, "links": 3, "rechts": 4}
+
+class MultiViewMuster:
+    """Wo in einem Multi-View-Beispiel die Ansichten haengen.
+
+    Die beiden Beispiele des Nodes sind unterschiedlich verdrahtet, tragen aber
+    dasselbe Muster: ein Bildknoten, eine Vorverarbeitung, ein Sammler mit einem
+    Eingangsplatz je Ansicht. Weitere Ansichten entstehen, indem Bildknoten und
+    Vorverarbeitung geklont und auf einen freien Platz gelegt werden.
+    """
+
+    def __init__(self, datei: str, bild: int, vorbereitung: int, sammler: int,
+                 plaetze: dict[str, int]):
+        self.datei = BEISPIELE / datei
+        self.bild = bild
+        self.vorbereitung = vorbereitung
+        self.sammler = sammler
+        self.plaetze = plaetze
+
+
+#: Stufe 1 - nur die Form. Liefert ein unbemaltes Mesh.
+MV_FORM = MultiViewMuster("MeshOnly_MultiView.json", bild=3, vorbereitung=5,
+                          sammler=6, plaetze={"front": 1, "heck": 2,
+                                              "links": 3, "rechts": 4})
+
+#: Stufe 2 - nur die Textur, auf ein fertiges Mesh.
+MV_TEXTUR = MultiViewMuster("MeshTexturing_MultiView.json", bild=45,
+                            vorbereitung=46, sammler=44,
+                            plaetze={"front": 1, "heck": 3,
+                                     "links": 4, "rechts": 5})
 
 
 def object_info(klasse: str) -> dict:
@@ -238,8 +259,8 @@ def _knoten(graph: dict, node_id: int) -> dict:
     raise KeyError(f"Node #{node_id} nicht gefunden")
 
 
-def ansicht_ergaenzen(graph: dict, ansicht: str, dateiname: str,
-                      versatz: float) -> None:
+def ansicht_ergaenzen(graph: dict, muster: MultiViewMuster, ansicht: str,
+                      dateiname: str, versatz: float) -> None:
     """Eine weitere Ansicht in den Multi-View-Graphen einsetzen.
 
     Geklont werden Bildknoten und Vorverarbeitung des Musters, damit Groesse,
@@ -249,8 +270,8 @@ def ansicht_ergaenzen(graph: dict, ansicht: str, dateiname: str,
     """
     from copy import deepcopy
 
-    bild = deepcopy(_knoten(graph, MV_MUSTER_BILD))
-    vorb = deepcopy(_knoten(graph, MV_MUSTER_VORBEREITUNG))
+    bild = deepcopy(_knoten(graph, muster.bild))
+    vorb = deepcopy(_knoten(graph, muster.vorbereitung))
 
     neue_id = int(graph["last_node_id"])
     bild["id"] = neue_id + 1
@@ -274,34 +295,57 @@ def ansicht_ergaenzen(graph: dict, ansicht: str, dateiname: str,
     vorb["inputs"][0]["link"] = bild_zu_vorb
     vorb["outputs"][0]["links"] = [vorb_zu_sammler]
 
-    sammler = _knoten(graph, MV_SAMMLER)
-    sammler["inputs"][MV_PLATZ[ansicht]]["link"] = vorb_zu_sammler
+    platz = muster.plaetze[ansicht]
+    sammler = _knoten(graph, muster.sammler)
+    if sammler["inputs"][platz]["name"] not in (
+            "back_image", "left_image", "right_image"):
+        raise KeyError(f"Platz {platz} am Sammler heisst "
+                       f"{sammler['inputs'][platz]['name']!r} - Node geaendert?")
+    sammler["inputs"][platz]["link"] = vorb_zu_sammler
 
     graph["nodes"] += [bild, vorb]
     graph["links"] += [
         [bild_zu_vorb, bild["id"], 2, vorb["id"], 0, "IMAGE"],
-        [vorb_zu_sammler, vorb["id"], 0, MV_SAMMLER, MV_PLATZ[ansicht], "IMAGE"],
+        [vorb_zu_sammler, vorb["id"], 0, muster.sammler, platz, "IMAGE"],
     ]
     print(f"  ergaenzt: Ansicht {ansicht} -> {dateiname}")
 
 
-def bauen_multiview(ansichten: tuple[str, ...], name: str,
-                    beschreibung: str) -> Path:
-    """Multi-View-Vorlage aus dem Beispiel des Nodes.
+def _bilder_setzen(graph: dict, muster: MultiViewMuster, front_id: int,
+                   ansichten: tuple[str, ...]) -> None:
+    """Front und Heck eintragen, weitere Ansichten ergaenzen."""
+    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
+           "rookie_3d_front.png", node_id=front_id)
+    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
+           "rookie_3d_heck.png", node_id=muster.bild)
+    for nummer, ansicht in enumerate(a for a in ansichten
+                                     if a not in ("front", "heck")):
+        ansicht_ergaenzen(graph, muster, ansicht, f"rookie_3d_{ansicht}.png",
+                          versatz=600.0 * (nummer + 1))
+
+
+def _vorschau_leeren(graph: dict) -> None:
+    """Der Beispiel-Workflow zeigt auf einen Pfad vom Rechner des Autors."""
+    for n in graph["nodes"]:
+        if n["type"] == "Preview3D":
+            n["widgets_values"] = ["", ""]
+
+
+def bauen_mv_form(ansichten: tuple[str, ...], name: str,
+                  beschreibung: str) -> Path:
+    """Stufe 1: nur die Form, aus mehreren Ansichten.
 
     Mehrere Ansichten sind der wirksamste Hebel ueberhaupt: was TRELLIS sieht,
     muss es nicht erfinden. Mit einer Frontansicht allein wird das Heck aus der
     Silhouette erschlossen - Rueckleuchten, Stossfaenger und Heckklappe sind
     dann geraten.
     """
-    graph = json.loads(VORLAGE_MV.read_text(encoding="utf-8"))
+    graph = json.loads(MV_FORM.datei.read_text(encoding="utf-8"))
     print(f"\n=== {name}  ({beschreibung})")
 
     setzen(graph, "Trellis2LoadModel", "backend", "sdpa")
     setzen(graph, "Trellis2LoadModel", "conv_backend", "flex_gemm")
     setzen(graph, "Trellis2LoadModel", "low_vram", True)
-
-    # Renders bringen keine Transparenz mit, siehe nodes.py:2675.
     setzen(graph, "Trellis2PreProcessImage", "remove_background", True)
 
     setzen(graph, "Trellis2SparseMultiViewGenerator",
@@ -309,30 +353,55 @@ def bauen_multiview(ansichten: tuple[str, ...], name: str,
     setzen(graph, "Trellis2ShapeMultiViewGenerator", "resolution", 1024)
     setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "from_resolution", 512)
     setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "to_resolution", 1536)
-
     setzen(graph, "Trellis2SparseMultiViewGenerator", "sparse_structure_steps", 25)
     setzen(graph, "Trellis2ShapeMultiViewGenerator", "shape_steps", 25)
     setzen(graph, "Trellis2ShapeCascadeMultiViewGenerator", "shape_steps", 25)
-    setzen(graph, "Trellis2TexSlatMultiViewGenerator", "texture_steps", 25)
 
-    primitive_setzen(graph, 23, 1000000)      # Simplify-Ziel
-    primitive_setzen(graph, 26, 2048)         # texture_size
-    primitive_setzen(graph, 22, "rookie")     # Dateiname der Ausgabe
+    primitive_setzen(graph, 23, 1000000)          # Simplify-Ziel
+    primitive_setzen(graph, 22, "rookie_form")    # Dateiname der Ausgabe
 
-    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
-           "rookie_3d_front.png", node_id=2)
-    setzen(graph, "Trellis2LoadImageWithTransparency", "image",
-           "rookie_3d_heck.png", node_id=MV_MUSTER_BILD)
+    _bilder_setzen(graph, MV_FORM, front_id=2, ansichten=ansichten)
+    _vorschau_leeren(graph)
+    return schreiben(graph, name)
 
-    for nummer, ansicht in enumerate(a for a in ansichten
-                                     if a not in ("front", "heck")):
-        ansicht_ergaenzen(graph, ansicht, f"rookie_3d_{ansicht}.png",
-                          versatz=600.0 * (nummer + 1))
 
-    for n in graph["nodes"]:
-        if n["type"] == "Preview3D":
-            n["widgets_values"] = ["", ""]
+def bauen_mv_textur(ansichten: tuple[str, ...], name: str,
+                    beschreibung: str) -> Path:
+    """Stufe 2: die Textur auf ein fertiges Mesh.
 
+    Warum getrennt von der Form: die beiden Wege texturieren ueber verschiedene
+    Nodes, und sie koennen nicht dasselbe.
+
+    ``Trellis2TexSlatMultiViewGenerator`` - der Weg des kombinierten Beispiels -
+    kann hoechstens **1024**. ``Trellis2MeshTexturingMultiView`` kann **1536**,
+    genau wie der Einzelbild-Weg. Das ist der Grund, warum ein Modell aus zwei
+    Ansichten schlechter texturiert aussehen konnte als eines aus einer: die
+    bessere Form kam mit der schlechteren Textur.
+
+    Getrennt hat es einen zweiten Vorteil: die Form ist der teure Teil. Eine
+    Textur laesst sich neu rechnen, ohne die Form noch einmal zu erzeugen.
+    """
+    graph = json.loads(MV_TEXTUR.datei.read_text(encoding="utf-8"))
+    print(f"\n=== {name}  ({beschreibung})")
+
+    setzen(graph, "Trellis2LoadModel", "backend", "sdpa")
+    setzen(graph, "Trellis2LoadModel", "conv_backend", "flex_gemm")
+    setzen(graph, "Trellis2LoadModel", "low_vram", True)
+    setzen(graph, "Trellis2PreProcessImage", "remove_background", True)
+
+    setzen(graph, "Trellis2MeshTexturingMultiView", "resolution", 1536)
+    setzen(graph, "Trellis2MeshTexturingMultiView", "texture_steps", 25)
+
+    primitive_setzen(graph, 43, 2048)             # texture_size
+    primitive_setzen(graph, 42, "rookie")         # Dateiname der Ausgabe
+
+    # Der Beispiel-Workflow zeigt auf einen Pfad vom Rechner des Autors.
+    ausgabe = HIER / "ComfyUI" / "output"
+    setzen(graph, "Trellis2LoadMesh", "glb_path",
+           str(ausgabe / "rookie_form_00001_.glb"))
+
+    _bilder_setzen(graph, MV_TEXTUR, front_id=1, ansichten=ansichten)
+    _vorschau_leeren(graph)
     return schreiben(graph, name)
 
 
@@ -353,11 +422,17 @@ def main() -> int:
               "3D-Render, Durchlauf ueber alle 15 Fahrzeuge")
         bauen(1536, 25, "render", "Fahrzeug_Render_HQ.json",
               "3D-Render, Einzelstueck, auf 16 GB knapp")
-        bauen_multiview(("front", "heck"), "Fahrzeug_MultiView_2.json",
-                        "Front und Heck")
-        bauen_multiview(("front", "heck", "links", "rechts"),
-                        "Fahrzeug_MultiView_4.json",
-                        "Front, Heck und beide Flanken")
+        # Multi-View in zwei Stufen. Der Grund steht in bauen_mv_textur:
+        # der Texturknoten des kombinierten Beispiels kann nur 1024, der
+        # getrennte kann 1536.
+        for zahl, ansichten in ((2, ("front", "heck")),
+                                (4, ("front", "heck", "links", "rechts"))):
+            beschreibung = ("Front und Heck" if zahl == 2
+                            else "Front, Heck und beide Flanken")
+            bauen_mv_form(ansichten, f"Fahrzeug_MultiView{zahl}_1_Form.json",
+                          f"Stufe 1 Form - {beschreibung}")
+            bauen_mv_textur(ansichten, f"Fahrzeug_MultiView{zahl}_2_Textur.json",
+                            f"Stufe 2 Textur - {beschreibung}")
     except (KeyError, OSError, urllib.error.URLError) as fehler:
         print(f"FEHLER: {fehler}", file=sys.stderr)
         print("Laeuft ComfyUI? tools\\start_gui.bat", file=sys.stderr)
