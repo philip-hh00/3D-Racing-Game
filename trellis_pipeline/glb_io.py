@@ -62,10 +62,15 @@ def basis_textur(mesh: trimesh.Trimesh) -> Image.Image | None:
     return None
 
 
-def speichern(mesh: trimesh.Trimesh, pfad: str | Path) -> Path:
-    """Als GLB schreiben. Legt fehlende Ordner an."""
+def speichern(was: trimesh.Trimesh | trimesh.Scene, pfad: str | Path) -> Path:
+    """Als GLB schreiben. Legt fehlende Ordner an.
+
+    Nimmt ein einzelnes Netz oder eine ganze Szene - bei getrennten Raedern
+    haengt an der Szene die Knoten-Hierarchie, und die ist der eigentliche
+    Inhalt.
+    """
     ziel = Path(pfad)
     ziel.parent.mkdir(parents=True, exist_ok=True)
-    ziel.write_bytes(trimesh.exchange.gltf.export_glb(
-        trimesh.Scene(mesh), include_normals=True))
+    szene = was if isinstance(was, trimesh.Scene) else trimesh.Scene(was)
+    ziel.write_bytes(trimesh.exchange.gltf.export_glb(szene, include_normals=True))
     return ziel

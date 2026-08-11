@@ -1,0 +1,59 @@
+{
+  "fahrzeug": "rookie",
+  "laenge_m": 4.32,
+  "breite_m": 2.08,
+  "raddurchmesser_m": 0.65,
+  "radstand_m": 2.624,
+  "achsen": {
+    "vorne": [
+      "rad_vl",
+      "rad_vr"
+    ],
+    "hinten": [
+      "rad_hl",
+      "rad_hr"
+    ]
+  },
+  "gelenkt": [
+    "rad_vl",
+    "rad_vr"
+  ],
+  "raeder": [
+    {
+      "name": "rad_vl",
+      "nabe": [
+        1.312,
+        0.93001,
+        0.325
+      ],
+      "dreiecke": 43914
+    },
+    {
+      "name": "rad_vr",
+      "nabe": [
+        1.312,
+        -0.93006,
+        0.325
+      ],
+      "dreiecke": 39402
+    },
+    {
+      "name": "rad_hl",
+      "nabe": [
+        -1.312,
+        0.96015,
+        0.325
+      ],
+      "dreiecke": 36477
+    },
+    {
+      "name": "rad_hr",
+      "nabe": [
+        -1.312,
+        -0.94067,
+        0.325
+      ],
+      "dreiecke": 37131
+    }
+  ]
+}

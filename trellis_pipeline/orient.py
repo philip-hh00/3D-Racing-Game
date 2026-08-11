@@ -7,8 +7,9 @@ Drei Fragen sind zu klaeren, und sie sind unterschiedlich gut automatisierbar:
 
 * **Welche Achse ist welche** - sicher. Ueber die orientierte Bounding-Box: das
   laengste Mass eines Autos ist die Laenge, das kuerzeste die Hoehe.
-* **Oben oder unten** - sicher genug. Ein Auto ist unten schwerer, sein
-  Schwerpunkt liegt also unter der Mitte der Bounding-Box.
+* **Oben oder unten** - ueber die Breite. Ein Auto ist unten breiter als oben:
+  unten Schweller, Radhaeuser und Reifen, oben ein schmaleres Dach. Steht die
+  Breite unentschieden, entscheidet der Schwerpunkt.
 * **Vorne oder hinten** - nicht sicher automatisierbar. Motorhaube und Kofferraum
   sind sich zu aehnlich, und bei einem Mittelmotor stimmt selbst die Faustregel
   nicht. Das entscheidet ``trellis_import.json`` je Modell von Hand.
@@ -41,6 +42,50 @@ def schwerpunkt(mesh: trimesh.Trimesh) -> np.ndarray:
     return np.asarray(
         (mesh.triangles_center * flaechen[:, None]).sum(axis=0) / flaechen.sum(),
         dtype=np.float64)
+
+
+#: Wie dick die verglichenen Scheiben sind, als Anteil der Fahrzeughoehe.
+SCHEIBE = 0.25
+
+#: Ab welchem Breitenunterschied die Breite entscheiden darf. Darunter gilt die
+#: Frage als unentschieden und der Schwerpunkt uebernimmt.
+BREITE_DEUTLICH = 0.05
+
+
+def steht_auf_dem_dach(mesh: trimesh.Trimesh) -> bool:
+    """Ob das Modell auf dem Kopf liegt.
+
+    Erstes Kriterium ist die Breite: unten Schweller, Radhaeuser und Reifen,
+    oben ein schmaleres Dach. Das ist deutlich belastbarer als der Schwerpunkt.
+
+    Der Schwerpunkt allein taeuscht bei kantigen Formen: bei einem Kasten auf
+    vier Raedern liegt der flaechengewichtete Schwerpunkt **ueber** der
+    Bbox-Mitte, weil die grossen Seitenflaechen oben so viel Flaeche haben wie
+    unten. "Unten schwerer" gilt fuer die Masse, nicht fuer die Oberflaeche -
+    und gerechnet wird hier notgedrungen auf der Oberflaeche, weil TRELLIS
+    keine geschlossenen Volumen liefert.
+
+    Bleibt die Breite unentschieden, entscheidet doch der Schwerpunkt.
+    """
+    v = np.asarray(mesh.vertices)
+    unten, oben = float(v[:, 2].min()), float(v[:, 2].max())
+    hoehe = oben - unten
+    if hoehe <= 0:
+        return False
+
+    def breite(auswahl: np.ndarray) -> float:
+        if not auswahl.any():
+            return 0.0
+        y = v[auswahl, 1]
+        return float(y.max() - y.min())
+
+    unten_breit = breite(v[:, 2] <= unten + SCHEIBE * hoehe)
+    oben_breit = breite(v[:, 2] >= oben - SCHEIBE * hoehe)
+    groesser = max(unten_breit, oben_breit)
+    if groesser > 0 and abs(unten_breit - oben_breit) / groesser >= BREITE_DEUTLICH:
+        return oben_breit > unten_breit
+
+    return float(schwerpunkt(mesh)[2]) > float(mesh.bounding_box.centroid[2])
 
 
 def letzte_matrix(mesh: trimesh.Trimesh) -> np.ndarray:
@@ -94,13 +139,10 @@ def ausrichten(mesh: trimesh.Trimesh, flip: bool = False,
     M = _obb_matrix(ergebnis, typ)
     ergebnis.apply_transform(M)
 
-    if typ != "rad":
-        kasten_mitte_z = float(ergebnis.bounding_box.centroid[2])
-        if float(schwerpunkt(ergebnis)[2]) > kasten_mitte_z:
-            # Schwerpunkt ueber der Mitte heisst: das Modell liegt auf dem Dach.
-            drehen = _drehung(np.pi, (1, 0, 0))
-            ergebnis.apply_transform(drehen)
-            M = drehen @ M
+    if typ != "rad" and steht_auf_dem_dach(ergebnis):
+        drehen = _drehung(np.pi, (1, 0, 0))
+        ergebnis.apply_transform(drehen)
+        M = drehen @ M
 
     if flip:
         drehen = _drehung(np.pi, (0, 0, 1))
