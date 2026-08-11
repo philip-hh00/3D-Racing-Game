@@ -1,0 +1,16 @@
+# Toolchain: ComfyUI, venv, Modelle (~15-40 GB) gehoeren nicht ins Repo
+tools/ComfyUI/
+
+# Roh-Output von TRELLIS, wird aus den Quellbildern reproduziert
+rohdaten/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# OS
+Thumbs.db
+desktop.ini
