@@ -1,0 +1,7 @@
+# Abhaengigkeiten von trellis_import.py. Nicht zu verwechseln mit dem venv
+# unter tools/ComfyUI - das ist die Generierungsseite und viel groesser.
+trimesh
+numpy
+pillow
+scipy      # trimesh braucht es fuer die orientierte Bounding-Box
+pytest
