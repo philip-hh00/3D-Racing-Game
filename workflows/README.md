@@ -2,10 +2,22 @@
 
 Beide Dateien per **Drag & Drop** auf die ComfyUI-Fläche ziehen.
 
-| Datei | Kaskade | steps | Wofür |
-|---|---|---|---|
-| `Fahrzeug_TopDown_Serie.json` | 1024 | 15 | Durchlauf über alle 15 Fahrzeuge |
-| `Fahrzeug_TopDown_HQ.json` | 1536 | 25 | Einzelstück, deutlich länger, auf 16 GB knapp |
+Vier Vorlagen, zwei Achsen: **woher das Bild kommt** und **wieviel Zeit es
+kosten darf.**
+
+| | Serie (Kaskade 1024, steps 15) | HQ (Kaskade 1536, steps 25) |
+|---|---|---|
+| **Top-Down-Sprite** | `Fahrzeug_TopDown_Serie.json` | `Fahrzeug_TopDown_HQ.json` |
+| **3D-Render** | `Fahrzeug_Render_Serie.json` | `Fahrzeug_Render_HQ.json` |
+
+**Nimm die Render-Vorlagen, wenn du ein 3/4-Bild hast.** Der Unterschied im
+Ergebnis ist größer als alles, was sich an Einstellungen drehen lässt: aus einem
+Top-Down-Sprite muss TRELLIS die komplette Flanke erfinden, aus einem
+3/4-Render sieht es sie. Radhäuser, Türgriffe, Schweller und Scheinwerfer sitzen
+dann tatsächlich statt geraten zu werden.
+
+Der einzige Unterschied in der Datei ist `remove_background` — und der ist keine
+Geschmacksfrage, sondern Pflicht (siehe unten).
 
 Beide heben `sparse_structure_resolution` auf 64 — das ist die Einstellung, die
 über runde Reifen entscheidet, und sie ist in keiner Variante verhandelbar.
@@ -36,6 +48,9 @@ Genau zwei Felder:
    `tools\start_gui.bat` kopiert alle 15 Sprites bei jedem Start nach
    `tools\ComfyUI\input\`, sie stehen also in der Auswahlliste.
 
+   Bei den Render-Vorlagen heißt das Bild in der Vorlage `rookie_3d.png` —
+   entweder deinen Render so benennen oder im Node umstellen.
+
    **Das Bild braucht echte Transparenz.** `Trellis2PreProcessImage` greift in
    `nodes.py:2675` ungeprüft auf den vierten Kanal zu — die eingebaute
    Hintergrundentfernung ist dort auskommentiert. Ein Bild ohne Alphakanal, etwa
@@ -43,16 +58,23 @@ Genau zwei Felder:
    `IndexError: index 3 is out of bounds for axis 2 with size 3` ab. Ein
    Alphakanal, der durchgehend 255 ist, stürzt nicht ab, taugt aber auch nicht:
    Zeile 2684 rechnet `rgb * alpha`, und der Zuschnitt nimmt dann das ganze Bild
-   samt Hintergrund. Für solche Bilder vorher:
+   samt Hintergrund.
+
+   Deshalb steht in den **Render-Vorlagen** `remove_background: true` — rembg
+   stellt vor dem Durchlauf frei. In den **Sprite-Vorlagen** steht `false`, denn
+   die Sprites bringen ihre Transparenz mit, und rembg würde eine saubere
+   Freistellung durch eine geschätzte ersetzen.
+
+   Wer die Freistellung vorher sehen will, statt sie nach zwanzig Minuten am
+   Mesh zu beurteilen:
 
    ```
    tools\freistellen.bat "C:\pfad\zum\render.png"
    ```
 
    Das legt eine freigestellte RGBA-Fassung in `input\` und daneben ein
-   Kontrollbild auf Magenta, an dem sich die Silhouette in Sekunden prüfen
-   lässt. Alternativ im Node `remove_background` auf `true` stellen — dann macht
-   rembg dasselbe, aber das Ergebnis sieht man erst nach dem ganzen Durchlauf.
+   Kontrollbild auf Magenta. Wird dieses Bild verwendet, gehört
+   `remove_background` wieder auf `false` — die Freistellung ist ja schon drin.
 2. **`PrimitiveString`** (#219) → den Fahrzeugschlüssel eintragen, z. B. `supercar_2`.
    Er bestimmt die Dateinamen der Ausgabe.
 
@@ -108,11 +130,44 @@ Blackwell-Fallstrick (microsoft/TRELLIS.2 Issue #99) tritt hier nicht auf — de
 Node hat den `trellis2-blackwell-fix` eingearbeitet. `spconv` wird nicht
 gebraucht, und dafür gäbe es auch kein sm_120-Wheel.
 
+## Der Regler für Bildtreue: `dino_lock`
+
+Wenn ein Modell dem Bild noch nicht genau genug folgt, ist das die Stellschraube
+— und sie ist keine Vermutung, das steht so im Sampler
+(`trellis2/pipelines/samplers/flow_euler.py`, `DinoLockMixin`):
+
+> Bei `dino_lock > 0` rechnet jeder Schritt sowohl die CFG-geführte als auch die
+> rein DINOv3-bedingte Geschwindigkeit und mischt Richtung DINO.
+
+```
+Schritte   0–40 %:  0.92               volle DINO-Bindung, baut die Form
+Schritte  40–70 %:  Rampe 0.92 → dino_lock
+Schritte 70–100 %:  dino_lock          Leitplanke für die Details
+```
+
+`dino_lock = 0` schaltet den Mechanismus komplett ab. Im `Trellis2SparseGenerator`
+steht er bereits auf `1.0`, in den Shape-Stufen auf `0`. Beides bleibt in den
+Vorlagen so.
+
+**Was es kostet:** jeder Schritt rechnet zwei Geschwindigkeiten statt einer, die
+Abtastung dauert also etwa doppelt so lange. `dino_substeps` multipliziert
+zusätzlich. Deshalb ist es hier nicht voreingestellt — wer die Bildtreue der
+Form noch weiter treiben will, setzt `dino_lock` im `Trellis2ShapeGenerator` und
+im `Trellis2ShapeCascadeGenerator` auf etwa 0,3 bis 0,5 und vergleicht.
+
 ## Was die Vorlagen nicht lösen können
 
-Die Sprites sind reine Top-Down-Ansichten. TRELLIS sieht kein einziges Pixel der
-Flanke — Schweller, Radhausformen, Türfugen und Reifenflanken werden erfunden,
-und die Textur der Seiten wird per Inpainting gefüllt. Keine
-Auflösungseinstellung erzeugt Information, die im Eingabebild nicht vorhanden
-ist. Wenn das nicht reicht, ist der nächste Schritt eine Multi-View-Vorstufe
-(`MeshWithTexturing_MultiView.json`) mit vorher erzeugten Seitenansichten.
+Bei den **Sprite-Vorlagen**: Die Sprites sind reine Top-Down-Ansichten. TRELLIS
+sieht kein einziges Pixel der Flanke — Schweller, Radhausformen, Türfugen und
+Reifenflanken werden erfunden, und die Textur der Seiten wird per Inpainting
+gefüllt. Keine Auflösungseinstellung erzeugt Information, die im Eingabebild
+nicht vorhanden ist. Genau deshalb sind die Render-Vorlagen die bessere Wahl.
+
+Bei **allen** Vorlagen: Welche Seite vorne ist, kann TRELLIS nicht wissen und
+das Import-Werkzeug nicht zuverlässig erkennen — Motorhaube und Kofferraum sind
+sich zu ähnlich. Zeigt die Front nach `-X`, gehört das Fahrzeug in
+`trellis_import.json` auf `"flip": true`.
+
+Auch mit einem 3/4-Render bleibt eine Seite ungesehen. Wenn das stört, ist der
+nächste Schritt eine echte Multi-View-Eingabe
+(`MeshWithTexturing_MultiView.json`) mit mehreren Ansichten desselben Fahrzeugs.

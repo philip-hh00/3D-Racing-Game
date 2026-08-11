@@ -89,7 +89,8 @@ def primitive_setzen(graph: dict, node_id: int, wert) -> None:
     raise KeyError(f"Node #{node_id} nicht gefunden")
 
 
-def bauen(kaskade: int, schritte: int, name: str, beschreibung: str) -> Path:
+def bauen(kaskade: int, schritte: int, quelle: str, name: str,
+          beschreibung: str) -> Path:
     graph = json.loads(VORLAGE.read_text(encoding="utf-8"))
     print(f"\n=== {name}  ({beschreibung})")
 
@@ -135,7 +136,17 @@ def bauen(kaskade: int, schritte: int, name: str, beschreibung: str) -> Path:
     primitive_setzen(graph, 260, 2048)        # texture_size
 
     # --- Eingabe und Benennung ---------------------------------------------
-    setzen(graph, "Trellis2LoadImageWithTransparency", "image", "Rookie.png")
+    # Trellis2PreProcessImage greift in nodes.py:2675 ungeprueft auf den
+    # vierten Kanal zu - die eingebaute Hintergrundentfernung ist dort
+    # auskommentiert. Die Sprites bringen ihre Transparenz mit, ein Render
+    # nicht. Fuer Renders muss rembg also laufen, sonst bricht der Lauf mit
+    # IndexError ab, bevor irgendetwas gerechnet wurde.
+    if quelle == "render":
+        setzen(graph, "Trellis2PreProcessImage", "remove_background", True)
+        setzen(graph, "Trellis2LoadImageWithTransparency", "image", "rookie_3d.png")
+    else:
+        setzen(graph, "Trellis2PreProcessImage", "remove_background", False)
+        setzen(graph, "Trellis2LoadImageWithTransparency", "image", "Rookie.png")
     primitive_setzen(graph, 219, "rookie")
 
     # Der Beispiel-Workflow zeigt auf einen Pfad vom Rechner des Autors.
@@ -155,14 +166,18 @@ def main() -> int:
         print(f"FEHLER: {VORLAGE} nicht gefunden", file=sys.stderr)
         return 2
     try:
-        # Der Unterschied zwischen den beiden ist vor allem Laufzeit. Beide
-        # heben sparse_structure_resolution auf 64 - das ist die Einstellung,
-        # die ueber runde Reifen entscheidet, und sie ist in keiner Variante
-        # verhandelbar.
-        bauen(1024, 15, "Fahrzeug_TopDown_Serie.json",
-              "fuer den Durchlauf ueber alle 15 Fahrzeuge")
-        bauen(1536, 25, "Fahrzeug_TopDown_HQ.json",
-              "Einzelstueck, deutlich laenger und auf 16 GB knapp")
+        # Zwei Achsen: woher das Bild kommt und wieviel Zeit es kosten darf.
+        # Alle vier heben sparse_structure_resolution auf 64 - das ist die
+        # Einstellung, die ueber runde Reifen entscheidet, und sie ist in
+        # keiner Variante verhandelbar.
+        bauen(1024, 15, "sprite", "Fahrzeug_TopDown_Serie.json",
+              "Top-Down-Sprite, Durchlauf ueber alle 15 Fahrzeuge")
+        bauen(1536, 25, "sprite", "Fahrzeug_TopDown_HQ.json",
+              "Top-Down-Sprite, Einzelstueck")
+        bauen(1024, 15, "render", "Fahrzeug_Render_Serie.json",
+              "3D-Render, Durchlauf ueber alle 15 Fahrzeuge")
+        bauen(1536, 25, "render", "Fahrzeug_Render_HQ.json",
+              "3D-Render, Einzelstueck, auf 16 GB knapp")
     except (KeyError, OSError, urllib.error.URLError) as fehler:
         print(f"FEHLER: {fehler}", file=sys.stderr)
         print("Laeuft ComfyUI? tools\\start_gui.bat", file=sys.stderr)
