@@ -127,13 +127,39 @@ def _lackmaske(mesh, key: str, vehicles_dir: Path, ziel_glb: Path,
               f"Kennwerte im Fahrzeuglabor abstimmen.")
         return
 
-    gewicht = paintmask.maske(textur, werte)
+    # Nur die Texel bewerten, die ueberhaupt auf dem Fahrzeug landen. xatlas
+    # laesst grosse Teile des Atlas frei, und was dort steht wird nie
+    # gezeichnet - zaehlt ohne diese Begrenzung aber als Lack mit.
+    deckung = paintmask.abdeckung_fuer(mesh, textur.size)
+    if deckung is None:
+        print("HINWEIS         Modell hat keine UV-Koordinaten - Maske ueber das "
+              "ganze Bild, im Atlas ungenau")
+
+    gewicht = paintmask.maske(textur, werte, abdeckung=deckung)
     ziel_png = ziel_glb.with_name(f"{key}_lackmaske.png")
     paintmask.als_png(gewicht).save(ziel_png)
-    anteil = float(gewicht.mean()) * 100.0
-    print(f"Lackmaske       {ziel_png}  ({anteil:.1f} % der Texturflaeche)")
-    if anteil < 2.0:
+
+    # Die reine Maske taeuscht: die Atlas-Charts lassen eine zusammenhaengende
+    # Flaeche zerstueckelt aussehen. Auf der Textur liegend ist in Sekunden zu
+    # sehen, ob die Auswahl echten Karosserieteilen folgt.
+    kontrolle = ziel_glb.with_name(f"{key}_lackmaske_kontrolle.png")
+    paintmask.kontrollbild(textur, gewicht).save(kontrolle)
+
+    if deckung is None:
+        bezug, wovon = float(gewicht.mean()) * 100.0, "der Texturflaeche"
+    else:
+        genutzt = float(deckung.mean()) * 100.0
+        bezug = float(gewicht.sum()) / max(int(deckung.sum()), 1) * 100.0
+        wovon = f"der genutzten Flaeche, und die sind {genutzt:.1f} % des Atlas"
+    einsam = paintmask.vereinzelt(gewicht) * 100.0
+    print(f"Lackmaske       {ziel_png}")
+    print(f"                {bezug:.1f} % {wovon}")
+    print(f"                {einsam:.1f} % vereinzelte Texel (Rauschmass)")
+    print(f"Kontrollansicht {kontrolle}")
+    if bezug < 5.0:
         print("WARNUNG         Maske trifft fast nichts - Kennwerte pruefen")
+    if einsam > 10.0:
+        print("WARNUNG         Maske ist verrauscht - Kennwerte pruefen")
 
 
 def main(argv=None) -> int:

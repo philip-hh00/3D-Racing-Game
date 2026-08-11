@@ -105,14 +105,21 @@ def _arrays(bild: Image.Image) -> tuple[np.ndarray, np.ndarray]:
 
 def dominante_farbe(bild: Image.Image) -> tuple[int, int, int]:
     """Haeufigste sichtbare Farbe - der Rueckfall fuer die Referenzfarbe."""
-    return _dominante_arr(*_arrays(bild))
+    rgb, alpha = _arrays(bild)
+    return _dominante_arr(rgb, alpha > _ALPHA_SICHTBAR)
 
 
-def _dominante_arr(rgb: np.ndarray, alpha: np.ndarray) -> tuple[int, int, int]:
-    sichtbar = rgb[alpha > _ALPHA_SICHTBAR]
-    if sichtbar.size == 0:
+def _dominante_arr(rgb: np.ndarray, gilt: np.ndarray) -> tuple[int, int, int]:
+    """Haeufigste Farbe unter den geltenden Texeln.
+
+    ``gilt`` ist bereits die fertige Auswahl - bei einem Atlas also inklusive
+    UV-Abdeckung. Ohne das waere die dominante Farbe womoeglich die des
+    unbenutzten Atlasbereichs, der oft groesser ist als das Fahrzeug.
+    """
+    auswahl = rgb[gilt]
+    if auswahl.size == 0:
         return (128, 128, 128)
-    grob = (sichtbar // 16).astype(np.int32)
+    grob = (auswahl // 16).astype(np.int32)
     schluessel = grob[:, 0] * 1024 + grob[:, 1] * 32 + grob[:, 2]
     werte, anzahl = np.unique(schluessel, return_counts=True)
     top = int(werte[anzahl.argmax()])
@@ -120,15 +127,150 @@ def _dominante_arr(rgb: np.ndarray, alpha: np.ndarray) -> tuple[int, int, int]:
             int((top % 32) * 16 + 8))
 
 
-def maske(bild: Image.Image, werte: dict) -> np.ndarray:
+#: Wieviele Texel Saum die Abdeckung ueber die Dreiecke hinaus bekommt.
+#: Der Texturierer laesst um jeden Chart einen Rand mitlaufen, damit beim
+#: Filtern nichts Fremdes hereingezogen wird. Dieser Rand gehoert zum Lack.
+ABDECKUNG_SAUM = 2
+
+#: Abtaststufen. Ein Dreieck kommt in die erste Stufe, deren Ordnung mindestens
+#: seiner laengsten Kante in Texeln entspricht - so faellt zwischen den
+#: Abtastpunkten nie mehr als ein Texel durch. Was groesser ist als die letzte
+#: Stufe, wird einzeln rasterisiert.
+ABDECKUNG_STUFEN = (2, 4, 8, 16, 32)
+
+#: Wieviele Dreiecke auf einmal abgetastet werden. 460.000 Dreiecke mal 15
+#: Punkte auf einen Schlag waeren einige hundert Megabyte.
+ABDECKUNG_BLOCK = 100_000
+
+
+def _baryzentrisch(ordnung: int) -> np.ndarray:
+    """Gleichmaessige Punkte im Dreieck, als Gewichte der drei Ecken."""
+    punkte = [(i / ordnung, j / ordnung, (ordnung - i - j) / ordnung)
+              for i in range(ordnung + 1) for j in range(ordnung + 1 - i)]
+    return np.asarray(punkte, dtype=np.float32)
+
+
+def _abtasten(ecken: np.ndarray, ordnung: int, breite: int, hoehe: int,
+              deck: np.ndarray) -> None:
+    """Dreiecke gleicher Groessenordnung auf einen Schlag abtasten."""
+    gewichte = _baryzentrisch(ordnung)
+    for start in range(0, len(ecken), ABDECKUNG_BLOCK):
+        block = ecken[start:start + ABDECKUNG_BLOCK]            # (n, 3, 2)
+        punkte = np.einsum("kd,ndc->nkc", gewichte, block)      # (n, k, 2)
+        _eintragen(punkte[..., 0].ravel(), punkte[..., 1].ravel(),
+                   breite, hoehe, deck)
+
+
+def _eintragen(u: np.ndarray, v: np.ndarray, breite: int, hoehe: int,
+               deck: np.ndarray) -> None:
+    # v = 0 liegt in glTF unten, Zeile 0 eines Bildes liegt oben.
+    spalte = np.clip(np.rint(u * (breite - 1)), 0, breite - 1).astype(np.int32)
+    zeile = np.clip(np.rint((1.0 - v) * (hoehe - 1)), 0, hoehe - 1).astype(np.int32)
+    deck[zeile, spalte] = True
+
+
+def _rasterisieren(ecken: np.ndarray, breite: int, hoehe: int,
+                   deck: np.ndarray) -> None:
+    """Einzeln und vollstaendig - fuer die wenigen sehr grossen Dreiecke.
+
+    Ueber das umschliessende Rechteck und einen baryzentrischen Test. Fuer
+    tausende kleine Dreiecke waere das viel zu langsam, fuer eine Handvoll
+    grosse ist es genau richtig und exakt.
+    """
+    for dreieck in ecken:
+        x = dreieck[:, 0] * (breite - 1)
+        y = (1.0 - dreieck[:, 1]) * (hoehe - 1)
+        x0, x1 = int(np.floor(x.min())), int(np.ceil(x.max()))
+        y0, y1 = int(np.floor(y.min())), int(np.ceil(y.max()))
+        x0, y0 = max(x0, 0), max(y0, 0)
+        x1, y1 = min(x1, breite - 1), min(y1, hoehe - 1)
+        if x1 < x0 or y1 < y0:
+            continue
+        gx, gy = np.meshgrid(np.arange(x0, x1 + 1), np.arange(y0, y1 + 1))
+        flaeche = ((x[1] - x[0]) * (y[2] - y[0]) - (x[2] - x[0]) * (y[1] - y[0]))
+        if abs(flaeche) < 1e-12:
+            continue
+        a = ((x[1] - gx) * (y[2] - gy) - (x[2] - gx) * (y[1] - gy)) / flaeche
+        b = ((x[2] - gx) * (y[0] - gy) - (x[0] - gx) * (y[2] - gy)) / flaeche
+        drin = (a >= -1e-6) & (b >= -1e-6) & (a + b <= 1 + 1e-6)
+        deck[y0:y1 + 1, x0:x1 + 1] |= drin
+
+
+def abdeckung(uv: np.ndarray, faces: np.ndarray, groesse: tuple[int, int],
+              saum: int = ABDECKUNG_SAUM) -> np.ndarray:
+    """Welche Texel der Textur ueberhaupt auf dem Modell landen.
+
+    xatlas packt das Fahrzeug in tausende Flicken und laesst dazwischen grosse
+    Teile des Atlas frei - beim rookie sind es rund 8000 Charts auf 2048 x 2048.
+    Was in den Zwischenraeumen steht, ist Fuellmaterial und wird nie gezeichnet.
+    Eine Lackmaske, die das ganze Bild ansieht, zaehlt es trotzdem mit; im
+    ersten Lauf waren so 32,7 Prozent der Texturflaeche als Lack markiert,
+    ueberzogen mit Sprenkeln aus dem unbenutzten Bereich.
+
+    Abgetastet statt exakt rasterisiert: die Dreiecke sind im Atlas winzig -
+    460.000 Dreiecke auf 4,2 Millionen Texel sind im Mittel neun Texel pro
+    Dreieck -, und 15 baryzentrische Punkte je Dreieck treffen davon jedes.
+    Der Saum schliesst, was zwischen den Abtastpunkten durchfaellt, und bildet
+    zugleich den Rand ab, den der Texturierer um jeden Chart legt.
+
+    ``groesse`` ist (Breite, Hoehe) wie bei Pillow; zurueck kommt ein Feld in
+    Bildanordnung, also (Hoehe, Breite).
+    """
+    breite, hoehe = int(groesse[0]), int(groesse[1])
+    deck = np.zeros((hoehe, breite), dtype=bool)
+    faces = np.asarray(faces)
+    if faces.size == 0 or uv is None or len(uv) == 0:
+        return deck
+
+    uv = np.asarray(uv, dtype=np.float32)
+    alle = uv[faces]                                            # (F, 3, 2)
+
+    # Laengste Kante je Dreieck in Texeln - danach richtet sich die Abtastdichte.
+    in_texeln = alle * np.array([breite - 1, hoehe - 1], dtype=np.float32)
+    kanten = np.linalg.norm(
+        in_texeln - in_texeln[:, [1, 2, 0], :], axis=2).max(axis=1)
+
+    offen = np.ones(len(alle), dtype=bool)
+    for stufe in ABDECKUNG_STUFEN:
+        dran = offen & (kanten <= stufe)
+        if dran.any():
+            _abtasten(alle[dran], stufe, breite, hoehe, deck)
+            offen &= ~dran
+    if offen.any():
+        _rasterisieren(alle[offen], breite, hoehe, deck)
+
+    if saum > 0:
+        from scipy import ndimage
+        deck = ndimage.binary_dilation(
+            deck, structure=np.ones((2 * saum + 1, 2 * saum + 1), dtype=bool))
+    return deck
+
+
+def abdeckung_fuer(mesh, groesse: tuple[int, int]) -> np.ndarray | None:
+    """Abdeckung direkt aus einem Mesh. ``None``, wenn es keine UVs hat."""
+    uv = getattr(getattr(mesh, "visual", None), "uv", None)
+    if uv is None or len(uv) == 0:
+        return None
+    return abdeckung(np.asarray(uv), np.asarray(mesh.faces), groesse)
+
+
+def maske(bild: Image.Image, werte: dict,
+          abdeckung: np.ndarray | None = None) -> np.ndarray:
     """Maskengewichte 0…1 je Texel.
 
     Das **Helligkeitsfenster** gilt in beiden Verfahren. Es ist der Hebel gegen
     mitgezaehlte Scheiben und Reifen: bei einem grauen Auto mit grauen Fenstern
     trennt keine Farbschwelle die beiden, ein Helligkeitsunterschied schon.
+
+    ``abdeckung`` begrenzt das Ergebnis auf die Texel, die tatsaechlich auf dem
+    Modell landen - siehe :func:`abdeckung`. Ohne sie wird das ganze Bild
+    ausgewertet, was bei einem freigestellten 2D-Sprite richtig ist, bei einem
+    UV-Atlas aber nicht.
     """
     rgb, alpha = _arrays(bild)
     sichtbar = alpha > _ALPHA_SICHTBAR
+    if abdeckung is not None:
+        sichtbar = sichtbar & abdeckung
     lum = (0.299 * rgb[..., 0] + 0.587 * rgb[..., 1] + 0.114 * rgb[..., 2]) / 255.0
 
     verfahren = werte.get("verfahren", "aus")
@@ -140,7 +282,7 @@ def maske(bild: Image.Image, werte: dict) -> np.ndarray:
     elif verfahren == "dominant":
         ref = werte.get("referenzfarbe")
         if not ref:
-            ref = _dominante_arr(rgb, alpha)
+            ref = _dominante_arr(rgb, sichtbar)
         abweichung = rgb - np.array(ref[:3], dtype=np.float32)
         # Quadratisch vergleichen - die Wurzel je Texel bringt nichts.
         grenze = float(werte.get("farbtoleranz", 0.18)) * _RGB_DIAGONALE
@@ -164,3 +306,39 @@ def als_png(gewicht: np.ndarray) -> Image.Image:
     """Maske als 8-Bit-Graustufenbild - weiss ist Lack."""
     return Image.fromarray(
         np.clip(gewicht * 255.0, 0, 255).astype(np.uint8), mode="L")
+
+
+#: Wie stark Unmaskiertes im Kontrollbild abgedunkelt wird.
+KONTROLLE_DUNKEL = 0.18
+
+
+def kontrollbild(bild: Image.Image, gewicht: np.ndarray) -> Image.Image:
+    """Die Textur mit abgedunkeltem Nicht-Lack.
+
+    Die reine Schwarzweissmaske ist irrefuehrend: xatlas zerlegt das Fahrzeug
+    in tausende Charts, eine durchgehende Motorhaube erscheint darin als
+    tausend kleine Inseln. Das sieht nach Rauschen aus, ist aber die
+    Atlas-Struktur. Auf der Textur liegend ist sofort erkennbar, ob die roten
+    Flaechen echten Karosserieteilen folgen.
+    """
+    rgb = np.asarray(bild.convert("RGB"), dtype=np.float32)
+    fest = gewicht[..., None] > 0.5
+    return Image.fromarray(
+        np.where(fest, rgb, rgb * KONTROLLE_DUNKEL).astype(np.uint8), mode="RGB")
+
+
+def vereinzelt(gewicht: np.ndarray) -> float:
+    """Anteil der Maskentexel, die kaum maskierte Nachbarn haben.
+
+    Das Mass fuer echtes Rauschen. Eine saubere Flaeche liegt nahe null, weil
+    fast jeder Texel von seinesgleichen umgeben ist; Salz und Pfeffer treibt
+    den Wert nach oben. Am rookie sind es 0,8 Prozent - die Maske ist also
+    zusammenhaengend, auch wenn sie zerstueckelt aussieht.
+    """
+    from scipy import ndimage
+
+    fest = gewicht > 0.5
+    if not fest.any():
+        return 0.0
+    nachbarn = ndimage.uniform_filter(fest.astype(np.float32), size=3)
+    return float((fest & (nachbarn < 0.4)).sum()) / float(fest.sum())
