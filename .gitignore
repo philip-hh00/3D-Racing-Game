@@ -66,3 +66,9 @@ Release/
 Thumbs.db
 desktop.ini
 *.tmp
+
+# --- Zugangsdaten. Gehoeren niemals in ein Repo. ---
+Hugging-Face/
+*token*.txt
+*Token*.txt
+.env
