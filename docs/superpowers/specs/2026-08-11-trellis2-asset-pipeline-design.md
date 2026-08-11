@@ -148,8 +148,23 @@ Abhängigkeiten: trimesh, numpy, pillow.
 ## Bekannte Fallstricke
 
 - **Punktwolke statt Mesh am Ende des Graphen**: bekanntes Blackwell-Verhalten
-  (microsoft/TRELLIS.2 Issue #99, dort mit einer 5060-Ti-Klasse-Karte). Lösung:
-  Sparse-Backend im Graph von `flex_gemm` auf `spconv` umstellen.
+  (microsoft/TRELLIS.2 Issue #99, dort mit einer 5060-Ti-Klasse-Karte). Lösung
+  laut Auftrag: Sparse-Backend von `flex_gemm` auf `spconv` umstellen.
+  **Tritt hier nicht auf.** Der Testlauf am 11.08.2026 lieferte mit `flex_gemm`
+  ein geschlossenes Mesh mit 459 268 Dreiecken. Der Node hat den
+  `trellis2-blackwell-fix` eingearbeitet. `spconv` ist nicht installiert und
+  wird nicht gebraucht — für sm_120 gäbe es dafür auch kein Wheel.
+- **`backend: flash_attn` ist die Voreinstellung aller Beispiel-Workflows**,
+  flash_attn ist aber nicht installiert und wäre unter Windows für Torch 2.7 ein
+  Kompilat. Auf `sdpa` stellen. Die Vorlagen unter `workflows/` tun das bereits.
+- **`torchaudio` steht ungepinnt in `ComfyUI/requirements.txt`.** Wird es von
+  PyPI geholt, zieht es sein eigenes Torch mit und überschreibt cu128. Vorher
+  explizit `torchaudio==2.7.0` aus dem cu128-Index installieren.
+- **`rembg` bringt keinen Backend mit** (`No onnxruntime backend found`).
+  `rembg[cpu]` genügt — die Sprites sind bereits freigestellt.
+- **`scipy` fehlt leicht im Projekt-venv.** trimesh braucht es für die
+  orientierte Bounding-Box, ohne es scheitert `ausrichten` mit
+  `Points must be coplanar`.
 - Gradio/ASGI-Fehler: `pydantic==2.10.6` und `open3d==0.19.0` sind die bekannten
   funktionierenden Pins.
 - Ninja-Build-Fehler: `setuptools==75.8.2`.
