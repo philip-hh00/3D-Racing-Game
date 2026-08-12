@@ -7,8 +7,9 @@ dasselbe pygame-Fenster, in dem das HUD wie bisher mit ``blit`` und ``draw``
 entsteht — nur dass es am Ende als Textur darüberliegt.
 
 **Keine Physik.** Das Fahrzeug folgt der Mittellinie der Strecke; gesteuert
-wird nur die Geschwindigkeit. Die Verbindung zu pymunk kommt in Phase D. Was
-hier läuft, ist ausschließlich Darstellung.
+wird nur die Geschwindigkeit. Der Lenkeinschlag wird aus der Krümmung der
+Strecke geschätzt, damit die Vorderräder etwas zu tun haben. Die Verbindung zu
+pymunk kommt in Phase D. Was hier läuft, ist ausschließlich Darstellung.
 
 Der Shader ist bewusst einfach gehalten — ein Richtungslicht, keine
 Materialkanäle. Er wird in Phase B3 durch eine PBR-Beleuchtung ersetzt.
@@ -28,7 +29,8 @@ sys.path.insert(0, str(WURZEL))
 
 import moderngl                                       # noqa: E402
 
-from src.render3d import ansicht, camera, fenster, mesh, track_mesh  # noqa: E402
+from src.render3d import (ansicht, camera, fenster, matrix, mesh,  # noqa: E402
+                          track_mesh, vehicle_node)
 
 VERTEX = """
 #version 330
@@ -62,23 +64,17 @@ void main() {
 }
 """
 
+#: Grundtöne der Streckenbänder, solange es keine Texturen gibt.
+BANDFARBEN = {
+    "fahrbahn": (0.24, 0.24, 0.26),
+    "randstein_links": (0.72, 0.20, 0.20),
+    "randstein_rechts": (0.72, 0.20, 0.20),
+    "untergrund": (0.34, 0.45, 0.24),
+}
 
-def _einheitsmatrix() -> np.ndarray:
-    return np.eye(4, dtype="f4")
-
-
-def _verschiebung(x: float, y: float, z: float) -> np.ndarray:
-    m = _einheitsmatrix()
-    m[:3, 3] = (x, y, z)
-    return m
-
-
-def _drehung_z(winkel: float) -> np.ndarray:
-    m = _einheitsmatrix()
-    c, s = math.cos(winkel), math.sin(winkel)
-    m[0, 0], m[0, 1] = c, -s
-    m[1, 0], m[1, 1] = s, c
-    return m
+#: Wie weit voraus die Krümmung für den geschätzten Lenkeinschlag gemessen
+#: wird. Zu kurz und der Einschlag zappelt, zu lang und er kommt zu spät.
+VORAUSSCHAU_M = 6.0
 
 
 def _band_hochladen(ctx, programm, band) -> "moderngl.VertexArray":
@@ -91,13 +87,19 @@ def _band_hochladen(ctx, programm, band) -> "moderngl.VertexArray":
     return ctx.vertex_array(programm, puffer, ibo)
 
 
-#: Grundtöne der Streckenbänder, solange es keine Texturen gibt.
-BANDFARBEN = {
-    "fahrbahn": (0.24, 0.24, 0.26),
-    "randstein_links": (0.72, 0.20, 0.20),
-    "randstein_rechts": (0.72, 0.20, 0.20),
-    "untergrund": (0.34, 0.45, 0.24),
-}
+def geschaetzter_lenkwinkel(netz, strecke_m: float, radstand_m: float) -> float:
+    """Aus der Krümmung der Strecke, nicht aus der Physik.
+
+    Beim Einspurmodell gilt ``tan(einschlag) = radstand / kurvenradius``. Der
+    Kurvenradius folgt aus der Richtungsänderung über ein Stück Strecke.
+    """
+    _, gier_hier = netz.punkt_bei(strecke_m)
+    _, gier_dort = netz.punkt_bei(strecke_m + VORAUSSCHAU_M)
+    differenz = (gier_dort - gier_hier + math.pi) % (2 * math.pi) - math.pi
+    if abs(differenz) < 1e-6:
+        return 0.0
+    kurvenradius = VORAUSSCHAU_M / differenz
+    return math.atan(radstand_m / kurvenradius)
 
 
 def main(argv=None) -> int:
@@ -107,6 +109,7 @@ def main(argv=None) -> int:
     a = p.parse_args(argv)
 
     glb = WURZEL / "assets" / "vehicles" / f"{a.fahrzeug}.glb"
+    teile = WURZEL / "assets" / "vehicles" / f"{a.fahrzeug}_teile.json"
     if not glb.is_file():
         print(f"FEHLER: {glb} fehlt.\n"
               f"        Erst erzeugen: python trellis_import.py "
@@ -126,6 +129,13 @@ def main(argv=None) -> int:
     netz = track_mesh.aus_datei(strecke_datei)
     baender = [(band, _band_hochladen(ctx, programm, band)) for band in netz.baender]
 
+    knoten = (vehicle_node.Fahrzeugknoten.aus_datei(teile) if teile.is_file()
+              else None)
+    if knoten is None:
+        print(f"HINWEIS: {teile.name} fehlt - die Raeder drehen sich nicht.")
+    radstand_m = 2.6
+    teile_nach_name = {t.name: t for t in modell.teile}
+
     bild = ansicht.Ansicht3D(ctx, fenster.VIRTUELL)
     kamera = camera.Verfolgerkamera()
     schrift = pygame.font.SysFont("Consolas", 34)
@@ -138,7 +148,7 @@ def main(argv=None) -> int:
     laeuft = True
 
     while laeuft:
-        dt = min(uhr.tick(120) / 1000.0, 0.1)
+        dt = min(uhr.tick(240) / 1000.0, 0.1)
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 laeuft = False
@@ -153,9 +163,13 @@ def main(argv=None) -> int:
         if tasten[pygame.K_DOWN]:
             tempo = max(tempo - 40.0 * dt, 0.0)
 
-        strecke_pos = (strecke_pos + tempo * dt) % netz.laenge_m
+        weg = tempo * dt
+        strecke_pos = (strecke_pos + weg) % netz.laenge_m
         hier, gier = netz.punkt_bei(strecke_pos)
         kamera.folgen((hier[0], hier[1], 0.0), gier, dt)
+        if knoten is not None:
+            knoten.weg_zuruecklegen(weg)
+            knoten.lenken(geschaetzter_lenkwinkel(netz, strecke_pos, radstand_m))
 
         groesse = pygame.display.get_window_size()
         P = camera.perspektive(55.0, fenster.seitenverhaeltnis(groesse), 0.2, 1200.0)
@@ -165,7 +179,7 @@ def main(argv=None) -> int:
         programm["mvp"].write(mvp.T.astype("f4").tobytes())
 
         programm["hat_textur"].value = 0.0
-        programm["modell"].write(_einheitsmatrix().T.tobytes())
+        programm["modell"].write(matrix.einheit().T.tobytes())
         for band, vao in baender:
             programm["grundton"].value = BANDFARBEN.get(band.name, (0.5, 0.5, 0.5))
             vao.render()
@@ -173,16 +187,26 @@ def main(argv=None) -> int:
         programm["hat_textur"].value = 1.0 if modell.basisfarbe else 0.0
         if modell.basisfarbe:
             modell.basisfarbe.use(0)
-        grundstellung = _verschiebung(hier[0], hier[1], 0.0) @ _drehung_z(gier)
-        for teil in modell.teile:
-            m = grundstellung @ _verschiebung(*teil.versatz)
-            programm["modell"].write(m.T.astype("f4").tobytes())
-            teil.vao.render()
+        if knoten is not None:
+            for name, m in knoten.matrizen(hier, gier).items():
+                teil = teile_nach_name.get(name)
+                if teil is None:
+                    continue
+                programm["modell"].write(m.T.astype("f4").tobytes())
+                teil.vao.render()
+        else:
+            grund = matrix.fahrzeug(hier, gier)
+            for teil in modell.teile:
+                m = grund @ matrix.verschiebung(teil.versatz)
+                programm["modell"].write(m.T.astype("f4").tobytes())
+                teil.vao.render()
 
         hud.fill((0, 0, 0, 0))
+        einschlag = math.degrees(knoten.lenkwinkel_rad) if knoten else 0.0
         for zeile, text in enumerate((
                 f"{tempo * 3.6:5.0f} km/h",
                 f"{strecke_pos:6.0f} / {netz.laenge_m:.0f} m",
+                f"Lenkung {einschlag:+5.1f} Grad",
                 f"{uhr.get_fps():5.1f} fps",
                 "Pfeil hoch/runter: Tempo    Esc: Ende")):
             hud.blit(schrift.render(text, True, (255, 255, 255)), (40, 40 + zeile * 44))

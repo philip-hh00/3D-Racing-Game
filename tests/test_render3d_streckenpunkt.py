@@ -71,6 +71,45 @@ def test_gleichmaessige_schritte_ergeben_gleiche_abstaende():
     assert abstaende.std() < 0.01 * abstaende.mean()
 
 
+def test_die_richtung_springt_nicht_an_den_punktgrenzen():
+    """Der Grund fuer die Tangenten.
+
+    Nimmt man die Richtung des Abschnitts selbst, ist sie innerhalb des
+    Abschnitts konstant und springt an jeder Grenze. Bei 1,6 m Punktabstand und
+    25 m/s sind das fuenfzehn Spruenge je Sekunde - am Fahrzeug als ruckartiges
+    Einlenken sichtbar, obwohl die Position sauber laeuft.
+
+    Geprueft wird die Aenderung des Gierwinkels zwischen dicht
+    aufeinanderfolgenden Abfragen: sie muss gleichmaessig sein, nicht in
+    Stufen.
+    """
+    netz = track_mesh.bauen(_kreisstrecke(punkte=120))
+    schritt = 0.05
+    winkel = np.unwrap([netz.punkt_bei(i * schritt)[1] for i in range(400)])
+    aenderung = np.diff(winkel)
+    assert aenderung.std() < 0.05 * abs(aenderung.mean()), (
+        "die Richtung aendert sich in Stufen statt gleichmaessig")
+
+
+def test_die_richtung_ist_ueber_eine_punktgrenze_hinweg_stetig():
+    netz = track_mesh.bauen(_kreisstrecke(punkte=60))
+    # Genau auf einen Punkt der Mittellinie zielen und knapp davor/dahinter messen.
+    laenge_je_abschnitt = netz.laenge_m / 60.0
+    vor = netz.punkt_bei(laenge_je_abschnitt * 10 - 1e-4)[1]
+    nach = netz.punkt_bei(laenge_je_abschnitt * 10 + 1e-4)[1]
+    assert abs(nach - vor) < 1e-3
+
+
+def test_ohne_tangenten_bleibt_die_abschnittsrichtung():
+    """Der Rueckfall muss eine brauchbare Antwort geben, keine Ausnahme."""
+    netz = track_mesh.bauen(_kreisstrecke())
+    ohne = track_mesh.Streckennetz(
+        baender=netz.baender, laenge_m=netz.laenge_m,
+        start_positionen=netz.start_positionen, mittellinie=netz.mittellinie)
+    pos, gier = ohne.punkt_bei(30.0)
+    assert np.isfinite(pos).all() and math.isfinite(gier)
+
+
 def test_negative_strecke_laeuft_rueckwaerts():
     netz = track_mesh.bauen(_kreisstrecke())
     a, _ = netz.punkt_bei(-5.0)

@@ -64,6 +64,14 @@ class Streckennetz:
     #: Aufbau der Baender, als ihm guttut.
     mittellinie: np.ndarray = field(
         default_factory=lambda: np.zeros((0, 2), dtype=np.float64))
+    #: Fahrtrichtung je Punkt der Mittellinie, (n, 2), auf Laenge 1.
+    #: Getrennt gefuehrt, weil sie **zwischen** den Punkten weiterlaufen muss:
+    #: die Richtung eines Streckenabschnitts allein ist innerhalb des
+    #: Abschnitts konstant und springt an jeder Punktgrenze. Bei 1,6 m
+    #: Punktabstand und 25 m/s waeren das 15 Spruenge je Sekunde - sichtbar
+    #: als ruckartiges Einlenken, obwohl die Position sauber laeuft.
+    tangenten: np.ndarray = field(
+        default_factory=lambda: np.zeros((0, 2), dtype=np.float64))
 
     def band(self, name: str) -> Band | None:
         for b in self.baender:
@@ -78,6 +86,12 @@ class Streckennetz:
         geschlossen. Liefert ``((x_m, y_m), gierwinkel_rad)``; der Gierwinkel
         ist im selben Sinn gemessen wie ``body.angle`` im Spiel, 0 zeigt
         nach +X.
+
+        Die Richtung wird zwischen den Tangenten der beiden Nachbarpunkte
+        interpoliert, nicht aus dem Abschnitt selbst genommen. Die Richtung
+        eines Abschnitts ist innerhalb des Abschnitts konstant und springt an
+        jeder Punktgrenze - bei 1,6 m Punktabstand und 25 m/s fuenfzehnmal je
+        Sekunde, und das sieht man dem Fahrzeug an.
         """
         punkte = np.asarray(self.mittellinie, dtype=np.float64)
         if len(punkte) < 2:
@@ -95,8 +109,26 @@ class Streckennetz:
         rest = (s - summe[i]) / laengen[i] if laengen[i] > 0 else 0.0
         a, b = geschlossen[i], geschlossen[i + 1]
         pos = a + (b - a) * rest
-        richtung = b - a
+
+        richtung = self._richtung_bei(i, rest, b - a)
         return pos, float(math.atan2(richtung[1], richtung[0]))
+
+    def _richtung_bei(self, i: int, rest: float, rueckfall: np.ndarray) -> np.ndarray:
+        """Fahrtrichtung innerhalb eines Abschnitts, stetig ueber die Grenze.
+
+        Ohne hinterlegte Tangenten bleibt nur die Richtung des Abschnitts
+        selbst — das ist die Sprungvariante, aber besser als gar keine Antwort.
+        """
+        tangenten = np.asarray(self.tangenten, dtype=np.float64)
+        if len(tangenten) != len(self.mittellinie) or len(tangenten) == 0:
+            return rueckfall
+        a = tangenten[i % len(tangenten)]
+        b = tangenten[(i + 1) % len(tangenten)]
+        gemischt = a + (b - a) * rest
+        laenge = float(np.linalg.norm(gemischt))
+        # Bei einer Kehrtwende koennen sich zwei Tangenten aufheben. Dann ist
+        # die Mischung nicht aussagekraeftig und der Abschnitt selbst besser.
+        return gemischt / laenge if laenge > 1e-9 else rueckfall
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +319,7 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
     breite_m = float(strecke.get("track_width", 100.0)) * M_PER_PX
     halbe_breite_m = breite_m / 2.0
 
-    _tangenten, links = _tangenten_und_links(mittellinie_m)
+    tangenten, links = _tangenten_und_links(mittellinie_m)
 
     punkte_links = mittellinie_m + links * halbe_breite_m
     punkte_rechts = mittellinie_m - links * halbe_breite_m
@@ -336,7 +368,8 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
 
     return Streckennetz(baender=baender, laenge_m=laenge_m,
                          start_positionen=start_positionen,
-                         mittellinie=mittellinie_m)
+                         mittellinie=mittellinie_m,
+                         tangenten=tangenten)
 
 
 def aus_datei(pfad: str | Path, randstein_m: float = 1.0,

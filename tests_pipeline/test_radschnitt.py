@@ -169,6 +169,93 @@ def test_keine_raeder_schreibt_ein_einzelnes_netz(tmp_path):
     assert anzahl == 1
 
 
+def test_symmetrisch_gleicht_die_vier_naben_an():
+    """Ein Auto ist symmetrisch, die Messung weiss das nicht.
+
+    Am Modell aus zwei Ansichten lagen die gemessenen Nabenmitten zwischen
+    0,56 und 0,74 m - 18 cm auseinander. Sichtbar waere das als Rad, das beim
+    Lenken um eine andere Achse schwenkt als sein Gegenueber.
+    """
+    schief = {
+        "rad_vl": (0.52, 0.96),
+        "rad_vr": (-0.86, -0.26),
+        "rad_hl": (0.46, 0.88),
+        "rad_hr": (-0.94, -0.50),
+    }
+    gleich = radschnitt.symmetrisch(schief)
+    mitten = {n: (b[0] + b[1]) / 2 for n, b in gleich.items()}
+    assert mitten["rad_vl"] == pytest.approx(-mitten["rad_vr"], abs=1e-9)
+    assert mitten["rad_hl"] == pytest.approx(-mitten["rad_hr"], abs=1e-9)
+    breiten = [abs(b[1] - b[0]) for b in gleich.values()]
+    assert max(breiten) - min(breiten) < 1e-9, "alle vier Reifen sind gleich breit"
+
+
+def test_symmetrisch_behaelt_die_seite():
+    gleich = radschnitt.symmetrisch({
+        "rad_vl": (0.60, 0.90), "rad_vr": (-0.90, -0.60),
+        "rad_hl": (0.60, 0.90), "rad_hr": (-0.90, -0.60)})
+    assert all(v > 0 for v in gleich["rad_vl"])
+    assert all(v < 0 for v in gleich["rad_vr"])
+
+
+def test_symmetrisch_kommt_mit_einer_fehlenden_achse_zurecht():
+    gleich = radschnitt.symmetrisch({"rad_vl": (0.6, 0.9), "rad_vr": (-0.9, -0.6)})
+    assert set(gleich) == {"rad_vl", "rad_vr"}
+
+
+def test_zu_breites_band_wird_nach_innen_gekappt():
+    """Ein Pkw-Reifen misst hoechstens rund 45 Prozent seines Durchmessers.
+
+    Am dichteren Modell aus zwei Ansichten lief die Messung von der Lauflaeche
+    nach innen in den Radkasten weiter und lieferte Baender bis 60 cm. Gekappt
+    wird nach innen - die Aussenkante des Reifens ist die verlaessliche, innen
+    geht er ohne Absatz in den Radkasten ueber.
+
+    Geprueft wird die Entscheidung der Messung, nicht die Bounding-Box des
+    Ergebnisses: ein grob aufgeloester Zylinder hat nur zwei Dreiecke ueber
+    die ganze Reifenbreite, deren Schwerpunkte im Band liegen, waehrend die
+    Dreiecke selbst darueber hinausreichen. Daran laesst sich die Kappung
+    nicht ablesen.
+    """
+    s = vehicle_specs.spec("rookie")
+    nabe = vehicle_specs.radpositionen("rookie")[0]        # vorne links
+    rng = np.random.default_rng(4)
+
+    # Ein dichter Reifenkoerper von 0,55 m Breite, wie ihn ein feines Netz
+    # liefert: viele Dreiecksmitten innerhalb des Reifenradius.
+    n = 4000
+    winkel = rng.uniform(0, 2 * np.pi, n)
+    radius = np.sqrt(rng.uniform(0, 1, n)) * s.rad_m / 2 * 0.95
+    mitten = np.column_stack([
+        nabe[0] + radius * np.cos(winkel),
+        rng.uniform(nabe[1] - 0.275, nabe[1] + 0.275, n),
+        nabe[2] + radius * np.sin(winkel),
+    ])
+
+    band = radschnitt.querband(mitten, nabe, s.rad_m / 2.0)
+    assert band is not None, "Vorbedingung: das Band muss messbar sein"
+    breite = abs(band[1] - band[0])
+    assert breite <= s.rad_m * radschnitt.BAND_HOECHSTANTEIL + 1e-9, \
+        f"Band ist {breite:.3f} m breit, hoechstens erlaubt " \
+        f"{s.rad_m * radschnitt.BAND_HOECHSTANTEIL:.3f} m"
+    # Nach innen gekappt heisst: die Aussenkante bleibt stehen.
+    assert max(band) == pytest.approx(nabe[1] + 0.275, abs=0.03)
+
+
+def test_die_schaetzung_ist_genauso_breit_wie_die_obergrenze():
+    """Zwei Vorstellungen davon, wie breit ein Reifen hoechstens ist, waeren
+    eine Falle: der eine Weg schnitte doppelt so viel heraus wie der andere."""
+    s = vehicle_specs.spec("rookie")
+    # Ein Fahrzeug ohne Raeder - die Messung findet nichts, die Schaetzung greift.
+    ohne = trimesh.creation.box(extents=(s.laenge_m, s.breite_m, 1.2))
+    ohne.apply_translation((0, 0, 0.6))
+    zerlegt = radschnitt.schneiden(ohne, s)
+    geschaetzt = [h for h in zerlegt.hinweise if "geschaetzt" in h]
+    assert geschaetzt, "Vorbedingung: die Schaetzung muss greifen"
+    for hinweis in geschaetzt:
+        assert f"{s.rad_m * radschnitt.BAND_HOECHSTANTEIL:.2f}" in hinweis
+
+
 def test_bericht_nennt_die_dreiecke_je_teil():
     zerlegt = radschnitt.schneiden(_auto_mit_raedern(), vehicle_specs.spec("rookie"))
     text = zerlegt.text()

@@ -41,9 +41,6 @@ RAD_NAMEN = ("rad_vl", "rad_vr", "rad_hl", "rad_hr")
 #: sich dann nicht mit und faellt sofort auf.
 RADIUS_ZUGABE = 1.12
 
-#: Rueckfall fuer die Schnitttiefe nach innen, als Anteil des Raddurchmessers -
-#: nur wenn sich die Reifenbreite nicht messen laesst.
-BREITE_ANTEIL = 0.45
 
 #: Ab welchem Anteil der staerksten Klasse eine Querschnittsklasse noch zum
 #: Reifen gezaehlt wird. Am rookie liegt der Reifen zwischen den Klassen mit
@@ -60,6 +57,18 @@ BAND_SCHRITT = 0.02
 #: Messung darunter, hat sie sich an einer einzelnen Flaeche festgebissen
 #: statt am Reifenkoerper - dann ist die Schaetzung ehrlicher.
 BAND_MINDESTANTEIL = 0.15
+
+#: Breitestes Band, das noch als Reifen durchgeht, ebenfalls als Anteil des
+#: Raddurchmessers. Ein Pkw-Reifen misst je nach Format 25 bis 45 Prozent
+#: seines Durchmessers in der Breite; darueber ist es kein Reifen mehr,
+#: sondern Radkasten.
+#:
+#: Noetig geworden am dichteren Modell aus zwei Ansichten: dort steckt mehr
+#: Geometrie im Radhaus, die Messung lief von der Lauflaeche nach innen weiter
+#: und lieferte Baender von 44 bis 60 cm. Gekappt wird nach **innen** - die
+#: Aussenkante des Reifens ist die verlaessliche Kante, innen geht er ohne
+#: sichtbaren Absatz in den Radkasten ueber.
+BAND_HOECHSTANTEIL = 0.45
 
 
 @dataclass
@@ -147,9 +156,50 @@ def querband(mitten: np.ndarray, nabe, reifenradius: float) -> tuple[float, floa
         rechts += 1
 
     von, bis = float(kanten[links]), float(kanten[rechts + 1])
-    if (bis - von) < 2 * reifenradius * BAND_MINDESTANTEIL:
+    breite = bis - von
+    if breite < 2 * reifenradius * BAND_MINDESTANTEIL:
         return None
+
+    # Nach innen kappen. "bis" ist die Aussenkante (gemessen wird auf der
+    # Aussenseite, dort ist y*aussen am groessten), und die ist die
+    # verlaessliche: aussen endet der Reifen sichtbar, innen laeuft er ohne
+    # Absatz in den Radkasten.
+    hoechstens = 2 * reifenradius * BAND_HOECHSTANTEIL
+    if breite > hoechstens:
+        von = bis - hoechstens
+
     return (von * aussen, bis * aussen) if aussen > 0 else (bis * aussen, von * aussen)
+
+
+def symmetrisch(baender: dict[str, tuple[float, float]]) -> dict[str, tuple[float, float]]:
+    """Die vier gemessenen Baender auf ein symmetrisches Fahrzeug bringen.
+
+    Ein Auto ist symmetrisch, seine vier Reifen sind gleich breit und die
+    Spurweite je Achse ist links wie rechts dieselbe. Die Messung weiss das
+    nicht und liefert je Rad einen eigenen Wert - am Modell aus zwei Ansichten
+    lagen die Nabenmitten zwischen 0,56 und 0,74 m, also 18 cm auseinander.
+    Sichtbar waere das als Rad, das beim Lenken um eine andere Achse schwenkt
+    als sein Gegenueber.
+
+    Gemittelt wird je Achse ueber den Betrag der Aussenkante, die Breite ueber
+    alle vier.
+    """
+    if not baender:
+        return {}
+    breite = float(np.mean([abs(b[1] - b[0]) for b in baender.values()]))
+
+    ergebnis: dict[str, tuple[float, float]] = {}
+    for achse in ("v", "h"):
+        namen = [n for n in baender if n.startswith(f"rad_{achse}")]
+        if not namen:
+            continue
+        aussen = float(np.mean([max(abs(baender[n][0]), abs(baender[n][1]))
+                                for n in namen]))
+        for name in namen:
+            links_seite = np.mean(baender[name]) > 0
+            ergebnis[name] = ((aussen - breite, aussen) if links_seite
+                              else (-aussen, -aussen + breite))
+    return ergebnis
 
 
 def _im_radbereich(mitten: np.ndarray, nabe, radius: float,
@@ -233,10 +283,24 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
     raeder: list[Rad] = []
     ist_rad = np.zeros(len(mesh.faces), dtype=bool)
 
+    # Erst alle vier messen, dann symmetrisch machen, dann schneiden. Einzeln
+    # gemessen weichen die Naben um bis zu 18 cm voneinander ab, und ein Rad
+    # schwenkte beim Lenken um eine andere Achse als sein Gegenueber.
+    gemessen: dict[str, tuple[float, float]] = {}
     for name, nabe in zip(RAD_NAMEN, radpositionen(soll.key)):
         band = querband(mitten, nabe, soll.rad_m / 2.0)
+        if band is not None:
+            gemessen[name] = band
+    baender = symmetrisch(gemessen)
+
+    for name, nabe in zip(RAD_NAMEN, radpositionen(soll.key)):
+        band = baender.get(name)
         if band is None:
-            tiefe = soll.rad_m * BREITE_ANTEIL
+            # Dieselbe Obergrenze wie beim Kappen, um die gerechnete Nabe
+            # gelegt. Zwei verschiedene Vorstellungen davon, wie breit ein
+            # Reifen hoechstens ist, waeren eine Falle: der eine Weg schnitte
+            # doppelt so viel heraus wie der andere.
+            tiefe = soll.rad_m * BAND_HOECHSTANTEIL / 2.0
             band = (nabe[1] - tiefe, nabe[1] + tiefe)
             hinweise.append(f"{name}: Reifenbreite nicht messbar, "
                             f"geschaetzt auf {2 * tiefe:.2f} m")

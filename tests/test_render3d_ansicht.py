@@ -93,6 +93,44 @@ def test_das_hud_steht_nicht_auf_dem_kopf(ctx):
     u.freigeben()
 
 
+def test_kanalreihenfolge_wird_gelesen_und_nicht_geraten():
+    """Gegen die tatsaechlichen Bytes im Speicher geprueft.
+
+    Eine Flaeche mit bekannten Farbwerten fuellen und nachsehen, welches Byte
+    zuerst kommt. Stimmt die Erkennung nicht, waeren Rot und Blau im HUD
+    vertauscht - ein Fehler, den man in der Farbwahl sucht und nicht in der
+    Kanalreihenfolge.
+    """
+    f = pygame.Surface((4, 4), pygame.SRCALPHA)
+    f.fill((10, 20, 30, 40))
+    erstes_byte = bytes(memoryview(f.get_view("0"))[:1])[0]
+    assert ansicht._ist_bgra(f) == (erstes_byte == 30)
+
+
+def test_beide_wege_liefern_dasselbe_bild(ctx):
+    """Der schnelle Weg ueber den Speicher und der langsame ueber tobytes.
+
+    Sie duerfen sich nicht unterscheiden - sonst haengt das Aussehen davon ab,
+    welches Flaechenformat gerade vorliegt.
+    """
+    f = pygame.Surface((16, 16), pygame.SRCALPHA)
+    f.fill((200, 40, 10, 255))
+    f.fill((10, 200, 40, 255), pygame.Rect(0, 0, 16, 5))
+    assert ansicht.direkt_lesbar(f), "Vorbedingung: der schnelle Weg greift"
+
+    u = ansicht.Ueberlagerung(ctx, (16, 16))
+    u.aktualisieren(f)
+    schnell = _gerendert(ctx, u)
+
+    # Denselben Inhalt ueber den Rueckfallweg schicken.
+    u._programm["bgra"].value = False
+    u._textur.write(ansicht.flaeche_als_bytes(f))
+    langsam = _gerendert(ctx, u)
+
+    assert np.array_equal(schnell, langsam)
+    u.freigeben()
+
+
 def test_falsche_flaechengroesse_wird_gemeldet(ctx):
     u = ansicht.Ueberlagerung(ctx, (16, 16))
     with pytest.raises(ValueError, match="virtuelle"):
