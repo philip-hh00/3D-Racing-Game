@@ -23,7 +23,7 @@ Rollen, dreht sich ein eingeschlagenes Rad um eine schräge Achse und eiert.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -41,17 +41,52 @@ class Radplatz:
     name: str
     nabe: np.ndarray            # (3,) Meter, im Fahrzeugkoordinatensystem
     gelenkt: bool
+    #: Verschiebung der Drehachse gegenüber dem Ursprung des Radnetzes.
+    #: Die automatische Nabenbestimmung trifft die Radmitte nicht immer — sie
+    #: muss aus einem Netz schließen, in dem Reifen und Radlauf zusammenhängen.
+    #: Liegt die Achse daneben, kreist das Rad beim Rollen. Mit
+    #: ``tools/radpruefer.py`` lässt sich die Abweichung von Hand einstellen;
+    #: sie landet in ``trellis_import.json`` und wird hier angewandt, ohne das
+    #: Netz neu erzeugen zu müssen.
+    korrektur: np.ndarray = field(
+        default_factory=lambda: np.zeros(3, dtype=np.float64))
 
 
-def teile_lesen(pfad: str | Path) -> tuple[list[Radplatz], float]:
+def korrekturen_lesen(pfad: str | Path, fahrzeug: str) -> dict[str, np.ndarray]:
+    """Nabenkorrekturen aus ``trellis_import.json``.
+
+    Aufbau: ``{"rookie": {"naben": {"rad_vl": [0.01, 0.0, -0.02]}}}``. Fehlt
+    die Datei oder der Eintrag, wird nicht korrigiert.
+    """
+    try:
+        with open(pfad, encoding="utf-8") as fh:
+            daten = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    eintrag = daten.get(fahrzeug)
+    naben = eintrag.get("naben") if isinstance(eintrag, dict) else None
+    if not isinstance(naben, dict):
+        return {}
+    return {str(name): np.asarray(wert, dtype=np.float64)
+            for name, wert in naben.items()
+            if isinstance(wert, (list, tuple)) and len(wert) == 3}
+
+
+def teile_lesen(pfad: str | Path,
+                korrekturen: dict[str, np.ndarray] | None = None
+                ) -> tuple[list[Radplatz], float]:
     """``<key>_teile.json`` einlesen: Radplätze und Raddurchmesser."""
     with open(pfad, encoding="utf-8") as fh:
         daten = json.load(fh)
     gelenkt = set(daten.get("gelenkt") or [])
+    korrekturen = korrekturen or {}
     plaetze = [
         Radplatz(name=str(r["name"]),
                  nabe=np.asarray(r["nabe"], dtype=np.float64),
-                 gelenkt=str(r["name"]) in gelenkt)
+                 gelenkt=str(r["name"]) in gelenkt,
+                 korrektur=np.asarray(
+                     korrekturen.get(str(r["name"]), (0.0, 0.0, 0.0)),
+                     dtype=np.float64))
         for r in daten.get("raeder", []) or []
     ]
     return plaetze, float(daten.get("raddurchmesser_m", 0.65))
@@ -74,8 +109,20 @@ class Fahrzeugknoten:
         self.lenkwinkel_rad = 0.0
 
     @classmethod
-    def aus_datei(cls, pfad: str | Path) -> "Fahrzeugknoten":
-        plaetze, durchmesser = teile_lesen(pfad)
+    def aus_datei(cls, pfad: str | Path,
+                  korrektur_datei: str | Path | None = None,
+                  fahrzeug: str | None = None) -> "Fahrzeugknoten":
+        """Aus ``<key>_teile.json``, wahlweise mit Nabenkorrekturen.
+
+        Ohne ``fahrzeug`` wird der Schlüssel aus dem Dateinamen abgeleitet:
+        ``rookie_teile.json`` gehört zu ``rookie``.
+        """
+        pfad = Path(pfad)
+        if fahrzeug is None:
+            fahrzeug = pfad.stem.removesuffix("_teile")
+        korrekturen = (korrekturen_lesen(korrektur_datei, fahrzeug)
+                       if korrektur_datei else {})
+        plaetze, durchmesser = teile_lesen(pfad, korrekturen)
         return cls(plaetze, durchmesser)
 
     # -- Zustand ---------------------------------------------------------
@@ -96,11 +143,23 @@ class Fahrzeugknoten:
 
     # -- Matrizen --------------------------------------------------------
     def rad_matrix(self, rad: Radplatz) -> np.ndarray:
-        """Wo dieses Rad steht, relativ zum Fahrzeug."""
-        m = matrix.verschiebung(rad.nabe)
+        """Wo dieses Rad steht, relativ zum Fahrzeug.
+
+        Mit Korrektur wird um einen Punkt gedreht, der neben dem Ursprung des
+        Netzes liegt: erst den Ursprung auf die wahre Radmitte schieben
+        (``-korrektur``), dann drehen, dann alles zusammen an den Platz
+        (``nabe + korrektur``). Das Netz selbst bleibt unangetastet, die
+        Korrektur wirkt also ohne neuen Import.
+        """
+        hat_korrektur = bool(np.any(rad.korrektur))
+        m = matrix.verschiebung(np.asarray(rad.nabe) + rad.korrektur
+                                if hat_korrektur else rad.nabe)
         if rad.gelenkt and self.lenkwinkel_rad:
             m = m @ matrix.drehung_z(self.lenkwinkel_rad)
-        return m @ matrix.drehung_y(self.rollwinkel_rad)
+        m = m @ matrix.drehung_y(self.rollwinkel_rad)
+        if hat_korrektur:
+            m = m @ matrix.verschiebung(-np.asarray(rad.korrektur))
+        return m
 
     def matrizen(self, pos_m, gierwinkel_rad: float) -> dict[str, np.ndarray]:
         """Modellmatrix je Teilname, einschließlich Karosserie."""

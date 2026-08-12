@@ -253,6 +253,63 @@ def _groesste_gruppe(auswahl: np.ndarray, adjazenz: np.ndarray) -> np.ndarray:
     return verkleinert
 
 
+#: Wie hoch ueber dem tiefsten Punkt noch als Aufstandsflaeche zaehlt, in
+#: Anteilen des Radradius. Schmal genug, dass nur der Reifen unten drin liegt.
+AUFSTAND_ANTEIL = 0.30
+
+
+def nabe_aus_bodenkontakt(punkte: np.ndarray, nabe, radius: float) -> np.ndarray:
+    """Den tatsaechlichen Radmittelpunkt ueber die Aufstandsflaeche bestimmen.
+
+    Die gerechnete Nabe kommt aus der Sollmasstabelle: x aus dem halben
+    Radstand, z aus dem halben Raddurchmesser. Das erzeugte Modell haelt sich
+    daran nicht auf den Zentimeter — beim Fahrzeug aus zwei Ansichten ist es
+    1,55 m hoch statt 1,40.
+
+    Sitzt die Drehachse neben der Radmitte, **kreist** das Rad beim Rollen,
+    statt sich zu drehen: es wandert sichtbar auf und ab.
+
+    Der Anker ist der Boden. Ein Reifen steht darauf, sein tiefster Punkt ist
+    die Aufstandsflaeche, und die Nabe liegt genau einen Radius darueber. Das
+    gilt unabhaengig davon, wieviel Radlauf beim Schnitt mitgekommen ist.
+
+    Ein Mittelwert ueber die Reifenflanke waere naheliegender gewesen und ist
+    genau daran gescheitert: der mitgeschnittene Kotfluegel liegt **oberhalb**
+    des Rades und zieht jeden Mittelwert nach oben. Am echten Modell kamen so
+    Nabenhoehen von 0,34 bis 0,51 m heraus — bei einem Rad von 0,65 m
+    Durchmesser, das auf der Strasse steht.
+
+    Die Querrichtung (y) bleibt unberuehrt, die kommt aus der Bandmessung.
+    """
+    mitte = np.asarray(nabe, dtype=np.float64).copy()
+    punkte = np.asarray(punkte, dtype=np.float64)
+    if len(punkte) < 12:
+        return mitte
+
+    unten = punkte[:, 2].min()
+    aufstand = punkte[:, 2] <= unten + AUFSTAND_ANTEIL * radius
+    if aufstand.sum() < 8:
+        return mitte
+
+    x = punkte[aufstand, 0]
+    mitte[0] = float(x.min() + x.max()) / 2.0
+    mitte[2] = float(unten) + radius
+    return mitte
+
+
+def naben_angleichen(naben: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Alle vier Raeder auf dieselbe Hoehe bringen.
+
+    Ein Auto steht waagerecht. Weichen die gemessenen Hoehen voneinander ab,
+    liegt das an unterschiedlich sauber getrennten Raedern und nicht am
+    Fahrzeug. Der Mittelwert ist robuster als jeder Einzelwert.
+    """
+    if not naben:
+        return {}
+    hoehe = float(np.median([n[2] for n in naben.values()]))
+    return {name: np.array([n[0], n[1], hoehe]) for name, n in naben.items()}
+
+
 def _schliessen(mesh: trimesh.Trimesh) -> trimesh.Trimesh:
     """Die Schnittflaeche zur Fahrzeugmitte hin zuziehen.
 
@@ -293,6 +350,10 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
             gemessen[name] = band
     baender = symmetrisch(gemessen)
 
+    gefunden: dict[str, np.ndarray] = {}
+    gerechnete: dict[str, np.ndarray] = {}
+    teile: dict[str, trimesh.Trimesh] = {}
+
     for name, nabe in zip(RAD_NAMEN, radpositionen(soll.key)):
         band = baender.get(name)
         if band is None:
@@ -312,15 +373,29 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
                             f"({int(auswahl.sum())} Dreiecke) - Modell pruefen")
             continue
 
-        # Die Nabe wandert auf die Mitte des gemessenen Bandes. Fuer das Rollen
-        # ist das egal - eine Drehung um die Querachse laesst y unberuehrt -,
-        # aber die Lenkachse steht senkrecht, und die soll durch die
-        # tatsaechliche Radmitte gehen und nicht 6 cm daneben.
-        echte_nabe = (float(nabe[0]), (band[0] + band[1]) / 2.0, float(nabe[2]))
         teil = mesh.submesh([np.flatnonzero(auswahl)], append=True, repair=False)
-        teil.apply_translation(-np.asarray(echte_nabe, dtype=np.float64))
-        raeder.append(Rad(name, _schliessen(teil), echte_nabe))
+
+        # Die Nabe kommt aus der Geometrie, nicht aus der Tabelle. Quer (y) aus
+        # der Bandmessung, laengs und hoch aus der Aufstandsflaeche des Reifens.
+        gerechnet = (float(nabe[0]), (band[0] + band[1]) / 2.0, float(nabe[2]))
+        gefunden[name] = nabe_aus_bodenkontakt(
+            teil.vertices, gerechnet, soll.rad_m / 2.0)
+        gerechnete[name] = np.asarray(gerechnet, dtype=np.float64)
+        teile[name] = teil
         ist_rad |= auswahl
+
+    # Erst wenn alle vier vermessen sind, auf eine gemeinsame Hoehe bringen -
+    # ein Auto steht waagerecht.
+    for name, echte_nabe in naben_angleichen(gefunden).items():
+        abweichung = float(np.linalg.norm(gerechnete[name] - echte_nabe))
+        if abweichung > 0.05:
+            hinweise.append(
+                f"{name}: Nabe {abweichung * 100:.0f} cm neben der gerechneten "
+                f"Lage (z {gerechnete[name][2]:.3f} -> {echte_nabe[2]:.3f})")
+        teil = teile[name]
+        teil.apply_translation(-echte_nabe)
+        raeder.append(Rad(name, _schliessen(teil),
+                          tuple(float(w) for w in echte_nabe)))
 
     if not ist_rad.any():
         hinweise.append("Kein einziges Rad getrennt - Karosserie unveraendert")

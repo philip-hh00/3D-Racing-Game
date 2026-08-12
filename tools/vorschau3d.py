@@ -11,8 +11,8 @@ wird nur die Geschwindigkeit. Der Lenkeinschlag wird aus der Krümmung der
 Strecke geschätzt, damit die Vorderräder etwas zu tun haben. Die Verbindung zu
 pymunk kommt in Phase D. Was hier läuft, ist ausschließlich Darstellung.
 
-Der Shader ist bewusst einfach gehalten — ein Richtungslicht, keine
-Materialkanäle. Er wird in Phase B3 durch eine PBR-Beleuchtung ersetzt.
+Beleuchtet wird mit ``src/render3d/shader.py``: PBR mit Base Color,
+Metallic-Roughness und einem Himmel als Umgebung.
 """
 from __future__ import annotations
 
@@ -30,39 +30,7 @@ sys.path.insert(0, str(WURZEL))
 import moderngl                                       # noqa: E402
 
 from src.render3d import (ansicht, camera, fenster, matrix, mesh,  # noqa: E402
-                          track_mesh, vehicle_node)
-
-VERTEX = """
-#version 330
-uniform mat4 mvp;
-uniform mat4 modell;
-in vec3 in_position;
-in vec3 in_normale;
-in vec2 in_uv;
-out vec3 normale;
-out vec2 uv;
-void main() {
-    normale = mat3(modell) * in_normale;
-    uv = in_uv;
-    gl_Position = mvp * modell * vec4(in_position, 1.0);
-}
-"""
-
-FRAGMENT = """
-#version 330
-uniform sampler2D basisfarbe;
-uniform vec3 grundton;
-uniform float hat_textur;
-in vec3 normale;
-in vec2 uv;
-out vec4 farbe;
-void main() {
-    vec3 licht = normalize(vec3(0.35, 0.45, 1.0));
-    float diffus = max(dot(normalize(normale), licht), 0.0);
-    vec3 basis = mix(grundton, texture(basisfarbe, uv).rgb, hat_textur);
-    farbe = vec4(basis * (0.38 + 0.62 * diffus), 1.0);
-}
-"""
+                          shader, track_mesh, vehicle_node)
 
 #: Grundtöne der Streckenbänder, solange es keine Texturen gibt.
 BANDFARBEN = {
@@ -122,15 +90,15 @@ def main(argv=None) -> int:
 
     pygame.init()
     ctx, hud = fenster.oeffnen(titel=f"Vorschau: {a.fahrzeug} auf {a.strecke}")
-    programm = ctx.program(vertex_shader=VERTEX, fragment_shader=FRAGMENT)
-    programm["basisfarbe"].value = 0
+    programm = shader.programm(ctx)
 
     modell = mesh.hochladen(ctx, programm, mesh.laden(glb))
     netz = track_mesh.aus_datei(strecke_datei)
     baender = [(band, _band_hochladen(ctx, programm, band)) for band in netz.baender]
 
-    knoten = (vehicle_node.Fahrzeugknoten.aus_datei(teile) if teile.is_file()
-              else None)
+    knoten = (vehicle_node.Fahrzeugknoten.aus_datei(
+        teile, korrektur_datei=WURZEL / "trellis_import.json",
+        fahrzeug=a.fahrzeug) if teile.is_file() else None)
     if knoten is None:
         print(f"HINWEIS: {teile.name} fehlt - die Raeder drehen sich nicht.")
     radstand_m = 2.6
@@ -175,30 +143,40 @@ def main(argv=None) -> int:
         P = camera.perspektive(55.0, fenster.seitenverhaeltnis(groesse), 0.2, 1200.0)
         mvp = P @ kamera.blickmatrix()
 
-        bild.neues_bild()
+        bild.neues_bild(himmel=shader.HIMMEL_HORIZONT)
         programm["mvp"].write(mvp.T.astype("f4").tobytes())
+        programm["kamera_position"].value = tuple(float(w) for w in kamera.auge)
 
-        programm["hat_textur"].value = 0.0
-        programm["modell"].write(matrix.einheit().T.tobytes())
+        # Strecke: keine Texturen, dafuer Grundtoene und rauer Belag.
+        programm["hat_basisfarbe"].value = 0.0
+        programm["hat_metallic_rauheit"].value = 0.0
+        programm["metallic_faktor"].value = 0.0
+        programm["rauheit_faktor"].value = 0.92
+        shader.modell_setzen(programm, matrix.einheit())
         for band, vao in baender:
             programm["grundton"].value = BANDFARBEN.get(band.name, (0.5, 0.5, 0.5))
             vao.render()
 
-        programm["hat_textur"].value = 1.0 if modell.basisfarbe else 0.0
+        # Fahrzeug: Basisfarbe und Metallic-Rauheit aus dem Modell.
+        programm["hat_basisfarbe"].value = 1.0 if modell.basisfarbe else 0.0
+        programm["hat_metallic_rauheit"].value = 1.0 if modell.metallic_rauheit else 0.0
+        programm["metallic_faktor"].value = 1.0
+        programm["rauheit_faktor"].value = 1.0
         if modell.basisfarbe:
             modell.basisfarbe.use(0)
+        if modell.metallic_rauheit:
+            modell.metallic_rauheit.use(1)
         if knoten is not None:
             for name, m in knoten.matrizen(hier, gier).items():
                 teil = teile_nach_name.get(name)
                 if teil is None:
                     continue
-                programm["modell"].write(m.T.astype("f4").tobytes())
+                shader.modell_setzen(programm, m)
                 teil.vao.render()
         else:
             grund = matrix.fahrzeug(hier, gier)
             for teil in modell.teile:
-                m = grund @ matrix.verschiebung(teil.versatz)
-                programm["modell"].write(m.T.astype("f4").tobytes())
+                shader.modell_setzen(programm, grund @ matrix.verschiebung(teil.versatz))
                 teil.vao.render()
 
         hud.fill((0, 0, 0, 0))

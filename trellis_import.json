@@ -1,19 +1,48 @@
 {
   "_hinweis": "Front/Heck je Modell. Vorne und Hinten sind aus der Geometrie nicht sicher zu erkennen - Motorhaube und Kofferraum sind sich zu aehnlich. Modell im Viewer ansehen: zeigt die Front nach -X, hier auf true stellen.",
-
-  "rookie":      { "flip": false },
-  "rookie_2":    { "flip": false },
-  "rookie_3":    { "flip": false },
-  "supercar":    { "flip": false },
-  "supercar_2":  { "flip": false },
-  "supercar_3":  { "flip": false },
-  "drifter":     { "flip": false },
-  "drifter_2":   { "flip": false },
-  "drifter_3":   { "flip": false },
-  "limousine":   { "flip": false },
-  "limousine_2": { "flip": false },
-  "limousine_3": { "flip": false },
-  "electric":    { "flip": false },
-  "electric_2":  { "flip": false },
-  "electric_3":  { "flip": false }
+  "rookie": {
+    "flip": true
+  },
+  "rookie_2": {
+    "flip": false
+  },
+  "rookie_3": {
+    "flip": false
+  },
+  "supercar": {
+    "flip": false
+  },
+  "supercar_2": {
+    "flip": false
+  },
+  "supercar_3": {
+    "flip": false
+  },
+  "drifter": {
+    "flip": false
+  },
+  "drifter_2": {
+    "flip": false
+  },
+  "drifter_3": {
+    "flip": false
+  },
+  "limousine": {
+    "flip": false
+  },
+  "limousine_2": {
+    "flip": false
+  },
+  "limousine_3": {
+    "flip": false
+  },
+  "electric": {
+    "flip": false
+  },
+  "electric_2": {
+    "flip": false
+  },
+  "electric_3": {
+    "flip": false
+  }
 }

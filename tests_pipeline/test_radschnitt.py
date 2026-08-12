@@ -256,6 +256,97 @@ def test_die_schaetzung_ist_genauso_breit_wie_die_obergrenze():
         assert f"{s.rad_m * radschnitt.BAND_HOECHSTANTEIL:.2f}" in hinweis
 
 
+def _reifenpunkte(mitte, radius=0.325, n=3000, seed=9):
+    """Punkte auf der Aussenflaeche eines Reifens, plus etwas Felge innen."""
+    rng = np.random.default_rng(seed)
+    winkel = rng.uniform(0, 2 * np.pi, n)
+    r = np.where(rng.random(n) < 0.75, radius, radius * rng.uniform(0.5, 0.8, n))
+    return np.column_stack([
+        mitte[0] + r * np.cos(winkel),
+        rng.uniform(mitte[1] - 0.1, mitte[1] + 0.1, n),
+        mitte[2] + r * np.sin(winkel),
+    ])
+
+
+def test_nabe_kommt_aus_der_aufstandsflaeche():
+    """Der Fehler, der das Rad kreisen liess statt drehen.
+
+    Die gerechnete Nabe kommt aus der Sollmasstabelle; das erzeugte Modell
+    haelt sich nicht auf den Zentimeter daran. Liegt die Drehachse daneben,
+    wandert das Rad beim Rollen sichtbar auf und ab.
+    """
+    echte_mitte = np.array([1.40, 0.76, 0.38])
+    punkte = _reifenpunkte(echte_mitte)
+    geraten = np.array([1.312, 0.76, 0.325])       # aus der Tabelle, daneben
+    gefunden = radschnitt.nabe_aus_bodenkontakt(punkte, geraten, 0.325)
+    assert gefunden[0] == pytest.approx(echte_mitte[0], abs=0.02)
+    assert gefunden[2] == pytest.approx(echte_mitte[2], abs=0.02)
+
+
+def test_mitgeschnittener_kotfluegel_zieht_die_nabe_nicht_hoch():
+    """Genau daran ist die erste Fassung gescheitert.
+
+    Sie hat ueber die Reifenflanke gemittelt. Der Radlauf liegt aber
+    **oberhalb** des Rades und zieht jeden Mittelwert nach oben - am echten
+    Modell kamen Nabenhoehen bis 0,51 m heraus, bei einem Rad von 0,65 m
+    Durchmesser, das auf der Strasse steht. Der Boden laesst sich nicht
+    verschieben, ein Mittelwert schon.
+    """
+    mitte = np.array([1.35, 0.76, 0.33])
+    reifen = _reifenpunkte(mitte)
+    rng = np.random.default_rng(1)
+    kotfluegel = np.column_stack([
+        rng.uniform(mitte[0] - 0.45, mitte[0] + 0.45, 1500),
+        rng.uniform(mitte[1] - 0.1, mitte[1] + 0.1, 1500),
+        rng.uniform(mitte[2] + 0.30, mitte[2] + 0.75, 1500),
+    ])
+    gefunden = radschnitt.nabe_aus_bodenkontakt(
+        np.vstack([reifen, kotfluegel]), (1.312, 0.76, 0.325), 0.325)
+    assert gefunden[2] == pytest.approx(mitte[2], abs=0.02)
+
+
+def test_nabe_laesst_die_querlage_unberuehrt():
+    """Quer entscheidet die Bandmessung, nicht die Aufstandsflaeche."""
+    punkte = _reifenpunkte(np.array([1.3, 0.8, 0.35]))
+    gefunden = radschnitt.nabe_aus_bodenkontakt(punkte, (1.312, 0.764, 0.325), 0.325)
+    assert gefunden[1] == pytest.approx(0.764)
+
+
+def test_nabe_gibt_bei_zu_wenig_punkten_auf():
+    geraten = (1.312, 0.764, 0.325)
+    gefunden = radschnitt.nabe_aus_bodenkontakt(np.zeros((4, 3)), geraten, 0.325)
+    assert tuple(gefunden) == pytest.approx(geraten)
+
+
+def test_alle_vier_raeder_stehen_auf_derselben_hoehe():
+    """Ein Auto steht waagerecht."""
+    naben = {
+        "rad_vl": np.array([1.3, 0.76, 0.31]),
+        "rad_vr": np.array([1.3, -0.76, 0.36]),
+        "rad_hl": np.array([-1.3, 0.76, 0.33]),
+        "rad_hr": np.array([-1.3, -0.76, 0.34]),
+    }
+    gleich = radschnitt.naben_angleichen(naben)
+    hoehen = {round(float(n[2]), 9) for n in gleich.values()}
+    assert len(hoehen) == 1
+    # Laengs- und Querlage bleiben, wie sie gemessen wurden.
+    assert gleich["rad_vl"][0] == pytest.approx(1.3)
+    assert gleich["rad_vr"][1] == pytest.approx(-0.76)
+
+
+def test_die_nabe_liegt_im_mittelpunkt_des_herausgetrennten_rades():
+    """Am zusammengesetzten Fahrzeug: nach dem Schnitt muss der Ursprung des
+    Radnetzes wirklich in der Mitte liegen, sonst eiert es."""
+    s = vehicle_specs.spec("rookie")
+    zerlegt = radschnitt.schneiden(_auto_mit_raedern(), s)
+    for rad in zerlegt.raeder:
+        v = rad.mesh.vertices
+        abstand = np.hypot(v[:, 0], v[:, 2])
+        aussen = abstand > 0.8 * s.rad_m / 2
+        assert abstand[aussen].std() < 0.02, \
+            f"{rad.name}: Reifenflanke nicht rund um den Ursprung"
+
+
 def test_bericht_nennt_die_dreiecke_je_teil():
     zerlegt = radschnitt.schneiden(_auto_mit_raedern(), vehicle_specs.spec("rookie"))
     text = zerlegt.text()

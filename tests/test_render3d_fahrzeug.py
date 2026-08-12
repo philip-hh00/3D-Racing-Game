@@ -185,6 +185,64 @@ def test_knoten_aus_der_echten_teileliste():
     assert k.radradius_m == pytest.approx(0.325)
 
 
+# -- Nabenkorrektur von Hand -------------------------------------------------
+def test_korrektur_verschiebt_die_drehachse_und_nicht_das_rad():
+    """Ohne Drehung darf eine Korrektur nichts verschieben.
+
+    Sie sagt nur, wo die Achse liegt - nicht, wo das Rad steht.
+    """
+    k = _knoten()
+    ohne = _punkt(k.rad_matrix(k.raeder[0]), (0.1, 0, 0.1))
+    k.raeder[0].korrektur = np.array([0.03, 0.0, -0.02])
+    mit = _punkt(k.rad_matrix(k.raeder[0]), (0.1, 0, 0.1))
+    assert mit == pytest.approx(ohne, abs=GENAU)
+
+
+def test_ohne_korrektur_kreist_ein_versetztes_rad():
+    """Der Fehler, den das Werkzeug behebt.
+
+    Sitzt die Achse neben der Radmitte, wandert die Radmitte beim Rollen -
+    genau das war am Fahrzeug als Auf und Ab zu sehen.
+    """
+    k = _knoten()
+    versatz = np.array([0.04, 0.0, 0.03])
+    k.setzen(rollwinkel_rad=math.pi)
+    ohne = _punkt(k.rad_matrix(k.raeder[0]), versatz)
+    assert np.linalg.norm(ohne - (k.raeder[0].nabe - versatz)) < GENAU
+
+
+def test_mit_passender_korrektur_bleibt_die_radmitte_stehen():
+    k = _knoten()
+    versatz = np.array([0.04, 0.0, 0.03])
+    k.raeder[0].korrektur = versatz
+    orte = []
+    for winkel in (0.0, 1.0, 2.5, 4.0):
+        k.setzen(rollwinkel_rad=winkel)
+        orte.append(_punkt(k.rad_matrix(k.raeder[0]), versatz))
+    for ort in orte[1:]:
+        assert ort == pytest.approx(orte[0], abs=GENAU), \
+            "die korrigierte Radmitte darf beim Rollen nicht wandern"
+
+
+def test_korrekturen_werden_aus_der_konfiguration_gelesen(tmp_path):
+    from src.render3d.vehicle_node import korrekturen_lesen
+
+    pfad = tmp_path / "trellis_import.json"
+    pfad.write_text(json.dumps({
+        "rookie": {"flip": True, "naben": {"rad_vl": [0.01, -0.02, 0.03]}},
+        "supercar": {"flip": False},
+    }), encoding="utf-8")
+    assert korrekturen_lesen(pfad, "rookie")["rad_vl"] == pytest.approx(
+        [0.01, -0.02, 0.03])
+    assert korrekturen_lesen(pfad, "supercar") == {}
+    assert korrekturen_lesen(pfad, "gibtsnicht") == {}
+
+
+def test_fehlende_konfiguration_ist_kein_fehler(tmp_path):
+    from src.render3d.vehicle_node import korrekturen_lesen
+    assert korrekturen_lesen(tmp_path / "fehlt.json", "rookie") == {}
+
+
 def test_durchmesser_null_wird_abgelehnt():
     """Sonst teilt der Rollwinkel durch null und alles wird NaN."""
     with pytest.raises(ValueError, match="Raddurchmesser"):
