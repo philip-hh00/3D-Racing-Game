@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -57,12 +57,46 @@ class Streckennetz:
     baender: list[Band]
     laenge_m: float
     start_positionen: list[tuple[float, float, float]]  # x_m, y_m, gierwinkel_rad
+    #: Die Mittellinie in Metern, (n, 2). Nicht nur fuer das Netz gebraucht:
+    #: Kamera, Gegnerlogik und alles, was "wo auf der Strecke" beantworten
+    #: muss, braucht sie ebenfalls. Ohne sie muesste der Aufrufer sie aus den
+    #: Dreiecken zurueckrechnen - und wuesste dabei mehr ueber den inneren
+    #: Aufbau der Baender, als ihm guttut.
+    mittellinie: np.ndarray = field(
+        default_factory=lambda: np.zeros((0, 2), dtype=np.float64))
 
     def band(self, name: str) -> Band | None:
         for b in self.baender:
             if b.name == name:
                 return b
         return None
+
+    def punkt_bei(self, strecke_m: float) -> tuple[np.ndarray, float]:
+        """Position und Fahrtrichtung nach *strecke_m* Metern ab dem Anfang.
+
+        Laeuft ueber das Ende hinaus wieder von vorne los - die Strecke ist
+        geschlossen. Liefert ``((x_m, y_m), gierwinkel_rad)``; der Gierwinkel
+        ist im selben Sinn gemessen wie ``body.angle`` im Spiel, 0 zeigt
+        nach +X.
+        """
+        punkte = np.asarray(self.mittellinie, dtype=np.float64)
+        if len(punkte) < 2:
+            raise ValueError("Streckennetz hat keine Mittellinie")
+
+        geschlossen = np.vstack([punkte, punkte[:1]])
+        laengen = np.linalg.norm(np.diff(geschlossen, axis=0), axis=1)
+        summe = np.concatenate([[0.0], np.cumsum(laengen)])
+        gesamt = float(summe[-1])
+
+        s = float(strecke_m) % gesamt if gesamt > 0 else 0.0
+        i = int(np.searchsorted(summe, s, side="right") - 1)
+        i = min(max(i, 0), len(laengen) - 1)
+
+        rest = (s - summe[i]) / laengen[i] if laengen[i] > 0 else 0.0
+        a, b = geschlossen[i], geschlossen[i + 1]
+        pos = a + (b - a) * rest
+        richtung = b - a
+        return pos, float(math.atan2(richtung[1], richtung[0]))
 
 
 # ---------------------------------------------------------------------------
@@ -301,7 +335,8 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
             (x_px * M_PER_PX, y_px * M_PER_PX, math.radians(winkel_grad)))
 
     return Streckennetz(baender=baender, laenge_m=laenge_m,
-                         start_positionen=start_positionen)
+                         start_positionen=start_positionen,
+                         mittellinie=mittellinie_m)
 
 
 def aus_datei(pfad: str | Path, randstein_m: float = 1.0,
