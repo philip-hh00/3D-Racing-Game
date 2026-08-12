@@ -35,11 +35,18 @@ from .vehicle_specs import Fahrzeugmasse, radpositionen
 #: Namen der vier Raeder in der Reihenfolge von :func:`radpositionen`.
 RAD_NAMEN = ("rad_vl", "rad_vr", "rad_hl", "rad_hr")
 
-#: Wie weit ueber den Sollradius hinaus geschnitten wird. Der Reifen des
-#: erzeugten Modells trifft den Sollwert nicht auf den Millimeter, und ein zu
-#: knapper Schnitt laesst einen Ring Gummi in der Karosserie stehen - der dreht
-#: sich dann nicht mit und faellt sofort auf.
-RADIUS_ZUGABE = 1.12
+#: Wie weit ueber den gemessenen Reifenradius hinaus geschnitten wird.
+#:
+#: Frueher lag der Wert bei 1,12 auf den **Sollradius** aus der Tabelle. Beide
+#: Entscheidungen waren falsch. Der Sollradius ist eine Vorgabe, kein Mass am
+#: Modell; und 12 Prozent Zugabe sind bei 0,325 m fast 4 cm, in denen der
+#: Radlauf sitzt. Herausgetrennt wurde damit ein Rad mitsamt einem Bogen
+#: Karosserie darueber, der sich beim Rollen mitdrehte.
+#:
+#: Der Reifenradius wird stattdessen gemessen: das Rad steht auf der Strasse,
+#: seine Nabe liegt also genau einen Radius ueber z = 0. Drei Prozent Zugabe
+#: fangen die Unebenheit des erzeugten Netzes ab, ohne den Radlauf zu fassen.
+RADIUS_ZUGABE = 1.03
 
 
 #: Ab welchem Anteil der staerksten Klasse eine Querschnittsklasse noch zum
@@ -333,7 +340,6 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
     ``origin`` liefern.
     """
     mitten = mesh.triangles_center
-    radius = soll.rad_m / 2.0 * RADIUS_ZUGABE
     adjazenz = nachbarschaft(mesh)
 
     hinweise: list[str] = []
@@ -366,22 +372,41 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
             hinweise.append(f"{name}: Reifenbreite nicht messbar, "
                             f"geschaetzt auf {2 * tiefe:.2f} m")
 
-        auswahl = _im_radbereich(mitten, nabe, radius, band) & ~ist_rad
-        auswahl = _groesste_gruppe(auswahl, adjazenz)
-        if auswahl.sum() < 12:
+        # Zwei Durchgaenge. Der erste sucht grob um die gerechnete Lage, damit
+        # ueberhaupt etwas zum Vermessen da ist; der zweite schneidet um die
+        # **gemessene** Nabe und mit dem daraus folgenden Reifenradius.
+        #
+        # Der erste Durchgang allein greift daneben, weil die gerechnete Lage
+        # aus Radstand und Sollradius stammt: am Modell aus zwei Ansichten liegt
+        # die tatsaechliche Nabe bis zu 7 cm daneben. Der Zylinder sitzt dann
+        # schief ueber dem Rad - auf der einen Seite fehlt Reifen, auf der
+        # anderen kommt Karosserie mit.
+        gerechnet = np.array([float(nabe[0]), (band[0] + band[1]) / 2.0,
+                              float(nabe[2])])
+        grob = _im_radbereich(mitten, gerechnet,
+                              soll.rad_m / 2.0 * 1.15, band) & ~ist_rad
+        grob = _groesste_gruppe(grob, adjazenz)
+        if grob.sum() < 12:
             hinweise.append(f"{name}: nichts zum Heraustrennen gefunden "
-                            f"({int(auswahl.sum())} Dreiecke) - Modell pruefen")
+                            f"({int(grob.sum())} Dreiecke) - Modell pruefen")
             continue
 
-        teil = mesh.submesh([np.flatnonzero(auswahl)], append=True, repair=False)
+        vorlaeufig = mesh.submesh([np.flatnonzero(grob)], append=True, repair=False)
+        echte_nabe = nabe_aus_bodenkontakt(
+            vorlaeufig.vertices, gerechnet, soll.rad_m / 2.0)
 
-        # Die Nabe kommt aus der Geometrie, nicht aus der Tabelle. Quer (y) aus
-        # der Bandmessung, laengs und hoch aus der Aufstandsflaeche des Reifens.
-        gerechnet = (float(nabe[0]), (band[0] + band[1]) / 2.0, float(nabe[2]))
-        gefunden[name] = nabe_aus_bodenkontakt(
-            teil.vertices, gerechnet, soll.rad_m / 2.0)
-        gerechnete[name] = np.asarray(gerechnet, dtype=np.float64)
-        teile[name] = teil
+        # Das Rad steht auf der Strasse: sein Radius ist die Nabenhoehe.
+        reifenradius = float(echte_nabe[2])
+        auswahl = _im_radbereich(mitten, echte_nabe,
+                                 reifenradius * RADIUS_ZUGABE, band) & ~ist_rad
+        auswahl = _groesste_gruppe(auswahl, adjazenz)
+        if auswahl.sum() < 12:
+            auswahl = grob
+
+        teile[name] = mesh.submesh([np.flatnonzero(auswahl)], append=True,
+                                   repair=False)
+        gefunden[name] = echte_nabe
+        gerechnete[name] = gerechnet
         ist_rad |= auswahl
 
     # Erst wenn alle vier vermessen sind, auf eine gemeinsame Hoehe bringen -
