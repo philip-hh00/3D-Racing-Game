@@ -105,9 +105,17 @@ Phase beginnt, bevor die vorige das erreicht hat.
 
 | # | Aufgabe | Abnahme |
 |---|---|---|
-| D1 | `RaceState._render_world()` auf den 3D-Weg umstellen, 2D-Weg über einen Schalter behalten | Rennen läuft in 3D, umschaltbar zurück auf 2D |
+| D1 | `RaceState` zeichnet die Welt in 3D — **ohne Rückfall auf 2D** | Rennen läuft in 3D |
 | D2 | HUD-Fläche als Textur überlagern | Drehzahlmesser, Rundenanzeige, Minimap unverändert sichtbar |
 | D3 | Alle acht Fahrzeuge, KI fährt | Ein vollständiges Rennen von der Startaufstellung bis zur Zielflagge |
+
+**Kein Umschalter zwischen 2D und 3D** (entschieden am 11.08.2026). Das hier ist
+ein eigenständiges Spiel, kein Modus des 2D-Spiels. Ein Schalter hätte bedeutet,
+jede Änderung an Rennlogik, Kamera und Zuständen doppelt zu prüfen — und die
+2D-Fassung liegt unverändert und lauffähig im Nachbarprojekt, falls sie gebraucht
+wird. Der alte Zeichenweg (`src/track/track_renderer.py`,
+`src/entities/components/renderer.py`, `src/core/camera.py`) wird ersetzt, nicht
+umgangen.
 
 ### E — Feinschliff
 
