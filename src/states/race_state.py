@@ -710,7 +710,12 @@ class RaceState(BaseState):
                         car_idx: int, total_cars: int,
                         iteration: int, max_iterations: int) -> None:
         """Draw the pre-race loading screen: submenu video + progress bar."""
+        from src.core import display
 
+        # Der Ladebildschirm laeuft ausserhalb der Bildschleife des Spiels und
+        # zeigt sich selbst. Er muss das Bild deshalb selbst anfangen und
+        # abschliessen, sonst steht am Ende nichts auf dem Schirm.
+        display.bild_beginnen()
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
 
         # Background: the same looping video as the submenu we came from.
@@ -742,9 +747,7 @@ class RaceState(BaseState):
         theme.text(screen, tr("Rennen wird vorbereitet"), theme.HINT, theme.TEXT_DIM,
                    (cx, by + 56), center=True)
 
-        from src.core import display
-        display.blit_to_window(pygame.display.get_surface())
-        pygame.display.flip()
+        display.bild_abschliessen()
         pygame.event.pump()
 
     @staticmethod

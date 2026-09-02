@@ -4,23 +4,47 @@ Architecture
 ------------
 * The game always renders into a fixed 1920×1080 **virtual surface** so that
   all states, HUDs and menus can use absolute pixel coordinates without change.
-* The virtual surface is then scaled to the real window each frame via
-  ``blit_to_window()``.  High-quality smoothscale is used when the target is
-  smaller than 1920×1080; regular scale (faster) when it's the same size.
 * Mouse coordinates from pygame events are in *window* space; ``scale_pos()``
   converts them to *virtual* (1920×1080) space so that all existing
   ``collidepoint`` checks keep working.
+
+Der Weg über OpenGL
+-------------------
+Seit der Portierung auf 3D wird das Fenster mit ``pygame.OPENGL`` geöffnet.
+Damit ist die Fläche aus ``set_mode`` **nicht mehr bemalbar** — alles Gemalte
+geht auf die virtuelle Fläche, und die wird am Ende des Bildes als Textur
+darübergelegt (:mod:`src.render3d.ansicht`).
+
+Drei Folgen, die den Aufbau hier bestimmen:
+
+1. **Die virtuelle Fläche trägt einen Alphakanal.** Wo niemand zeichnet, bleibt
+   sie durchsichtig und die 3D-Welt scheint durch. Ein Menü füllt weiter
+   deckend und sieht aus wie immer.
+2. **Der Kontext wird nie neu erzeugt.** Ein zweites ``set_mode`` verwirft ihn
+   und mit ihm jedes hochgeladene Netz, jede Textur, jeden Shader — bei 600 000
+   Dreiecken je Fahrzeug ein Aussetzer von Sekunden. Auflösung und Vollbild
+   schalten deshalb über ``pygame.window.Window`` um.
+3. **Briefkasten statt Zerren.** ``SCALED`` verträgt sich nicht mit OpenGL und
+   ist entfallen. Passt das Fenster nicht zu 16:9, sitzt das Ansichtsfenster
+   mittig darin und der Rand bleibt schwarz; ``scale_pos`` rechnet den Versatz
+   wieder heraus.
+
+Ohne OpenGL — im Testlauf, wo der SDL-Treiber ``dummy`` ist — liefert
+:func:`kontext` ``None``. Dann wird keine Welt gezeichnet. Das ist **kein**
+2D-Rückfall: HUD, Menüs und Spiellogik laufen weiter, nur das Bild der Welt
+fehlt.
 
 Usage in game.py
 ----------------
     from src.core import display
 
     # Once, after pygame.init():
-    display.apply(screen)         # creates/resizes the window
+    display.apply()               # creates the window
 
-    # In the render step, instead of state_machine.render(screen):
+    # In the render step:
+    display.bild_beginnen()
     state_machine.render(display.virtual_surface())
-    display.blit_to_window(screen)
+    display.bild_abschliessen()
 
     # In the event loop, to fix mouse coordinates:
     events = display.remap_mouse_events(events)
@@ -45,21 +69,25 @@ VIRT_W = SCREEN_WIDTH   # 1920
 VIRT_H = SCREEN_HEIGHT  # 1080
 
 _virtual: pygame.Surface | None = None
-_win_w: int = VIRT_W
-_win_h: int = VIRT_H
-# _current_w/h are the SURFACE (logical) size — the chosen resolution windowed,
-# VIRT fullscreen. When it equals VIRT, blit_to_window()/scale_pos()
-# short-circuit to a 1:1 blit and identity mouse mapping.
+# _current_w/h ist die **eingestellte** Fenstergroesse, nicht die gemessene.
+# Daran erkennt handle_window_event, dass jemand am Fensterrand gezogen hat.
 _current_w: int | None = None
 _current_h: int | None = None
-_current_flags: int | None = None
+_current_fullscreen: bool | None = None
 _current_vsync: bool | None = None
 
+#: Ob ``set_mode`` mit ``pygame.OPENGL`` gelungen ist. Ohne das gibt es keinen
+#: Kontext und keine Welt.
+_opengl_fenster: bool = False
+_kontext = None
+_kontext_versucht: bool = False
+_ansicht3d = None
+_fensterobjekt = None
+
 # Set while handle_window_event() is restoring the configured window size
-# after a manual edge-drag resize. Calling set_window_size()/apply_settings()
-# itself raises another WINDOWRESIZED/WINDOWSIZECHANGED event; without this
-# guard that event would trigger another restore, which raises another
-# event, forever. It is only read/written from handle_window_event().
+# after a manual edge-drag resize. Calling the resize itself raises another
+# WINDOWRESIZED/WINDOWSIZECHANGED event; without this guard that event would
+# trigger another restore, which raises another event, forever.
 _suppress_resize: bool = False
 
 
@@ -71,9 +99,6 @@ def set_window_icon() -> None:
     format"), und ``data/menu/Icon.png`` gab es nicht — der Pfad war ausserdem
     relativ, im gepackten Bundle also falsch. Deshalb ein PNG, das pygame liest,
     ueber den absoluten Bundle-Pfad.
-
-    Muss nach **jedem** ``set_mode`` neu gesetzt werden: das Neuerstellen des
-    Fensters (Aufloesungswechsel) verwirft das Symbol.
     """
     from src.core.paths import bundle_dir
     pfad = bundle_dir() / "data" / "icon.png"
@@ -85,18 +110,123 @@ def set_window_icon() -> None:
 
 
 def virtual_surface() -> pygame.Surface:
-    """Return the fixed 1920×1080 surface that all states should render into."""
+    """Die feste Fläche von 1920×1080, auf die jeder Zustand zeichnet.
+
+    **Mit Alphakanal.** Ohne ihn deckte sie die 3D-Szene lückenlos zu; wo
+    nichts gezeichnet wird, muss die Welt darunter durchscheinen.
+    """
     global _virtual
     if _virtual is None:
-        _virtual = pygame.Surface((VIRT_W, VIRT_H))
+        _virtual = pygame.Surface((VIRT_W, VIRT_H), pygame.SRCALPHA)
     return _virtual
 
+
+# ---------------------------------------------------------------------------
+# OpenGL
+# ---------------------------------------------------------------------------
+
+def kontext():
+    """Der ModernGL-Kontext des Fensters, oder ``None``.
+
+    ``None`` heisst: es wird keine Welt gezeichnet. Kein Fehler und kein
+    Rückfall auf einen zweiten Zeichenweg — den gibt es nicht mehr.
+    """
+    global _kontext, _kontext_versucht
+    if _kontext is not None or _kontext_versucht:
+        return _kontext
+    if not _opengl_fenster:
+        return None
+    _kontext_versucht = True
+    try:
+        import moderngl
+        _kontext = moderngl.create_context()
+    except Exception as fehler:                      # pragma: no cover - Treiber
+        print(f"[display] Kein OpenGL-Kontext: {fehler}")
+        _kontext = None
+    return _kontext
+
+
+def _ueberlagerung():
+    """Die Überlagerung, die die virtuelle Fläche über die Szene legt."""
+    global _ansicht3d
+    if _ansicht3d is None:
+        ctx = kontext()
+        if ctx is None:
+            return None
+        from src.render3d import ansicht
+        _ansicht3d = ansicht.Ansicht3D(ctx, (VIRT_W, VIRT_H))
+    return _ansicht3d
+
+
+def ansichtsfenster(fenstergroesse: tuple[int, int]) -> tuple[int, int, int, int]:
+    """Der 16:9-Ausschnitt im Fenster, als ``(x, y, breite, hoehe)``.
+
+    Bis zur Portierung erledigte das ``pygame.SCALED``. Mit OpenGL gibt es das
+    nicht mehr, also wird gerechnet: das Bild sitzt mittig, der Rest bleibt
+    schwarz. Ohne diese Rechnung würde ein Fenster von 16:10 das Bild in die
+    Höhe ziehen.
+
+    Nie kleiner als ein Bildpunkt: ein minimiertes Fenster meldet 0×0, und ein
+    Ansichtsfenster der Breite 0 ist für OpenGL ein Fehler.
+    """
+    breite = max(1, int(fenstergroesse[0]))
+    hoehe = max(1, int(fenstergroesse[1]))
+    if breite * VIRT_H > hoehe * VIRT_W:            # Fenster ist zu breit
+        b = max(1, hoehe * VIRT_W // VIRT_H)
+        return ((breite - b) // 2, 0, b, hoehe)
+    h = max(1, breite * VIRT_H // VIRT_W)           # Fenster ist zu hoch
+    return (0, (hoehe - h) // 2, breite, h)
+
+
+def bild_beginnen(himmel: tuple[float, float, float] | None = None) -> None:
+    """Ein neues Bild anfangen: Fläche leeren, Puffer leeren, Tiefentest an.
+
+    Die virtuelle Fläche wird **durchsichtig** geleert, nicht schwarz — sonst
+    verdeckt sie die Welt. Der Rand des Briefkastens wird schwarz geleert, der
+    Bildbereich mit der Himmelsfarbe.
+    """
+    virtual_surface().fill((0, 0, 0, 0))
+    ctx = kontext()
+    if ctx is None:
+        return
+    bild = _ueberlagerung()
+    fw, fh = _fenstergroesse()
+    x, y, b, h = ansichtsfenster((fw, fh))
+    ctx.screen.use()
+    ctx.scissor = None
+    ctx.viewport = (0, 0, max(1, fw), max(1, fh))
+    ctx.clear(0.0, 0.0, 0.0, 1.0)
+    ctx.viewport = (x, y, b, h)
+    ctx.scissor = (x, y, b, h)
+    if himmel is None:
+        from src.render3d import shader
+        himmel = shader.HIMMEL_HORIZONT
+    bild.neues_bild(himmel=himmel)
+
+
+def bild_abschliessen() -> None:
+    """Die virtuelle Fläche über die Szene legen und das Bild zeigen."""
+    bild = _ueberlagerung()
+    if bild is not None:
+        ctx = kontext()
+        # Ansichtsfenster **und** Schere zuruecksetzen: der Splitscreen hat
+        # beide auf eine Bildhaelfte verengt, und das HUD gehoert ueber das
+        # ganze Bild.
+        ausschnitt = ansichtsfenster(_fenstergroesse())
+        ctx.viewport = ausschnitt
+        ctx.scissor = ausschnitt
+        bild.hud_zeichnen(virtual_surface())
+    pygame.display.flip()
+
+
+# ---------------------------------------------------------------------------
+# Fenster
+# ---------------------------------------------------------------------------
 
 def apply(screen: pygame.Surface | None = None) -> pygame.Surface:
     """Apply current video settings from the player profile.
 
-    Returns the *window* surface (same as *screen* if no resolution change is
-    needed, or a freshly created one).
+    Returns the *window* surface.
     """
     from src.core import profile
     p = profile.current()
@@ -107,140 +237,147 @@ def apply(screen: pygame.Surface | None = None) -> pygame.Surface:
     )
 
 
-def apply_settings(*, resolution: str = "1920x1080",
-                   fullscreen: bool = False,
-                   vsync: bool = False) -> pygame.Surface:
-    """Create or resize the pygame window to match the requested settings.
-
-    Both modes render through SCALED: SDL2 scales the logical surface to the
-    real window on the GPU, replacing the old per-frame CPU smoothscale (10+ ms
-    at 1440p). set_mode is given the TARGET size directly (the chosen resolution
-    windowed, VIRT fullscreen) so the window starts at the logical size — no
-    Window.size fix-up afterwards, which previously left a mis-sized letterbox
-    viewport until the next real set_mode.
-
-    When the chosen windowed resolution equals VIRT (1920×1080) the surface is
-    logical 1920×1080, so blit_to_window/scale_pos short-circuit to a 1:1 blit
-    and identity mouse mapping. Other windowed resolutions fall back to the
-    (cheaper, down-scaling) smoothscale path in blit_to_window.
-    """
-    global _win_w, _win_h, _current_w, _current_h, _current_flags, _current_vsync
-
-    # Parse resolution string "WxH" or "W×H"
+def _aufloesung_lesen(resolution: str) -> tuple[int, int]:
     res_str = resolution.replace("×", "x")
     try:
         w, h = (int(v) for v in res_str.split("x"))
+        return w, h
     except Exception:
-        w, h = 1920, 1080
+        return VIRT_W, VIRT_H
 
-    if fullscreen:
-        w_target, h_target = VIRT_W, VIRT_H
-        flags_target = pygame.FULLSCREEN | pygame.SCALED
-    else:
-        w_target, h_target = w, h
-        # RESIZABLE so Windows enables the titlebar maximize button (which
-        # handle_window_event routes into real fullscreen); SCALED so SDL2
-        # scales the logical surface to the window on the GPU.
-        flags_target = pygame.RESIZABLE | pygame.SCALED
 
-    vsync_target = vsync
+def apply_settings(*, resolution: str = "1920x1080",
+                   fullscreen: bool = False,
+                   vsync: bool = False) -> pygame.Surface:
+    """Fenster anlegen oder umschalten.
 
-    # Bypass recreating the window if settings haven't changed. Re-calling
-    # set_mode on Windows in fullscreen/vsync can freeze SDL2.
-    if (_current_w == w_target and _current_h == h_target and
-            _current_flags == flags_target and _current_vsync == vsync_target):
-        surf = pygame.display.get_surface()
-        if surf is not None:
-            return surf
+    **Beim ersten Aufruf** entsteht das Fenster mit ``OPENGL | DOUBLEBUF |
+    RESIZABLE``. Jeder weitere Aufruf schaltet nur noch Größe und Vollbild um —
+    ``set_mode`` würde den OpenGL-Kontext verwerfen und mit ihm alles, was
+    hochgeladen wurde.
 
-    # Completely tear down the display module before recreating to prevent SDL2 scaling lockups/artifacts.
-    if pygame.display.get_init():
-        pygame.display.quit()
-    pygame.display.init()
+    Gelingt OpenGL nicht, läuft das Spiel ohne Welt weiter: Menüs und HUD
+    zeichnen, die Strecke bleibt leer. Einen Rückfall auf den alten
+    2D-Zeichenweg gibt es nicht mehr.
+    """
+    global _current_w, _current_h, _current_fullscreen, _current_vsync
+    global _opengl_fenster
 
-    # Restore caption and icon
+    w, h = _aufloesung_lesen(resolution)
+
+    if _current_w is not None:
+        _umschalten(w, h, fullscreen)
+        _current_w, _current_h = w, h
+        _current_fullscreen, _current_vsync = fullscreen, vsync
+        return pygame.display.get_surface()
+
     pygame.display.set_caption("2D-Racing-Game")
+    flags = pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE
+    schirm = _versuche_modus((w, h), flags, vsync)
+    _opengl_fenster = schirm is not None
+    if schirm is None:
+        print("[display] OpenGL nicht verfuegbar - die Rennwelt bleibt leer.")
+        schirm = _versuche_modus((w, h), pygame.RESIZABLE, vsync)
+    if schirm is None:                               # pragma: no cover - Treiber
+        schirm = pygame.display.set_mode((w, h))
     set_window_icon()
 
-    def _try_modes(size, flags):
-        """set_mode with a vsync attempt, then without; return (surface, flags)."""
+    _current_w, _current_h = w, h
+    _current_fullscreen, _current_vsync = fullscreen, vsync
+    if fullscreen:
+        _umschalten(w, h, True)
+    return schirm
+
+
+def _versuche_modus(size, flags, vsync: bool):
+    """set_mode mit V-Sync versuchen, dann ohne. ``None``, wenn beides scheitert."""
+    for kwargs in ({"vsync": 1 if vsync else 0}, {}):
         try:
-            return pygame.display.set_mode(size, flags, vsync=int(vsync)), flags
+            return pygame.display.set_mode(size, flags, **kwargs)
         except Exception:
-            try:
-                return pygame.display.set_mode(size, flags), flags
-            except Exception:
-                return None, flags
-
-    screen, flags_target = _try_modes((w_target, h_target), flags_target)
-    if screen is None:
-        # SCALED unavailable (old/odd driver): fall back to a plain window /
-        # raw fullscreen. blit_to_window/scale_pos handle the non-logical
-        # surface via their CPU-scaling path.
-        fallback = pygame.FULLSCREEN if fullscreen else pygame.RESIZABLE
-        screen, flags_target = _try_modes((w, h), fallback)
-        if screen is None:
-            screen = pygame.display.set_mode((0, 0), fallback)
-            flags_target = fallback
-
-    # Cache the active configuration (surface size drives blit/scale_pos).
-    _current_w, _current_h = screen.get_size()
-    _current_flags = flags_target
-    _current_vsync = vsync_target
-
-    _win_w, _win_h = _current_w, _current_h
-    return screen
+            continue
+    return None
 
 
-def _set_window_size(w: int, h: int) -> bool:
-    """Resize the OS window in place (logical surface unchanged). True on success.
+def _fenster():
+    """Das Fensterobjekt hinter der Anzeige, oder ``None``.
 
-    Dragging a window edge fires a resize event per mouse move, so this path has
-    to be cheap. Recreating the display (pygame.display.quit() + set_mode()) per
-    event would flicker and is exactly the call sequence prone to freezing SDL2
-    on Windows. The Window object resizes the existing window without a rebuild.
+    Die Warnung wird unterdrueckt: ``from_display_module`` mahnt zur
+    Flaechenzeichnung ueber ``Window.get_surface``, und genau die benutzt
+    dieses Spiel nicht mehr — es zeichnet mit OpenGL. Ohne das Unterdruecken
+    steht die Mahnung mehrmals je Bild im Protokoll.
     """
+    global _fensterobjekt
+    if _fensterobjekt is not None:
+        return _fensterobjekt
     try:
+        import warnings
         from pygame.window import Window
-        Window.from_display_module().size = (w, h)
-        return True
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            _fensterobjekt = Window.from_display_module()
     except Exception:
-        return False
+        return None
+    return _fensterobjekt
+
+
+def _umschalten(w: int, h: int, fullscreen: bool) -> None:
+    """Größe und Vollbild ändern, **ohne** ``set_mode``.
+
+    Der OpenGL-Kontext hängt am Fenster. Ein neues ``set_mode`` erzeugt ein
+    neues Fenster und wirft den Kontext weg; über die Window-API bleibt beides
+    erhalten.
+    """
+    fenster = _fenster()
+    if fenster is None:                              # pragma: no cover - alte pygame
+        return
+    try:
+        if fullscreen:
+            fenster.set_fullscreen(desktop=True)
+        else:
+            fenster.set_windowed()
+            fenster.size = (w, h)
+    except Exception:                                # pragma: no cover - Treiber
+        pass
 
 
 def _window_size() -> tuple[int, int] | None:
-    """Actual OS window size, or None if the Window API is unavailable.
-
-    Needed because under SCALED the display surface is always VIRT_W×VIRT_H, so
-    the surface size no longer tells us how big the window is on screen."""
+    """Tatsächliche Fenstergröße, oder ``None`` ohne Window-API."""
+    fenster = _fenster()
+    if fenster is None:
+        return None
     try:
-        from pygame.window import Window
-        sz = Window.from_display_module().size
-        return (int(sz[0]), int(sz[1]))
+        groesse = fenster.size
+        return (int(groesse[0]), int(groesse[1]))
     except Exception:
         return None
+
+
+def _fenstergroesse() -> tuple[int, int]:
+    """Fenstergröße in Bildpunkten. Grundlage für Briefkasten und Maus."""
+    groesse = _window_size()
+    if groesse is not None and groesse[0] > 0 and groesse[1] > 0:
+        return groesse
+    flaeche = pygame.display.get_surface()
+    if flaeche is not None:
+        return flaeche.get_size()
+    return (VIRT_W, VIRT_H)
 
 
 def handle_window_event(event) -> bool:
     """React to native window-manager events (maximize / manual resize).
 
-    The window is created with pygame.RESIZABLE (see apply_settings()) purely
-    so Windows enables the titlebar maximize button - free-form resizing
-    itself is not a supported feature of this game. This function redirects
-    that button into the real fullscreen mode instead of a maximized window,
-    and snaps any manual edge-drag resize back to the configured resolution.
+    Das Fenster ist ``RESIZABLE``, damit Windows den Maximieren-Knopf anbietet;
+    freies Ziehen am Rand ist keine Funktion des Spiels. Der Knopf führt in
+    echtes Vollbild, gezogene Größen schnappen zurück.
 
     Returns True if the display was reconfigured.
     """
-    global _suppress_resize, _current_w, _current_h, _current_flags, _current_vsync
+    global _suppress_resize
 
     if event.type == pygame.WINDOWMAXIMIZED:
-        # Already fullscreen - e.g. a trailing/duplicate event right after we
-        # just switched. Ignore it: re-running apply_settings() here would
-        # risk the SDL2 freeze noted above, for no benefit.
-        if _current_flags is not None and (_current_flags & pygame.FULLSCREEN):
+        if _current_fullscreen:
             return False
-
         from src.core import profile
         p = profile.current()
         p.fullscreen = True
@@ -249,32 +386,15 @@ def handle_window_event(event) -> bool:
         return True
 
     if event.type in (pygame.WINDOWRESIZED, pygame.WINDOWSIZECHANGED):
-        # Fullscreen doesn't need snapping back, and re-entering apply_settings
-        # here could re-trigger the SDL2 freeze mentioned above.
-        if _current_flags is not None and (_current_flags & pygame.FULLSCREEN):
+        if _current_fullscreen:
             return False
-        # Ignore the event we ourselves caused while restoring the size below.
-        if _suppress_resize:
+        if _suppress_resize or _current_w is None:
             return False
-        if _current_w is None:
+        if _window_size() == (_current_w, _current_h):
             return False
-
-        # Compare the real OS window size (under SCALED the surface stays at the
-        # logical size, so it can't tell us the window drifted) against the
-        # configured logical size.
-        cur = _window_size()
-        if cur is None or cur == (_current_w, _current_h):
-            return False
-
         _suppress_resize = True
         try:
-            if not _set_window_size(_current_w, _current_h):
-                # No Window API: full rebuild at the chosen size. Clear the
-                # cache so apply_settings doesn't short-circuit.
-                _current_w = _current_h = _current_flags = _current_vsync = None
-                from src.core import profile
-                p = profile.current()
-                apply_settings(resolution=p.resolution, fullscreen=p.fullscreen, vsync=p.vsync)
+            _umschalten(_current_w, _current_h, False)
         finally:
             _suppress_resize = False
         return True
@@ -282,34 +402,29 @@ def handle_window_event(event) -> bool:
     return False
 
 
-def blit_to_window(window: pygame.Surface) -> None:
-    """Scale the virtual 1920×1080 surface onto the window and flip."""
-    act_win = pygame.display.get_surface() or window
-    virt = virtual_surface()
-    ws, hs = act_win.get_size()
-    if ws == VIRT_W and hs == VIRT_H:
-        act_win.blit(virt, (0, 0))
-        return
-    # Texture quality drives the per-frame scaler: "Hoch" = smoothscale
-    # (bilinear, 5-10 ms/frame), "Niedrig" = nearest scale (~10x faster).
-    from src.core import profile
-    if getattr(profile.current(), "texture_quality", "Hoch") == "Hoch":
-        pygame.transform.smoothscale(virt, (ws, hs), act_win)
-    else:
-        pygame.transform.scale(virt, (ws, hs), act_win)
+# ---------------------------------------------------------------------------
+# Mauskoordinaten
+# ---------------------------------------------------------------------------
+
+def _abbildung() -> tuple[int, int, float, float] | None:
+    """Versatz und Maßstab vom Fenster in die virtuelle Fläche.
+
+    ``None``, wenn das Fenster genau die virtuelle Auflösung hat — dann ist
+    nichts zu rechnen.
+    """
+    x, y, b, h = ansichtsfenster(_fenstergroesse())
+    if (x, y, b, h) == (0, 0, VIRT_W, VIRT_H):
+        return None
+    return (x, y, VIRT_W / b, VIRT_H / h)
 
 
 def scale_pos(pos: tuple[int, int]) -> tuple[int, int]:
     """Convert window-space coordinates to virtual (1920×1080) coordinates."""
-    act_win = pygame.display.get_surface()
-    if act_win is None:
+    abb = _abbildung()
+    if abb is None:
         return pos
-    ww, wh = act_win.get_size()
-    if ww == VIRT_W and wh == VIRT_H:
-        return pos
-    sx = VIRT_W / ww
-    sy = VIRT_H / wh
-    return (int(pos[0] * sx), int(pos[1] * sy))
+    x, y, sx, sy = abb
+    return (int((pos[0] - x) * sx), int((pos[1] - y) * sy))
 
 
 def mouse_pos() -> tuple[int, int]:
@@ -327,21 +442,15 @@ def remap_mouse_events(events: list[pygame.event.Event]) -> list[pygame.event.Ev
     Only MOUSEBUTTONDOWN, MOUSEBUTTONUP and MOUSEMOTION are remapped; all
     others (e.g. MOUSEWHEEL, which carries no position) are returned unchanged.
     """
-    act_win = pygame.display.get_surface()
-    if act_win is None:
+    abb = _abbildung()
+    if abb is None:
         return events
-    ww, wh = act_win.get_size()
-    if ww == VIRT_W and wh == VIRT_H:
-        return events   # No remapping needed at native resolution
+    x, y, sx, sy = abb
 
     out: list[pygame.event.Event] = []
     for e in events:
         if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-            # Scale pos
-            sx = VIRT_W / ww
-            sy = VIRT_H / wh
-            vpos = (int(e.pos[0] * sx), int(e.pos[1] * sy))
-            
+            vpos = (int((e.pos[0] - x) * sx), int((e.pos[1] - y) * sy))
             attrs = {k: getattr(e, k) for k in e.__dict__ if k != "pos"}
             attrs["pos"] = vpos
             if e.type == pygame.MOUSEMOTION:
@@ -365,4 +474,4 @@ def resolution_str_to_label(res_str: str) -> str:
 
 def current_win_size() -> tuple[int, int]:
     """Return the current window (physical) size."""
-    return _win_w, _win_h
+    return _fenstergroesse()

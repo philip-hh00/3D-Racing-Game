@@ -184,13 +184,15 @@ class GameManager:
                 input_mode.update(dt)
                 self.state_machine.update(dt)
 
-                # Render into the fixed 1920x1080 virtual surface, then scale to window.
+                # Ein Bild: erst die Puffer leeren, dann zeichnet der
+                # Zustand die Welt in OpenGL und HUD, Menues und Minimap auf
+                # die virtuelle Flaeche. bild_abschliessen legt sie als Textur
+                # darueber und zeigt das Bild.
+                display.bild_beginnen()
                 virt = display.virtual_surface()
                 self.state_machine.render(virt)
                 gamepad.draw_notifications(virt, dt)
-                display.blit_to_window(self.screen)
-
-                pygame.display.flip()
+                display.bild_abschliessen()
 
         except Exception:
             # Ensure current state gets a chance to clean up before crash handler takes over
