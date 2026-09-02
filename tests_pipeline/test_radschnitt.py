@@ -352,3 +352,207 @@ def test_bericht_nennt_die_dreiecke_je_teil():
     text = zerlegt.text()
     assert "Karosserie" in text
     assert "rad_vl" in text
+
+
+# --------------------------------------------------------------------------
+# Rotationssymmetrie: was sich nicht rund um die Querachse dreht, ist keine
+# Radgeometrie.
+# --------------------------------------------------------------------------
+
+def test_winkelabdeckung_bei_gleichmaessiger_verteilung():
+    """Von Hand gerechnet: vier Winkel, vier Klassen, alle besetzt."""
+    winkel = np.array([0.0, np.pi / 2, np.pi, -np.pi / 2])
+    assert radschnitt.winkelabdeckung(winkel, klassen=4) == pytest.approx(1.0)
+
+
+def test_winkelabdeckung_bei_luecken():
+    """Dieselben vier Winkel in acht Klassen: jede zweite bleibt leer."""
+    winkel = np.array([0.0, np.pi / 2, np.pi, -np.pi / 2])
+    assert radschnitt.winkelabdeckung(winkel, klassen=8) == pytest.approx(0.5)
+
+
+def test_winkelabdeckung_zaehlt_klassen_und_nicht_dreiecke():
+    """Hundert Dreiecke in derselben Klasse sind eine Klasse."""
+    winkel = np.full(100, 0.05)
+    assert radschnitt.winkelabdeckung(winkel, klassen=36) == pytest.approx(1 / 36)
+
+
+def test_winkelabdeckung_ohne_dreiecke():
+    assert radschnitt.winkelabdeckung(np.zeros(0), klassen=36) == 0.0
+
+
+def _rad_um_y(radius=0.325, breite=0.20, mitte=(0.0, 0.0, 0.0), feinheit=0.015):
+    """Ein Rad als Rotationskoerper um die Querachse, fein genug vernetzt.
+
+    Fein vernetzt, weil die Messung in Radiusringen rechnet: ein grob
+    aufgeloester Zylinder legt alle Deckel-Dreiecke auf denselben Radius und
+    laesst die Ringe dazwischen leer.
+    """
+    rad = trimesh.creation.cylinder(radius=radius, height=breite, sections=96)
+    rad.apply_transform(trimesh.transformations.rotation_matrix(np.pi / 2, (1, 0, 0)))
+    rad = rad.subdivide_to_size(feinheit)
+    rad.apply_translation(mitte)
+    return rad
+
+
+def _teile(mesh):
+    return mesh.triangles_center, mesh.area_faces
+
+
+def test_aufgesetzter_bogen_verschwindet():
+    """Der Kotfluegel deckt nur den oberen Bogen ab - ein Rad deckt alles ab.
+
+    Genau das sieht der Nutzer: was sich unrund dreht, ist das Stueck, das
+    nicht rotationssymmetrisch ist.
+    """
+    radius = 0.325
+    rad = _rad_um_y(radius=radius)
+    # Ein Bogen ueber 120 Grad, knapp ausserhalb der Lauflaeche.
+    winkel = np.linspace(np.deg2rad(30), np.deg2rad(150), 40)
+    ring = []
+    for r in (radius * 1.02, radius * 1.14):
+        ring.append(np.column_stack([r * np.cos(winkel),
+                                     np.zeros_like(winkel),
+                                     r * np.sin(winkel)]))
+    ecken = np.vstack([ring[0], ring[1]])
+    n = len(winkel)
+    dreiecke = []
+    for i in range(n - 1):
+        dreiecke += [[i, i + 1, n + i], [i + 1, n + i + 1, n + i]]
+    bogen = trimesh.Trimesh(vertices=ecken, faces=np.array(dreiecke), process=False)
+    bogen = bogen.subdivide_to_size(0.015)
+
+    ganz = trimesh.util.concatenate([rad, bogen])
+    mitten, flaechen = _teile(ganz)
+    behalten = radschnitt.rotationskoerper(mitten, flaechen, (0, 0, 0), radius)
+
+    vom_rad = np.zeros(len(ganz.faces), dtype=bool)
+    vom_rad[:len(rad.faces)] = True
+    assert behalten[vom_rad].mean() > 0.98, "das Rad muss vollstaendig bleiben"
+    assert behalten[~vom_rad].mean() < 0.05, "der Bogen muss verschwinden"
+
+
+def test_speichen_bleiben():
+    """Eine Felge mit fuenf Speichen hat innen naturgemaess Luecken.
+
+    Der Abdeckungstest darf sie nicht als Fremdkoerper lesen - sonst bleibt
+    von der Felge ein leerer Ring uebrig.
+    """
+    radius = 0.325
+    rad = _rad_um_y(radius=radius)
+    speichen = []
+    for i in range(5):
+        a = 2 * np.pi * i / 5
+        s = trimesh.creation.box(extents=(0.42 * radius, 0.06, 0.05))
+        s.apply_transform(trimesh.transformations.rotation_matrix(a, (0, 1, 0)))
+        mitte = 0.36 * radius
+        s.apply_translation((mitte * np.cos(a), 0.0, mitte * np.sin(a)))
+        speichen.append(s.subdivide_to_size(0.02))
+
+    ganz = trimesh.util.concatenate([rad] + speichen)
+    mitten, flaechen = _teile(ganz)
+    behalten = radschnitt.rotationskoerper(mitten, flaechen, (0, 0, 0), radius)
+
+    speiche = np.zeros(len(ganz.faces), dtype=bool)
+    speiche[len(rad.faces):] = True
+    assert behalten[speiche].mean() > 0.95, "die Speichen muessen bleiben"
+
+
+def test_querlenker_verschwindet():
+    """Ein Aufhaengungsteil sitzt bei einem einzigen Winkel - und zwar
+    innerhalb des Radradius, wo kein Schnittradius der Welt es fasst."""
+    radius = 0.325
+    rad = _rad_um_y(radius=radius)
+    # Ganz zwischen Speichenbereich und Lauflaeche, also dort, wo der Reifen
+    # selbst rundum Material hat: kein Schnittradius kann ihn fassen.
+    #
+    # Die Groesse ist am rookie abgenommen und nicht gegriffen: der Radlaufbogen,
+    # der dort mitgeschnitten wurde, bringt in seiner Winkelklasse rund das
+    # Achtfache der Flaeche mit, die die Nachbarklassen desselben Rings tragen.
+    stab = trimesh.creation.box(extents=(0.12, 0.10, 0.10))
+    stab.apply_transform(trimesh.transformations.rotation_matrix(np.deg2rad(35), (0, 1, 0)))
+    mitte = 0.82 * radius
+    stab.apply_translation((mitte * np.cos(np.deg2rad(-35)), 0.0,
+                            mitte * np.sin(np.deg2rad(-35))))
+
+    ganz = trimesh.util.concatenate([rad, stab])
+    mitten, flaechen = _teile(ganz)
+    behalten = radschnitt.rotationskoerper(mitten, flaechen, (0, 0, 0), radius)
+
+    vom_stab = np.zeros(len(ganz.faces), dtype=bool)
+    vom_stab[len(rad.faces):] = True
+    assert behalten[~vom_stab].mean() > 0.95, "das Rad muss bleiben"
+    assert behalten[vom_stab].mean() < 0.35, "der Querlenker muss verschwinden"
+
+
+def test_rotationskoerper_laesst_ein_sauberes_rad_in_ruhe():
+    radius = 0.325
+    rad = _rad_um_y(radius=radius)
+    mitten, flaechen = _teile(rad)
+    behalten = radschnitt.rotationskoerper(mitten, flaechen, (0, 0, 0), radius)
+    assert behalten.mean() > 0.99
+
+
+def _aussenradius(mesh_oder_mitten, auswahl=None, klassen=36):
+    """Aussenradius je Winkelklasse in der X-Z-Ebene, um den Ursprung.
+
+    Das 99. Perzentil statt des Maximums: ein einzelnes langes Splitterdreieck
+    soll die Kennzahl nicht bestimmen.
+    """
+    m = np.asarray(mesh_oder_mitten)
+    if auswahl is not None:
+        m = m[auswahl]
+    r = np.hypot(m[:, 0], m[:, 2])
+    th = np.arctan2(m[:, 2], m[:, 0])
+    kl = np.floor((th + np.pi) / (2 * np.pi) * klassen).astype(int) % klassen
+    werte = {}
+    for k in range(klassen):
+        s = kl == k
+        if s.sum() >= 3:
+            werte[k] = float(np.quantile(r[s], 0.99))
+    return werte
+
+
+def test_feine_naht_kostet_die_lauflaeche_nicht():
+    """Der Fehler, der beim ersten Anlauf ein Loch in den Reifen geschnitten hat.
+
+    Die Naht zwischen Karosserie und Rad ist bei TRELLIS viel feiner vernetzt
+    als das Rad selbst. Sie loest den Mengentest aus - und wer daraufhin die
+    ganze Winkelklasse verwirft, nimmt die Lauflaeche darunter mit. Am rookie
+    fiel der Aussenradius eines Rades dadurch von 0,293 auf 0,194 m: ein Keil
+    von 10 cm Tiefe, der sich genauso unrund dreht wie ein Kotfluegelzipfel.
+    """
+    radius = 0.325
+    rad = _rad_um_y(radius=radius)
+
+    # Ein Bogen ueber 120 Grad, der auf der Lauflaeche aufsitzt und dort
+    # absichtlich zehnmal feiner vernetzt ist als das Rad.
+    winkel = np.linspace(np.deg2rad(30), np.deg2rad(150), 40)
+    ring = [np.column_stack([r * np.cos(winkel), np.zeros_like(winkel),
+                             r * np.sin(winkel)])
+            for r in (radius * 0.86, radius * 1.02)]
+    ecken = np.vstack(ring)
+    n = len(winkel)
+    dreiecke = []
+    for i in range(n - 1):
+        dreiecke += [[i, i + 1, n + i], [i + 1, n + i + 1, n + i]]
+    naht = trimesh.Trimesh(vertices=ecken, faces=np.array(dreiecke), process=False)
+    naht = naht.subdivide_to_size(0.0015)
+
+    ganz = trimesh.util.concatenate([rad, naht])
+    mitten, flaechen = _teile(ganz)
+    vom_rad = np.zeros(len(ganz.faces), dtype=bool)
+    vom_rad[:len(rad.faces)] = True
+    assert (~vom_rad).sum() > 10 * vom_rad.sum() / 36, \
+        "Vorbedingung: die Naht muss den Mengentest ueberhaupt ausloesen"
+
+    behalten = radschnitt.rotationskoerper(mitten, flaechen, (0, 0, 0), radius)
+
+    assert behalten[~vom_rad].mean() < 0.10, "die Naht muss verschwinden"
+
+    ohne = _aussenradius(mitten, vom_rad)
+    mit = _aussenradius(mitten, vom_rad & behalten)
+    assert set(mit) == set(ohne), "keine Winkelklasse des Rades darf leerlaufen"
+    schlimmster = min(mit[k] - ohne[k] for k in ohne)
+    assert schlimmster > -0.01, \
+        f"Rad verliert {schlimmster * 100:.1f} cm Aussenradius"

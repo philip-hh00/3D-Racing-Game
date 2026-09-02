@@ -16,9 +16,16 @@ Nabenpositionen ergeben sich aus Radstand, Breite und Raddurchmesser
 unzuverlaessig - Radlauf und Reifen sind eine durchgehende Flaeche ohne
 Trennkante.
 
+**Was drinbleibt, entscheidet die Rotationssymmetrie.** Ein Rad ist ein
+Rotationskoerper um seine Querachse; ein Kotfluegelbogen deckt nur einen Bogen
+ab, ein Querlenker sitzt bei einem einzigen Winkel. Der Zylinderschnitt kennt
+diesen Unterschied nicht, der Fahrer sieht ihn sofort - was sich unrund dreht,
+ist das, was nicht rotationssymmetrisch ist (:func:`rotationskoerper`).
+
 Was der Schnitt nicht leisten kann:
 
-* Er ist nicht chirurgisch. Ein Stueck Radlauf wandert mit dem Rad mit.
+* Er ist nicht chirurgisch. Was innerhalb des Radradius rundum sitzt und dabei
+  nicht mehr Netz mitbringt als der Reifen selbst, bleibt am Rad.
 * Die Innenseite des Rades hat TRELLIS nie gesehen und daher nicht modelliert.
   Die Schnittflaeche wird geschlossen, damit man beim Lenken nicht hineinsieht.
 * In der Karosserie bleibt ein Loch, verdeckt vom Rad selbst.
@@ -260,6 +267,219 @@ def _groesste_gruppe(auswahl: np.ndarray, adjazenz: np.ndarray) -> np.ndarray:
     return verkleinert
 
 
+#: Wieviele Winkelklassen die Rotationsprobe unterscheidet. 36 Klassen sind
+#: 10 Grad breit - fein genug, dass ein Querlenker in eine eigene Klasse faellt,
+#: grob genug, dass die Lauflaeche eines Rades jede Klasse besetzt. Mit 72
+#: Klassen aendert sich am rookie nichts Wesentliches (Abdeckung je Ring
+#: durchweg um weniger als 0,05 verschieden), mit 24 verschwimmen schmale
+#: Anbauteile in der Nachbarschaft des Reifens.
+WINKEL_KLASSEN = 36
+
+#: Breite eines Radiusrings, als Anteil des Radradius. Bei 0,325 m sind das
+#: 3,3 cm. Feinere Ringe (0,05) waren am rookie unbrauchbar: das Netz hat dort,
+#: wo der Kotfluegel den Reifen verdeckt, echte Loecher, und in schmalen Ringen
+#: reisst die Abdeckung dann mitten im Reifen ein.
+RING_ANTEIL = 0.10
+
+#: Ab welcher Winkelabdeckung ein Ring noch als Rotationskoerper durchgeht.
+#:
+#: Der naheliegende Wert 0,9 ist am echten Modell gescheitert. TRELLIS hat die
+#: vom Kotfluegel verdeckte Oberseite des Reifens nie gesehen und deshalb nicht
+#: modelliert; am rookie faellt die Abdeckung deswegen *innerhalb* des Reifens
+#: auf 0,69 bis 0,81 - an einem der vier Raeder in allen Ringen zwischen 0,65
+#: und 0,90 des Radius. Mit 0,9 waere der Schnitt bei 0,65 Radius gelandet und
+#: haette aus einem 65-cm-Rad eine 42-cm-Scheibe gemacht.
+#:
+#: 0,6 laesst das Rad in Ruhe und faellt trotzdem jeden Bogen, der weniger als
+#: 216 Grad abdeckt - ein Kotfluegelbogen deckt rund 120 Grad ab.
+ABDECKUNG_SCHWELLE = 0.60
+
+#: Bis zu welchem Anteil des Radradius nichts verworfen wird. Eine Felge mit
+#: fuenf Speichen hat im inneren Bereich naturgemaess Luecken; jeder
+#: Abdeckungstest liest sie als Fremdkoerper. Am rookie liegt die Felgenschuessel
+#: innerhalb von 0,6 des Radius, die Lauflaeche ab 0,9 - dazwischen ist Platz.
+SPEICHEN_ANTEIL = 0.60
+
+#: Um welchen Faktor eine Winkelklasse den Ringdurchschnitt uebersteigen darf,
+#: bevor sie als Fremdkoerper gilt.
+#:
+#: Der Abdeckungstest allein trennt am rookie nichts: Radlauf und Aufhaengung
+#: sitzen *innerhalb* des Reifenradius, in Ringen, die der Reifen selbst schon
+#: rundum besetzt. Was sie verraet, ist die Menge. Ein Rotationskoerper traegt
+#: in jeder Winkelklasse eines Rings gleich viel Netz; am rookie sitzen im Ring
+#: zwischen 0,8 und 0,95 des Radius bei einer einzigen Winkelklasse 9.055
+#: Dreiecke, waehrend die meisten Nachbarklassen unter 300 bleiben - das ist der
+#: Radlaufbogen des Hinterkotfluegels, nachgemessen bei x -1,49 bis -1,36 m
+#: und z 0,455 bis 0,582 m, also oben hinter der Nabe.
+#:
+#: Gemessen wird in zwei Waehrungen, weil ein Fremdkoerper sich auf zwei Arten
+#: zeigt: die Naht zwischen Karosserie und Rad zerfaellt bei TRELLIS in
+#: tausende Splitterdreiecke (Anzahl), ein grob vernetzter Querlenker bringt
+#: wenige, dafuer grosse Dreiecke mit (Flaeche).
+#:
+#: Faktor 4 liegt in der Mitte eines flachen Feldes. Seit aus einer
+#: ueberzaehligen Klasse nur noch die Splitter fallen und nicht die ganze
+#: Klasse, ist der Wert unkritisch: zwischen 2 und 6 aendert sich am rookie am
+#: Aussenradius der vier Raeder gar nichts (Minimum -0,3 bis -0,4 cm, Maximum
+#: durchweg -0,9 cm), und die Streuung der Dreieckszahlen wandert nur zwischen
+#: 8,9 und 12,5 Prozent. Was der Faktor noch entscheidet, ist allein, wieviel
+#: Naht ungeschoren davonkommt.
+WINKEL_HOECHSTFAKTOR = 4.0
+
+#: Wieviele Dreiecke eine Winkelklasse mindestens haben muss, bevor sie
+#: ueberzaehlig heissen darf. Ohne diese Untergrenze wirft ein duenn besetzter
+#: Ring, dessen Mittelwert bei einem Dreieck liegt, schon bei fuenf Dreiecken.
+WINKEL_MINDESTZAHL = 8
+
+#: Unterhalb welchen Anteils der Bezugsgroesse ein Dreieck als Splitter gilt.
+#:
+#: Eine ueberzaehlige Winkelklasse ganz zu verwerfen war der Fehler des ersten
+#: Anlaufs: in der Klasse liegt nicht nur die Naht, sondern auch die Lauflaeche
+#: darunter. Am rookie fiel der Aussenradius eines Rades dadurch von 0,293 auf
+#: 0,194 m - ein Keil von 10 cm Tiefe, der sich genauso unrund dreht wie der
+#: Kotfluegelzipfel, den er ersetzt hat.
+#:
+#: Ueberzaehlig macht die Klasse nicht die Lauflaeche, sondern die Naht, und die
+#: ist am Dreieck zu erkennen: das Netz zerfaellt dort in Splitter. Am rookie
+#: tragen die Dreiecke unter 0,2 der Bezugsgroesse zwar 30 bis 50 Prozent der
+#: Dreiecke eines Rades, aber nur 2,3 bis 3,9 Prozent seiner Oberflaeche. Bei
+#: 0,5 waeren es schon 7 bis 14 Prozent - dann faengt der Schnitt an, sichtbare
+#: Flaeche zu kosten.
+SPLITTER_ANTEIL = 0.20
+
+#: Ab welchem Vielfachen der Bezugsgroesse ein Dreieck als Brocken gilt.
+#:
+#: Die Gegenrichtung: ein grob vernetzter Querlenker macht seine Winkelklasse
+#: nicht ueber die Anzahl ueberzaehlig, sondern ueber die Flaeche, und seine
+#: Dreiecke sind groesser als die des Rades, nicht kleiner. Am rookie sind nur
+#: 0,04 bis 0,41 Prozent der Raddreiecke groesser als das Vierfache der
+#: Bezugsgroesse - die Grenze schneidet dort also nichts weg, was zum Rad
+#: gehoert.
+BROCKEN_FAKTOR = 4.0
+
+
+def bezugsgroesse(flaechen: np.ndarray) -> float:
+    """Die Dreiecksgroesse, bei der die halbe Oberflaeche des Rades liegt.
+
+    Nicht der gewoehnliche Median: am rookie besteht ein Rad zu 61 Prozent aus
+    Splitterdreiecken, sein Median liegt deshalb bei 1,33 mm2 - der Splitter
+    waere sein eigener Massstab. Nach Flaeche gewichtet kommen die vier Raeder
+    dagegen auf 66,6 bis 77,2 mm2 und damit auf dieselbe Zahl, obwohl ihre
+    Dreieckszahlen um die Haelfte auseinanderliegen. Das ist die Vernetzung,
+    die das Rad wirklich hat.
+    """
+    flaechen = np.asarray(flaechen, dtype=np.float64).ravel()
+    if flaechen.size == 0:
+        return 0.0
+    sortiert = np.sort(flaechen)
+    summe = np.cumsum(sortiert)
+    if summe[-1] <= 0.0:
+        return 0.0
+    return float(sortiert[np.searchsorted(summe, summe[-1] / 2.0)])
+
+
+def winkelabdeckung(winkel: np.ndarray, klassen: int = WINKEL_KLASSEN) -> float:
+    """Anteil der Winkelklassen, in denen ueberhaupt ein Dreieck liegt.
+
+    Gezaehlt werden Klassen, nicht Dreiecke: hundert Dreiecke an derselben
+    Stelle sind eine Stelle. Genau darum geht es - ein Rad deckt jeden Winkel
+    ab, ein Kotfluegelbogen nur seinen eigenen.
+    """
+    winkel = np.asarray(winkel, dtype=np.float64).ravel()
+    if winkel.size == 0:
+        return 0.0
+    klasse = np.floor((winkel + np.pi) / (2 * np.pi) * klassen).astype(np.int64)
+    return float(np.unique(klasse % klassen).size) / float(klassen)
+
+
+def rotationskoerper(mitten: np.ndarray, flaechen: np.ndarray, nabe,
+                     radius: float,
+                     klassen: int = WINKEL_KLASSEN) -> np.ndarray:
+    """Welche Dreiecke einer Grobauswahl wirklich zum Rad gehoeren.
+
+    **Ein Rad ist ein Rotationskoerper um seine Querachse.** Das ist der
+    Unterschied, den der Zylinderschnitt nicht kennt und den der Nutzer beim
+    Fahren sieht: was sich unrund dreht, ist das, was nicht rotationssymmetrisch
+    ist. Der Kotfluegelbogen deckt nur den oberen Bogen ab, ein Querlenker sitzt
+    bei einem einzigen Winkel.
+
+    Gemessen wird in Polarkoordinaten um die Nabe in der X-Z-Ebene, in
+    Radiusringen und Winkelklassen. Zwei Befunde fuehren zum Verwerfen:
+
+    * Ein **Ring**, dessen Winkelabdeckung unter :data:`ABDECKUNG_SCHWELLE`
+      liegt, ist kein Ring eines Rotationskoerpers. Der aeusserste Ring, der die
+      Schwelle haelt, ist zugleich der Schnittradius - alles darueber faellt.
+    * Eine **Winkelklasse**, die um mehr als :data:`WINKEL_HOECHSTFAKTOR` ueber
+      dem Ringdurchschnitt liegt, traegt Fremdmaterial. Das faengt die Teile,
+      die innerhalb des Radradius sitzen und die kein Schnittradius je erwischt.
+
+    Aus einer ueberzaehligen Klasse faellt aber **nicht alles**, sondern nur das,
+    was sie ueberzaehlig macht: Splitter und Brocken, gemessen an der
+    :func:`bezugsgroesse` des Rades. Die Lauflaeche darunter hat die normale
+    Dreiecksgroesse des Rades und bleibt stehen - sonst schneidet die Probe ein
+    Loch in den Reifen, und das dreht sich genauso unrund wie ein Kotfluegel.
+
+    Innerhalb von :data:`SPEICHEN_ANTEIL` des Radius wird nichts verworfen:
+    dort hat eine Felge naturgemaess Luecken zwischen den Speichen.
+    """
+    mitten = np.asarray(mitten, dtype=np.float64)
+    flaechen = np.asarray(flaechen, dtype=np.float64)
+    behalten = np.ones(len(mitten), dtype=bool)
+    if len(mitten) == 0 or radius <= 0:
+        return behalten
+
+    hx, _, hz = nabe
+    r = np.hypot(mitten[:, 0] - hx, mitten[:, 2] - hz)
+    theta = np.arctan2(mitten[:, 2] - hz, mitten[:, 0] - hx)
+
+    ringbreite = RING_ANTEIL * radius
+    ring = np.floor(r / ringbreite).astype(np.int64)
+    klasse = (np.floor((theta + np.pi) / (2 * np.pi) * klassen)
+              .astype(np.int64) % klassen)
+
+    abdeckung = np.array([winkelabdeckung(theta[ring == k], klassen)
+                          for k in range(int(ring.max()) + 1)])
+    traegt = abdeckung >= ABDECKUNG_SCHWELLE
+
+    # Der Schnittradius ist der aeusserste tragende Ring - nicht der erste
+    # Abriss von innen. Ein Netz mit Loechern hat leere Ringe mitten im Rad
+    # (die verdeckte Reifenoberseite); von innen gezaehlt endete das Rad dort.
+    aussen = np.flatnonzero(traegt)
+    letzter = int(aussen[-1]) if aussen.size else -1
+    behalten &= (ring <= letzter) & traegt[ring]
+
+    # Der Massstab kommt aus dem, was der Ringtest uebrig gelassen hat: die
+    # Karosserieringe ausserhalb des Rades sollen die Dreiecksgroesse des Rades
+    # nicht mitbestimmen.
+    bezug = bezugsgroesse(flaechen[behalten])
+    fremd = ((flaechen < SPLITTER_ANTEIL * bezug)
+             | (flaechen > BROCKEN_FAKTOR * bezug)) if bezug > 0.0 else (
+        np.zeros(len(flaechen), dtype=bool))
+
+    for k in range(letzter + 1):
+        im_ring = (ring == k) & behalten
+        if not im_ring.any():
+            continue
+        zahl = np.bincount(klasse[im_ring], minlength=klassen)
+        flaeche = np.bincount(klasse[im_ring], weights=flaechen[im_ring],
+                              minlength=klassen)
+        besetzt = zahl > 0
+        # Ein duenn besetzter Ring hat keinen Durchschnitt, gegen den sich
+        # etwas vergleichen liesse.
+        if 2 * int(besetzt.sum()) < klassen:
+            continue
+        zuviel = zahl > max(float(np.median(zahl[besetzt])) * WINKEL_HOECHSTFAKTOR,
+                            WINKEL_MINDESTZAHL)
+        zuviel |= flaeche > float(np.median(flaeche[besetzt])) * WINKEL_HOECHSTFAKTOR
+        if zuviel.any():
+            behalten &= ~(im_ring & zuviel[klasse] & fremd)
+
+    # Innen bleibt alles stehen - sonst faellt die Felge zwischen ihren Speichen
+    # durch.
+    behalten |= r < SPEICHEN_ANTEIL * radius
+    return behalten
+
+
 #: Wie hoch ueber dem tiefsten Punkt noch als Aufstandsflaeche zaehlt, in
 #: Anteilen des Radradius. Schmal genug, dass nur der Reifen unten drin liegt.
 AUFSTAND_ANTEIL = 0.30
@@ -340,6 +560,7 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
     ``origin`` liefern.
     """
     mitten = mesh.triangles_center
+    flaechen = mesh.area_faces
     adjazenz = nachbarschaft(mesh)
 
     hinweise: list[str] = []
@@ -402,6 +623,23 @@ def schneiden(mesh: trimesh.Trimesh, soll: Fahrzeugmasse) -> Zerlegung:
         auswahl = _groesste_gruppe(auswahl, adjazenz)
         if auswahl.sum() < 12:
             auswahl = grob
+
+        # Zuletzt die Rotationsprobe. Sie kommt nach dem Zusammenhang und nicht
+        # davor: erst muss feststehen, welches Netz ueberhaupt am Rad haengt,
+        # sonst zerfaellt der Rest in Fetzen, aus denen die groesste Gruppe
+        # nicht mehr das Rad ist.
+        drin = np.flatnonzero(auswahl)
+        rund = rotationskoerper(mitten[drin], flaechen[drin], echte_nabe,
+                                reifenradius)
+        if int(rund.sum()) >= 12:
+            verworfen = int(drin.size - rund.sum())
+            auswahl = np.zeros_like(auswahl)
+            auswahl[drin[rund]] = True
+            if verworfen > drin.size * 0.05:
+                hinweise.append(
+                    f"{name}: {verworfen} Dreiecke nicht rotationssymmetrisch "
+                    f"({verworfen / drin.size * 100:.0f} %) - bei der Karosserie "
+                    f"gelassen")
 
         teile[name] = mesh.submesh([np.flatnonzero(auswahl)], append=True,
                                    repair=False)
