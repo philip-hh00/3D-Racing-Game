@@ -23,10 +23,9 @@ from typing import TYPE_CHECKING
 import pygame
 import pymunk
 
-from src.states.race_state import RaceState
+from src.states.race_state import RaceState, welt3d
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 from src.ai.difficulty import get_difficulty, save_difficulty, load_difficulty
-from src.utils.math_utils import to_pygame
 from src.core import keybindings as kb
 from src.core import display
 from src.ui import theme
@@ -485,7 +484,7 @@ class DevState(RaceState):
     def _aim_camera(self, dt: float) -> None:
         target = self._camera_target()
         if target and self.camera:
-            self.camera.follow(to_pygame(target.position, SCREEN_HEIGHT), max(dt, 1e-3))
+            self.camera.folgen(welt3d(target.position), target.angle, max(dt, 1e-3))
 
     def _respawn(self) -> None:
         starts = self.track.get_start_positions() if self.track else []
@@ -517,11 +516,21 @@ class DevState(RaceState):
     # Rendering
     # ------------------------------------------------------------------
 
+    #: Wohin ein Punkt gezeichnet wird, der hinter der Kamera liegt. Weit
+    #: genug ausserhalb, dass pygame ihn wegschneidet, statt ihn an den Rand
+    #: zu klemmen und dort eine Linie quer durchs Bild zu ziehen.
+    AUSSERHALB = (-10000, -10000)
+
     def _w2s(self, p: tuple[float, float]) -> tuple[int, int]:
-        """World (pymunk y-up) → screen, matching the vehicle/track pipeline."""
-        off = self.camera.offset
-        sx, sy = to_pygame(p, SCREEN_HEIGHT)
-        return (int(sx + off.x), int(sy + off.y))
+        """Weltpunkt (pymunk, y nach oben) auf die virtuelle Flaeche.
+
+        Im 2D-Weg war das ein Abzug des Kameraversatzes. Seit die Welt in 3D
+        gezeichnet wird, muss der Punkt durch dieselbe Projektion wie die
+        Strecke — sonst liegen die Wegpunkte des KI-Labors neben der Fahrbahn,
+        auf der sie liegen sollen.
+        """
+        bild = self.auf_bildschirm(p)
+        return bild if bild is not None else self.AUSSERHALB
 
     def render(self, screen: pygame.Surface) -> None:
         super().render(screen)  # track, cars, HUD

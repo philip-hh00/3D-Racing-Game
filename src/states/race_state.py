@@ -8,7 +8,7 @@ import pygame
 
 from src.states.base_state import BaseState
 from src.core.settings import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, DEBUG,
+    SCREEN_WIDTH, SCREEN_HEIGHT, DEBUG, M_PER_PX,
     AI_OPPONENT_COUNT, AI_DEFAULT_DIFFICULTY, AI_VEHICLE_KEYS,
 )
 from src.core.event_bus import EventBus
@@ -16,12 +16,9 @@ from src.physics.physics_world import PhysicsWorld
 from src.physics.collision_handler import CollisionHandler
 from src.net import payload
 from src.track.track import Track, TrackDataError
-from src.track.track_renderer import TrackRenderer
 from src.entities.player_vehicle import PlayerVehicle
 from src.entities.vehicle import VehicleConfig
-from src.core.camera import Camera
 from src.hud.hud import HUD
-from src.utils.math_utils import to_pygame
 from src.physics.checkpoint import Checkpoint
 from src.states.race_manager import RaceManager
 from src.core.i18n import tr
@@ -36,6 +33,37 @@ if TYPE_CHECKING:
 DNF_PENALTY = 30.0
 # Used when nobody finished at all, so the average stays a finite number.
 DNF_FALLBACK_TIME = 300.0
+
+# Die Rennwelt wird in 3D gezeichnet. Sichtfeld und Schnittebenen der
+# Verfolgerkamera - dieselben Werte wie in tools/fahrtest.py, an dem sie
+# eingestellt wurden.
+SICHTFELD_GRAD = 55.0
+NAHE_EBENE_M = 0.2
+FERNE_EBENE_M = 1200.0
+KAMERA_ABSTAND_M = 7.5
+KAMERA_HOEHE_M = 2.8
+KAMERA_ZIELHOEHE_M = 1.0
+
+# Kennung des Ghosts unter den Fahrzeugstaenden. Negativ, damit sie mit keiner
+# echten Fahrzeug-Id zusammenfaellt.
+GHOST_KENNUNG = -1
+
+# Obergrenze fuer den Weg, den ein Fahrzeug in einem Bild zurueckgelegt haben
+# kann. Ein Sprung - Ruecksetzen an den Start, eine verspaetete Netznachricht -
+# ist kein gefahrener Weg, und ohne Deckel wuerden sich die Raeder danach
+# einmal wild um sich selbst drehen.
+WEG_JE_BILD_HOECHSTENS_M = 20.0
+
+
+def welt3d(pos_px) -> tuple[float, float, float]:
+    """Eine Spielposition in Pixeln als Weltpunkt in Metern.
+
+    pymunk rechnet Y nach oben, die 3D-Welt auch — hier wird also **nicht**
+    gespiegelt. ``to_pygame`` in ``src/utils/math_utils.py`` gehoert zum
+    2D-Zeichnen, wo pygame Y nach unten zaehlt, und hat hier nichts verloren.
+    Genau dieser Griff hat in der Vorbereitung schon einmal Zeit gekostet.
+    """
+    return (pos_px[0] * M_PER_PX, pos_px[1] * M_PER_PX, 0.0)
 
 # Online: an AI that inherits a dropped player's car gets an id far outside the
 # regular 1..N range so it can never collide with a locally spawned vehicle.
@@ -110,11 +138,22 @@ class RaceState(BaseState):
         self.physics_world: PhysicsWorld | None = None
         self.collision_handler: CollisionHandler | None = None
         self.track: Track | None = None
-        self.track_renderer: TrackRenderer | None = None
         self.player: PlayerVehicle | None = None
         self.ai_vehicles: list[Any] = []
         self._line_geo = None
-        self.camera: Camera | None = None
+        #: Die 3D-Welt. ``None``, wenn kein OpenGL da ist (Testlauf) - dann
+        #: wird keine Welt gezeichnet, alles andere laeuft weiter.
+        self.szene = None
+        self.camera = None
+        self._kameras: list = []
+        #: Was in diesem Bild gezeichnet werden soll. In update() gefuellt,
+        #: in render() nur noch gelesen.
+        self._staende: list = []
+        #: Letzte Sicht als (mvp, ansichtsfenster, briefkasten). Nur fuer
+        #: Werkzeuge, die Weltpunkte auf den Bildschirm rechnen muessen -
+        #: das KI-Labor zeichnet seine Wegpunkte darueber.
+        self._letzte_sicht = None
+        self._ghost_letzte_pos: tuple[float, float] | None = None
         self.hud: HUD | None = None
         self.event_bus = EventBus()
         self.quit_requested: bool = False
@@ -198,7 +237,6 @@ class RaceState(BaseState):
             print(f"[RaceState] Strecke nicht ladbar: {exc}")
             self._load_failed = str(exc)
             return
-        self.track_renderer = TrackRenderer(self.track)
 
         # Create checkpoint sensor shapes
         self.checkpoints = []
@@ -415,17 +453,23 @@ class RaceState(BaseState):
             # Subscribe to checkpoint crossed for sector splits
             self.event_bus.subscribe("checkpoint_crossed", self._on_checkpoint_crossed_ghost)
 
-        # Cameras: one full-screen (single) or two half-width (splitscreen).
-        view_w = SCREEN_WIDTH // 2 if self._split else SCREEN_WIDTH
+        # Verfolgerkameras: eine je Mensch. Im Splitscreen bekommt jede ihre
+        # eigene Bildhaelfte, das Seitenverhaeltnis rechnet _welt_zeichnen aus.
+        from src.render3d import camera as kamera3d
         self._humans = [self.player] + ([self.player2] if self.player2 else [])
-        self._cameras = []
+        self._kameras = []
         for hp in self._humans:
-            cam = Camera(view_w=view_w, view_h=SCREEN_HEIGHT)
-            pg = to_pygame(hp.position, SCREEN_HEIGHT)
-            cam.x = pg[0] - view_w / 2
-            cam.y = pg[1] - SCREEN_HEIGHT / 2
-            self._cameras.append(cam)
-        self.camera = self._cameras[0]
+            kam = kamera3d.Verfolgerkamera(abstand_m=KAMERA_ABSTAND_M,
+                                           hoehe_m=KAMERA_HOEHE_M,
+                                           zielhoehe_m=KAMERA_ZIELHOEHE_M)
+            # Ohne Nachziehen: zum Start steht die Kamera schon hinter dem
+            # Auto und faehrt nicht erst von der Streckenmitte heran.
+            kam.setzen(welt3d(hp.position), hp.angle)
+            self._kameras.append(kam)
+        self.camera = self._kameras[0]
+        self._staende = []
+        self._ghost_letzte_pos = None
+        self._szene_aufbauen()
 
         # Erst hier: der Klang braucht _humans, und das steht ein paar Zeilen
         # weiter oben erst seit dem Kameraaufbau.
@@ -1327,9 +1371,13 @@ class RaceState(BaseState):
         self.physics_world = None
         self.collision_handler = None
         self.track = None
-        self.track_renderer = None
+        if self.szene is not None:
+            self.szene.freigeben()
+            self.szene = None
         self.player = None
         self.camera = None
+        self._kameras = []
+        self._staende = []
         self.hud = None
 
     def _starte_ausblenden(self, online_rows) -> None:
@@ -1956,7 +2004,7 @@ class RaceState(BaseState):
 
         countdown = self.race_manager and self.race_manager.state == "countdown"
         coasting = self._dnf_coast_timer > 0.0
-        for hp, cam in zip(self._humans, self._cameras):
+        for hp, cam in zip(self._humans, self._kameras):
             if coasting:
                 # Forced-DNF roll-out: no input, let friction bring it to rest.
                 hp.throttle, hp.brake_input, hp.steer_input = 0.0, 0.0, 0.0
@@ -1969,8 +2017,13 @@ class RaceState(BaseState):
             else:
                 hp.handle_input()   # read this human's input source
             hp.update(dt)
-            pg_pos = to_pygame(hp.position, SCREEN_HEIGHT)
-            cam.follow(pg_pos, dt)
+            cam.folgen(welt3d(hp.position), hp.angle, dt)
+
+        # Was in diesem Bild zu sehen ist, einmal je Bild einsammeln - nicht
+        # beim Zeichnen. Im Splitscreen wird zweimal gezeichnet, aber es
+        # vergeht nur einmal Zeit; die Raeder wuerden sonst doppelt so schnell
+        # drehen.
+        self._staende_fortschreiben(dt)
 
         # Online: remote cars (other humans + their AI ghosts) are not in the
         # local RaceManager — add them so "Position x/y" shows the real field size.
@@ -2079,20 +2132,171 @@ class RaceState(BaseState):
                 self._online_awaiting = False
                 self._starte_ausblenden(None)   # fallback: local results only
 
-    def _render_world(self, surface: pygame.Surface, camera) -> None:
-        """Draw track + all vehicles into *surface* using *camera*'s offset."""
-        offset = camera.offset
-        if self.track_renderer:
-            self.track_renderer.render(surface, offset)
-        for ai in self.ai_vehicles:
-            ai.render(surface, offset)
-        for rv in self._remote_vehicles:
-            rv.render(surface, offset)
-        for hp in self._humans:
-            hp.render(surface, offset)
-        if getattr(self, "ghost_player", None) and self.race_manager:
-            tracker = self.race_manager.lap_trackers[1]
-            self.ghost_player.draw(surface, tracker.current_lap_time, offset)
+    # ------------------------------------------------------------------
+    # Die Welt in 3D
+    # ------------------------------------------------------------------
+
+    def _szene_aufbauen(self) -> None:
+        """Streckennetz und Fahrzeugmodelle an OpenGL geben.
+
+        Ohne Kontext bleibt ``self.szene`` ``None``: dann wird keine Welt
+        gezeichnet und alles andere — Rennlogik, HUD, Minimap, KI, Netz —
+        laeuft weiter. Das ist der Testlauf ohne Fenster und kein Rueckfall
+        auf einen zweiten Zeichenweg.
+        """
+        self.szene = None
+        from src.core import display
+        if display.kontext() is None:
+            return
+        from src.core.paths import bundle_dir
+        from src.render3d import rennszene, track_mesh
+        try:
+            netz = track_mesh.aus_datei(self._track_path)
+            wurzel = bundle_dir()
+            self.szene = rennszene.Rennszene(
+                display.kontext(), netz,
+                modellordner=wurzel / "assets" / "vehicles",
+                korrektur_datei=wurzel / "trellis_import.json")
+        except Exception as fehler:
+            # Ein Fehler in der Darstellung darf kein Rennen kosten. Die
+            # Strecke laeuft weiter, man sieht sie nur nicht.
+            print(f"[RaceState] 3D-Szene nicht aufgebaut: {fehler}")
+            self.szene = None
+
+    def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
+        """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.
+
+        Mit Vorzeichen: rueckwaerts drehen die Raeder rueckwaerts. Wo es
+        ``signed_speed`` gibt (Spieler und KI), ist das der genaue Wert; ein
+        ferngesteuertes Fahrzeug bringt nur den Betrag mit und faehrt im Netz
+        ohnehin vorwaerts.
+        """
+        tempo = getattr(fahrzeug, "signed_speed", None)
+        if tempo is None:
+            tempo = getattr(fahrzeug, "speed", 0.0) or 0.0
+        weg = float(tempo) * M_PER_PX * dt
+        return max(-WEG_JE_BILD_HOECHSTENS_M, min(WEG_JE_BILD_HOECHSTENS_M, weg))
+
+    def _stand_von(self, fahrzeug, dt: float):
+        """Einen Fahrzeugstand aus einem Fahrzeug des Spiels bauen."""
+        from src.render3d import rennszene, vehicle_node
+        return rennszene.Fahrzeugstand(
+            kennung=int(getattr(fahrzeug, "id", 0)),
+            schluessel=getattr(fahrzeug, "config_key", "") or "rookie",
+            pos_m=welt3d(fahrzeug.position),
+            gierwinkel_rad=float(fahrzeug.angle),
+            weg_m=self._weg_in_diesem_bild(fahrzeug, dt),
+            lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(fahrzeug),
+        )
+
+    def _ghost_stand(self):
+        """Der Ghost als Fahrzeugstand, entfaerbt.
+
+        Sein Weg kommt aus der Ortsaenderung: ein Ghost ist eine Aufzeichnung
+        von Positionen und hat weder Tacho noch Lenkwinkel.
+        """
+        if not getattr(self, "ghost_player", None) or not self.race_manager:
+            return None
+        tracker = self.race_manager.lap_trackers.get(1)
+        if tracker is None:
+            return None
+        lage = self.ghost_player.get_position(tracker.current_lap_time)
+        if not lage:
+            self._ghost_letzte_pos = None
+            return None
+        x, y, winkel = lage
+
+        weg_m = 0.0
+        if self._ghost_letzte_pos is not None:
+            dx = x - self._ghost_letzte_pos[0]
+            dy = y - self._ghost_letzte_pos[1]
+            # Auf die Blickrichtung gerechnet, damit ein rueckwaerts rollender
+            # Ghost auch rueckwaerts drehende Raeder hat.
+            weg_m = (dx * math.cos(winkel) + dy * math.sin(winkel)) * M_PER_PX
+            weg_m = max(-WEG_JE_BILD_HOECHSTENS_M,
+                        min(WEG_JE_BILD_HOECHSTENS_M, weg_m))
+        self._ghost_letzte_pos = (x, y)
+
+        from src.render3d import rennszene
+        return rennszene.Fahrzeugstand(
+            kennung=GHOST_KENNUNG,
+            schluessel=getattr(self.ghost_player.data, "vehicle", "") or "rookie",
+            pos_m=welt3d((x, y)),
+            gierwinkel_rad=float(winkel),
+            weg_m=weg_m,
+            entfaerbt=True,
+        )
+
+    def _staende_fortschreiben(self, dt: float) -> None:
+        """Einsammeln, wer in diesem Bild zu sehen ist, und die Raeder drehen."""
+        staende = [self._stand_von(v, dt)
+                   for v in (*self._humans, *self.ai_vehicles, *self._remote_vehicles)]
+        ghost = self._ghost_stand()
+        if ghost is not None:
+            staende.append(ghost)
+        self._staende = staende
+        if self.szene is not None:
+            self.szene.fortschreiben(staende)
+
+    def _welt_zeichnen(self) -> None:
+        """Die Welt in OpenGL zeichnen, einmal je Kamera.
+
+        Im Splitscreen bekommt jede Kamera ihre eigene Bildhaelfte als
+        Ansichtsfenster; die Schere haelt jede Haelfte in ihren Grenzen. Das
+        HUD kommt danach ueber die eine virtuelle Flaeche und weiss von der
+        Teilung nichts.
+        """
+        self._letzte_sicht = None
+        if self.szene is None or not self._kameras:
+            return
+        from src.core import display
+        from src.render3d import camera as kamera3d
+        ctx = display.kontext()
+        if ctx is None:
+            return
+
+        briefkasten = display.ansichtsfenster(display.current_win_size())
+        x, y, b, h = briefkasten
+        if self._split and len(self._kameras) > 1:
+            haelften = [(x, y, b // 2, h), (x + b // 2, y, b - b // 2, h)]
+        else:
+            haelften = [briefkasten]
+
+        for ausschnitt, kam in zip(haelften, self._kameras):
+            _vx, _vy, vb, vh = ausschnitt
+            ctx.viewport = ausschnitt
+            ctx.scissor = ausschnitt
+            projektion = kamera3d.perspektive(
+                SICHTFELD_GRAD, vb / max(1, vh), NAHE_EBENE_M, FERNE_EBENE_M)
+            mvp = projektion @ kam.blickmatrix()
+            self.szene.zeichnen(mvp, kam.auge, self._staende)
+            self._letzte_sicht = (mvp, ausschnitt, briefkasten)
+
+    def auf_bildschirm(self, pos_px, hoehe_m: float = 0.0):
+        """Einen Weltpunkt (Spielpixel) auf die virtuelle Flaeche rechnen.
+
+        Fuer alles, was im 2D-Weg einfach den Kameraversatz abgezogen hat und
+        jetzt durch die Projektion muss — das KI-Labor zeichnet damit seine
+        Wegpunkte und Ideallinien ueber die 3D-Strecke.
+
+        ``None``, wenn der Punkt hinter der Kamera liegt oder noch kein Bild
+        gezeichnet wurde.
+        """
+        if self._letzte_sicht is None:
+            return None
+        import numpy as np
+        mvp, (vx, vy, vb, vh), (bx, by, bb, bh) = self._letzte_sicht
+        welt = np.array([pos_px[0] * M_PER_PX, pos_px[1] * M_PER_PX, hoehe_m, 1.0])
+        clip = np.asarray(mvp, dtype=np.float64) @ welt
+        if clip[3] <= 1e-6:
+            return None
+        ndc = clip[:3] / clip[3]
+        # OpenGL zaehlt y von unten, die virtuelle Flaeche von oben.
+        fenster_x = vx + (ndc[0] * 0.5 + 0.5) * vb
+        fenster_y = vy + (ndc[1] * 0.5 + 0.5) * vh
+        from src.core import display
+        return (int((fenster_x - bx) / max(1, bb) * display.VIRT_W),
+                int((bh - (fenster_y - by)) / max(1, bh) * display.VIRT_H))
 
     def _mitschnitt_zeichnen(self, screen: pygame.Surface) -> None:
         """Rueckmeldung des Klangmitschnitts, oben mittig unter dem Banner.
@@ -2114,23 +2318,25 @@ class RaceState(BaseState):
                        (SCREEN_WIDTH // 2, 60), center=True)
 
     def render(self, screen: pygame.Surface) -> None:
-        """Draw the world (single view or splitscreen), HUD(s) and shared minimap."""
-        bg = self.track.background_color if self.track else (58, 120, 50)
+        """Die Welt in 3D zeichnen, HUD und Minimap darueber.
+
+        ``screen`` ist die virtuelle Flaeche von 1920x1080, und sie ist zu
+        Beginn des Bildes **durchsichtig**. Wo hier nichts gezeichnet wird,
+        scheint die 3D-Welt durch — deshalb wird sie nicht mehr mit der
+        Hintergrundfarbe der Strecke gefuellt. Die Farbe war im 2D-Weg das,
+        was ausserhalb der Fahrbahn zu sehen war; in 3D ist das der
+        Untergrund und der Himmel.
+        """
+        self._welt_zeichnen()
 
         if self._split:
-            halves = [(0, self._cameras[0], self.hud1),
-                      (SCREEN_WIDTH // 2, self._cameras[1], self.hud2)]
-            for x, cam, hud_obj in halves:
-                sub = screen.subsurface((x, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
-                sub.fill(bg)
-                self._render_world(sub, cam)
+            for x, hud_obj in [(0, self.hud1), (SCREEN_WIDTH // 2, self.hud2)]:
                 if hud_obj:
+                    sub = screen.subsurface((x, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
                     hud_obj.render(sub, scale=0.75)
             pygame.draw.line(screen, (12, 12, 18),
                              (SCREEN_WIDTH // 2, 0), (SCREEN_WIDTH // 2, SCREEN_HEIGHT), 4)
         else:
-            screen.fill(bg)
-            self._render_world(screen, self.camera)
             if DEBUG and self.physics_world:
                 self.physics_world.debug_draw(screen)
             if self.hud:

@@ -291,10 +291,18 @@ class Rennszene:
         return fahrzeugmodell.knoten() if fahrzeugmodell else None
 
     # -- Zeichnen --------------------------------------------------------
-    def zeichnen(self, mvp: np.ndarray, kamera_position, staende) -> None:
-        """Ein Bild der Welt aus einer Kamera."""
-        staende = list(staende)
+    def fortschreiben(self, staende) -> None:
+        """Den Radzustand aller Fahrzeuge um ein Bild weiterdrehen.
+
+        Getrennt von :meth:`zeichnen`, weil im Splitscreen zweimal gezeichnet
+        wird und trotzdem nur einmal Zeit vergeht. Beides in einem Aufruf
+        liesse die Raeder auf der geteilten Anzeige doppelt so schnell drehen.
+        """
         self.knotenspeicher.fortschreiben(staende)
+
+    def zeichnen(self, mvp: np.ndarray, kamera_position, staende) -> None:
+        """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort."""
+        staende = list(staende)
 
         self.programm["mvp"].write(np.asarray(mvp, dtype="f4").T.tobytes())
         self.programm["kamera_position"].value = tuple(
@@ -335,6 +343,24 @@ class Rennszene:
                 fahrzeugmodell.schatten_vao,
                 matrix.fahrzeug(stand.pos_m, stand.gierwinkel_rad))
         self.schattenwerfer.beenden()
+
+    def freigeben(self) -> None:
+        """Alle Puffer und Texturen zurueckgeben.
+
+        Ein Rennen endet, das naechste faengt an; ohne Freigabe blieben die
+        Streckenbaender jedes gefahrenen Laufs im Grafikspeicher liegen.
+        """
+        for _band, vao in self.baender:
+            try:
+                vao.release()
+            except Exception:                        # pragma: no cover - Treiber
+                pass
+        self.baender = []
+        self.schattenwerfer.freigeben()
+        try:
+            self.programm.release()
+        except Exception:                            # pragma: no cover - Treiber
+            pass
 
     def _fahrzeug_zeichnen(self, stand: Fahrzeugstand) -> None:
         fahrzeugmodell = self.speicher.holen(stand.schluessel)

@@ -114,6 +114,9 @@ class RemoteVehicle:
         self.sender_slot = sender_slot
         self.driver_name = ""
         self.team        = "A"
+        # Auch fuer die 3D-Darstellung: die Rennszene sucht das Modell ueber
+        # den Schluessel, genau wie bei Spieler und KI.
+        self.config_key  = config_key
 
         # Renderer
         from src.entities.vehicle_factory import VehicleFactory
