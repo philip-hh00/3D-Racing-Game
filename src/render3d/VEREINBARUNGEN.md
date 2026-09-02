@@ -83,3 +83,13 @@ Maßangaben tragen die Einheit im Namen: `abstand_m`, `hoehe_m`, `fov_grad`.
 Kein Zugriff auf `pygame`, keine Spiellogik, kein Laden von Dateien außerhalb
 der übergebenen Pfade. `render3d` ist ein Darstellungsbaustein und kennt weder
 Zustände noch Physik.
+
+**Die Grenze zum Spiel ist `rennszene.Fahrzeugstand`** — Kennung, Schlüssel,
+Position in Metern, Gierwinkel, zurückgelegter Weg, Lenkwinkel, entfärbt
+ja/nein. Nur Zahlen. Wer die Stände füllt, weiß, was ein `PlayerVehicle` ist;
+die Szene muss es nicht wissen, und deshalb sehen ein Ghost, ein
+ferngesteuertes Fahrzeug und ein KI-Wagen für sie gleich aus.
+
+Zwei Ausnahmen von der pygame-Regel, beide alt und beide bewusst:
+`fenster.py` öffnet das Fenster, und `ansicht.py` liest den Speicher einer
+pygame-Fläche, um sie hochzuladen. Beides ist der Übergang selbst.

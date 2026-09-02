@@ -103,11 +103,21 @@ Phase beginnt, bevor die vorige das erreicht hat.
 
 ### D — Zusammenführung
 
-| # | Aufgabe | Abnahme |
-|---|---|---|
-| D1 | `RaceState` zeichnet die Welt in 3D — **ohne Rückfall auf 2D** | Rennen läuft in 3D |
-| D2 | HUD-Fläche als Textur überlagern | Drehzahlmesser, Rundenanzeige, Minimap unverändert sichtbar |
-| D3 | Alle acht Fahrzeuge, KI fährt | Ein vollständiges Rennen von der Startaufstellung bis zur Zielflagge |
+| # | Aufgabe | Abnahme | Stand |
+|---|---|---|---|
+| D1 | `RaceState` zeichnet die Welt in 3D — **ohne Rückfall auf 2D** | Rennen läuft in 3D | **fertig** 02.09.2026 |
+| D2 | HUD-Fläche als Textur überlagern | Drehzahlmesser, Rundenanzeige, Minimap unverändert sichtbar | **fertig** 02.09.2026 |
+| D3 | Alle acht Fahrzeuge, KI fährt | Ein vollständiges Rennen von der Startaufstellung bis zur Zielflagge | **fertig** 02.09.2026 |
+
+Phase D abgenommen an einem Rennen auf dem Oval mit acht Fahrzeugen, gefahren
+bis `race_manager.state == "finished"`. Bildzeit im Median 7,5 ms, 95.
+Perzentil 10,1 ms — also rund 134 Bilder je Sekunde einschließlich Physik, KI
+und HUD-Upload. Damit ist **E3 vorweggenommen**, solange nichts Teures
+dazukommt.
+
+Das Feld stand vorher bei sechs (`race_setup` deckelte auf 2–6,
+`Track._ensure_start_grid(6)`). Es steht jetzt in `race_setup.FELD_MAX` und
+ist auf acht gehoben.
 
 **Kein Umschalter zwischen 2D und 3D** (entschieden am 11.08.2026). Das hier ist
 ein eigenständiges Spiel, kein Modus des 2D-Spiels. Ein Schalter hätte bedeutet,
@@ -121,9 +131,9 @@ umgangen.
 
 | # | Aufgabe | Abnahme |
 |---|---|---|
-| E1 | Schattenwurf der Fahrzeuge (Shadow Map oder projizierter Fleck) | Autos stehen auf der Straße statt darüber zu schweben |
+| E1 | Schattenwurf der Fahrzeuge (Shadow Map oder projizierter Fleck) | Autos stehen auf der Straße statt darüber zu schweben — *der Fleck ist mit D3 gekommen (`src/render3d/schatten.py`), es fehlt der gerichtete Wurf* |
 | E2 | Lackierung in 3D über die Lackmaske aus `trellis_import.py` | Ein umlackiertes Auto sieht aus wie im Fahrzeuglabor gewählt |
-| E3 | Bildrate messen und einhalten | 60 Bilder je Sekunde mit acht Fahrzeugen |
+| E3 | Bildrate messen und einhalten | 60 Bilder je Sekunde mit acht Fahrzeugen — *am 02.09.2026 mit 134 gemessen, siehe D* |
 
 ## Was nicht im Plan steht
 
