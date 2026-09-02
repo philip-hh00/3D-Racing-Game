@@ -30,29 +30,18 @@ sys.path.insert(0, str(WURZEL))
 import moderngl                                       # noqa: E402
 
 from src.render3d import (ansicht, camera, fenster, matrix, mesh,  # noqa: E402
-                          shader, track_mesh, vehicle_node)
+                          rennszene, shader, track_mesh, vehicle_node)
 
-#: Grundtöne der Streckenbänder, solange es keine Texturen gibt.
-BANDFARBEN = {
-    "fahrbahn": (0.24, 0.24, 0.26),
-    "randstein_links": (0.72, 0.20, 0.20),
-    "randstein_rechts": (0.72, 0.20, 0.20),
-    "untergrund": (0.34, 0.45, 0.24),
-}
+#: Die Grundtoene der Baender stehen dort, wo das Spiel sie auch benutzt.
+#: Zwei Kopien waeren zwei Strecken, die verschieden aussehen.
+BANDFARBEN = rennszene.BANDFARBEN
 
 #: Wie weit voraus die Krümmung für den geschätzten Lenkeinschlag gemessen
 #: wird. Zu kurz und der Einschlag zappelt, zu lang und er kommt zu spät.
 VORAUSSCHAU_M = 6.0
 
 
-def _band_hochladen(ctx, programm, band) -> "moderngl.VertexArray":
-    puffer = [
-        (ctx.buffer(np.ascontiguousarray(band.positionen, "f4")), "3f", "in_position"),
-        (ctx.buffer(np.ascontiguousarray(band.normalen, "f4")), "3f", "in_normale"),
-        (ctx.buffer(np.ascontiguousarray(band.uv, "f4")), "2f", "in_uv"),
-    ]
-    ibo = ctx.buffer(np.ascontiguousarray(band.indizes, "u4"))
-    return ctx.vertex_array(programm, puffer, ibo)
+_band_hochladen = rennszene.band_hochladen
 
 
 def geschaetzter_lenkwinkel(netz, strecke_m: float, radstand_m: float) -> float:

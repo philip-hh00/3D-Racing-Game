@@ -69,6 +69,13 @@ uniform vec3 himmel_zenit;
 uniform vec3 himmel_horizont;
 uniform vec3 boden_farbe;
 
+/* Fuer den Ghost: entfaerben und durchscheinend zeichnen. Im 2D-Weg wurde
+   dafuer das Sprite umgefaerbt (src/core/lack.py, graustufen). Ein zweites,
+   graues Netz hochzuladen waere derselbe Gedanke mit hundertfachem Aufwand -
+   in 3D ist es ein Schalter im Shader. */
+uniform float entfaerbung;
+uniform float deckkraft;
+
 in vec3 welt_position;
 in vec3 welt_normale;
 in vec2 uv;
@@ -173,7 +180,12 @@ void main() {
        fertiges Bild. */
     farbe = farbe / (farbe + vec3(1.0));
     farbe = pow(farbe, vec3(1.0 / 2.2));
-    ausgabe = vec4(farbe, 1.0);
+
+    /* Nach dem Gammaschritt entfaerben, nicht davor: die Gewichte 0.2126 /
+       0.7152 / 0.0722 sind fuer wahrgenommene Helligkeit gemacht, und das
+       Bild ist erst hier eines. */
+    float grau = dot(farbe, vec3(0.2126, 0.7152, 0.0722));
+    ausgabe = vec4(mix(farbe, vec3(grau), entfaerbung), deckkraft);
 }
 """
 
@@ -196,6 +208,8 @@ def programm(ctx):
     p["grundton"].value = (0.5, 0.5, 0.5)
     p["metallic_faktor"].value = 1.0
     p["rauheit_faktor"].value = 1.0
+    p["entfaerbung"].value = 0.0
+    p["deckkraft"].value = 1.0
     p["himmel_zenit"].value = HIMMEL_ZENIT
     p["himmel_horizont"].value = HIMMEL_HORIZONT
     p["boden_farbe"].value = BODEN_FARBE
