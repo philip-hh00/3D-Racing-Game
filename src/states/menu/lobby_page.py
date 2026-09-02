@@ -33,13 +33,16 @@ class LobbyPage(Page):
         self.mode = Stepper(pygame.Rect(x, y, w, h), tr("Spielmodus"), race_setup.MODES,
                             race_setup.MODES.index(s.mode) if s.mode in race_setup.MODES else 0)
 
-        count_opts = ["4", "6"] if s.mode == "Team-Zeitfahren" else [str(n) for n in range(2, 7)]
+        count_opts = (race_setup.feld_optionen(nur_gerade=True)
+                      if s.mode == "Team-Zeitfahren"
+                      else race_setup.feld_optionen())
         if s.mode == "Team-Zeitfahren":
-            if s.vehicle_count not in (4, 6):
+            if str(s.vehicle_count) not in count_opts:
                 s.vehicle_count = 4
-            count_idx = 0 if s.vehicle_count == 4 else 1
+            count_idx = count_opts.index(str(s.vehicle_count))
         else:
-            count_idx = max(0, min(len(count_opts)-1, s.vehicle_count - 2))
+            count_idx = max(0, min(len(count_opts) - 1,
+                                   s.vehicle_count - race_setup.FELD_MIN))
 
         self.count = Stepper(pygame.Rect(x, y + (h + gap), w, h), tr("Fahrzeuge (inkl. dir)"),
                               count_opts, count_idx)
@@ -76,14 +79,18 @@ class LobbyPage(Page):
 
         # Adjust count options based on mode
         if is_team_mode:
-            if self.count.options != ["4", "6"]:
-                self.count.options = ["4", "6"]
-                self.count.index = 0 if s.vehicle_count <= 4 else 1
-                s.vehicle_count = 4 if s.vehicle_count <= 4 else 6
+            gerade = race_setup.feld_optionen(nur_gerade=True)
+            if self.count.options != gerade:
+                self.count.options = gerade
+                # Auf die naechstkleinere gerade Zahl im Feld runden.
+                s.vehicle_count = max(4, s.vehicle_count - s.vehicle_count % 2)
+                self.count.index = gerade.index(str(s.vehicle_count))
         else:
-            if self.count.options != [str(n) for n in range(2, 7)]:
-                self.count.options = [str(n) for n in range(2, 7)]
-                self.count.index = max(0, min(4, s.vehicle_count - 2))
+            alle = race_setup.feld_optionen()
+            if self.count.options != alle:
+                self.count.options = alle
+                self.count.index = max(0, min(len(alle) - 1,
+                                              s.vehicle_count - race_setup.FELD_MIN))
 
         col = theme.Column(80, 210, gap=20)
         col.add(self.mode)

@@ -43,9 +43,11 @@ from src.entities.components.renderer import VehicleRenderer  # noqa: E402
 from src.entities.vehicle_factory import VehicleFactory  # noqa: E402
 from src.hud.minimap import Minimap  # noqa: E402
 
-#: So viele KI-Autos passen höchstens ins Feld (``vehicle_count`` 2–6, minus
+#: So viele KI-Autos passen höchstens ins Feld (``race_setup.FELD_MAX`` minus
 #: ein Mensch). Die Farben müssen sich bis dorthin unterscheiden.
-KI_MAX = 5
+from src.core.race_setup import FELD_MAX  # noqa: E402
+
+KI_MAX = FELD_MAX - 1
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -170,12 +172,12 @@ def test_ein_volles_feld_startet_im_werkslack():
     r = RaceState.__new__(RaceState)
     r.physics_world = types.SimpleNamespace(space=raum)
     r.track = strecke
-    r._gitter = list(range(6))
+    r._gitter = list(range(FELD_MAX))
 
     s = race_setup.current()
     vorher = (s.vehicle_count, s.is_multiplayer, list(s.ai_roster))
     try:
-        s.vehicle_count, s.is_multiplayer, s.ai_roster = 6, False, []
+        s.vehicle_count, s.is_multiplayer, s.ai_roster = FELD_MAX, False, []
         autos = r._spawn_ai_vehicles(strecke.start_positions, {}, 1)
     finally:
         s.vehicle_count, s.is_multiplayer, s.ai_roster = vorher

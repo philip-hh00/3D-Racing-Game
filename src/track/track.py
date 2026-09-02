@@ -282,7 +282,8 @@ class Track:
                 StartPosition(x=x, y=y, angle=_as_float(s.get("angle"), 0.0)))
         # Guarantee a full 6-car grid: older tracks stored only 4 slots, so
         # rebuild the staggered grid from the centerline when short.
-        self._ensure_start_grid(6)
+        from src.core.race_setup import FELD_MAX
+        self._ensure_start_grid(FELD_MAX)
 
     def _ensure_start_grid(self, needed: int) -> None:
         """Top up start_positions to *needed* slots using the centerline."""

@@ -60,10 +60,34 @@ class AIDriver:
     team: str = "A"             # "A" or "B"
 
 
+#: Groesstes Startfeld einschliesslich der Menschen.
+#:
+#: Am 02.09.2026 von sechs auf acht gehoben. Die Zahl steht hier und nur hier:
+#: sie taucht sonst in beiden Lobbys und im Streckenbau auf, und drei Kopien
+#: waeren drei Gelegenheiten, eine davon zu vergessen. ``Track`` baut so viele
+#: Gitterplaetze aus der Mittellinie, wie hier stehen.
+FELD_MAX = 8
+
+#: Kleinstes Startfeld. Ein Rennen gegen niemanden ist Zeitfahren, und das ist
+#: ein eigener Modus.
+FELD_MIN = 2
+
+
+def feld_optionen(nur_gerade: bool = False) -> list[str]:
+    """Die waehlbaren Feldgroessen als Text, fuer die Schrittwaehler der Lobby.
+
+    ``nur_gerade`` fuer das Team-Zeitfahren: zwei gleich grosse Mannschaften
+    gehen nur mit einer geraden Zahl auf.
+    """
+    schritt = 2 if nur_gerade else 1
+    beginn = 4 if nur_gerade else FELD_MIN
+    return [str(n) for n in range(beginn, FELD_MAX + 1, schritt)]
+
+
 @dataclass
 class RaceSetup:
     mode: str = "Rennen"
-    vehicle_count: int = 4          # total incl. player (2–6)
+    vehicle_count: int = 4          # total incl. player (FELD_MIN..FELD_MAX)
     vehicle_class: str = "Alle"
     laps: int = 3                   # 1–10
     ai_difficulty: str = "medium"
