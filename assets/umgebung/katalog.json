@@ -248,6 +248,12 @@
     "lod_abstand_m": 60,
     "dreiecke_lod1": 12
   },
+  "gemeinsam/startbruecke": {
+    "radius_m": 2.0,
+    "hoehe_m": 9.05,
+    "dreiecke": 916,
+    "schatten": true
+  },
   "gemeinsam/tribuene": {
     "radius_m": 16.0,
     "hoehe_m": 9.32,

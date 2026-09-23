@@ -227,13 +227,34 @@ def kulisse_setzen(art: Kulisse, linie: np.ndarray, rng) -> list[Platzierung]:
     return ergebnis
 
 
+#: Das Portal über der Start-/Ziellinie. Steht auf jeder Strecke, egal welches
+#: Thema — die Linie ist Teil des Rennens, nicht der Landschaft.
+STARTBRUECKE = "gemeinsam/startbruecke"
+
+
+def startbruecke(linie: np.ndarray, halbbreite: float, belegung: _Belegung) -> Platzierung:
+    """Über Punkt 0 der Mittellinie, quer zur Fahrtrichtung.
+
+    Punkt 0 ist die Ziellinie des Spiels (Wegpunkt 0, siehe
+    ``track_builder.build_waypoints``). Das Modell spannt entlang seiner lokalen
+    X-Achse; gedreht wird so, dass diese nach links über die Fahrbahn zeigt.
+    """
+    t = _tangenten(linie)[0]
+    links = np.array([-t[1], t[0]])
+    for seite in (1, -1):
+        stuetze = linie[0] + seite * links * (halbbreite + 2.5)
+        belegung.belegen(float(stuetze[0]), float(stuetze[1]), 3.0)
+    return Platzierung(STARTBRUECKE, float(linie[0, 0]), float(linie[0, 1]),
+                       math.atan2(links[1], links[0]), 1.0)
+
+
 def platzieren(mittellinie_m: np.ndarray, halbbreite_m: float, thema: Thema,
                name: str, start_index: int = 0) -> list[Platzierung]:
     """Alles, was um diese Strecke herum steht."""
     linie = np.asarray(mittellinie_m, dtype=np.float64)[:, :2]
     rng = np.random.default_rng(keim(name))
     belegung = _Belegung()
-    ergebnis: list[Platzierung] = []
+    ergebnis: list[Platzierung] = [startbruecke(linie, halbbreite_m, belegung)]
     for art in thema.rand:
         ergebnis += rand_setzen(art, linie, halbbreite_m, belegung, rng, start_index)
     for art in sorted(thema.deko, key=lambda a: -a.radius_m):

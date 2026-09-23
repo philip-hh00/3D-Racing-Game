@@ -225,6 +225,23 @@ def banden() -> None:
         bild.save(ZIEL / f"bande_{i}.jpg", quality=92)
 
 
+def startbanner() -> None:
+    """Das Banner der Startbrücke: Karo links und rechts, dazwischen START · ZIEL."""
+    b, h = 2048, 256
+    bild = Image.new("RGB", (b, h), (14, 14, 18))
+    d = ImageDraw.Draw(bild)
+    feld = h // 4
+    for rand_x in (0, b - 3 * feld):
+        for i in range(3):
+            for j in range(4):
+                if (i + j) % 2 == 0:
+                    d.rectangle((rand_x + i * feld, j * feld, rand_x + (i + 1) * feld - 1,
+                                 (j + 1) * feld - 1), fill=(240, 240, 240))
+    d.text((b / 2, h / 2), "START  ·  ZIEL", font=schrift(150), fill=(250, 250, 250), anchor="mm")
+    d.rectangle((3 * feld, h - 14, b - 3 * feld, h), fill=(200, 24, 30))
+    bild.save(ZIEL / "startbanner.jpg", quality=92)
+
+
 def heu() -> None:
     rng = np.random.default_rng(3)
     b = h = 256
@@ -270,6 +287,7 @@ def main() -> None:
     nadelzweig("nadelzweig_hell", farbe=(56, 84, 40), seed=2)
     laub_aufbereiten()
     banden()
+    startbanner()
     heu()
     print("fertig:", sorted(p.name for p in ZIEL.iterdir()))
 

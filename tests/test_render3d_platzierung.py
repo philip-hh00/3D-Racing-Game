@@ -67,7 +67,7 @@ def test_nichts_steht_auf_der_fahrbahn():
     t = thema.laden(THEMEN, "Forest")
     orte = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m, t, "Kreis")
     assert len(orte) > 100
-    xy = np.array([[p.x, p.y] for p in orte])
+    xy = np.array([[p.x, p.y] for p in orte if p.modell != platzierung.STARTBRUECKE])
     abstand = platzierung.abstand_zur_linie(xy, netz.mittellinie)
     assert abstand.min() > netz.halbe_breite_m + 1.0
 
@@ -112,3 +112,16 @@ def test_themen_zeigen_nur_auf_vorhandene_modelle(name):
     t = thema.laden(THEMEN, name)
     fehlend = [m for m in t.modelle() if m not in katalog]
     assert not fehlend, fehlend
+
+
+def test_startbruecke_steht_quer_ueber_der_ziellinie():
+    netz = _netz(_kreis())
+    t = thema.laden(THEMEN, "Forest")
+    orte = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m, t, "Kreis")
+    bruecken = [p for p in orte if p.modell == platzierung.STARTBRUECKE]
+    assert len(bruecken) == 1
+    b = bruecken[0]
+    assert (b.x, b.y) == pytest.approx(tuple(netz.mittellinie[0]), abs=1e-6)
+    quer = np.array([math.cos(b.gier_rad), math.sin(b.gier_rad)])
+    richtung = netz.mittellinie[1] - netz.mittellinie[0]
+    assert abs(quer @ richtung / np.linalg.norm(richtung)) < 0.05

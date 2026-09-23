@@ -532,6 +532,7 @@ class Rennszene:
             band_neu.uv, band_neu.indizes = uv, band.indizes
             self.flaechen.append(_Flaeche(band_hochladen(ctx, self.programm, band_neu),
                                           farbe, textur, mr, kachel, 0.0, rauheit, ton))
+        self._startlinie_hochladen()
         if t is not None:
             for s in begrenzung.bauen(self.netz, t.begrenzung):
                 textur, mr = _textur_laden(ctx, self.texturordner, s.textur, self._texturen)
@@ -539,6 +540,61 @@ class Rennszene:
                     band_hochladen(ctx, self.programm, s),
                     (1.0, 1.0, 1.0) if textur else s.farbe, textur, mr, s.kachel_m,
                     s.metallic, s.rauheit))
+
+    def _startlinie_hochladen(self) -> None:
+        """Karierte Ziellinie über Punkt 0 und weiße Startplätze.
+
+        Beides flach auf der Fahrbahn, einen halben Zentimeter darüber gegen
+        Z-Fighting. Die Karos sind eine kleine Textur, die Startplätze ein
+        einfarbiges Band.
+        """
+        from PIL import Image
+        linie = np.asarray(self.netz.mittellinie, dtype=np.float64)
+        halb = float(getattr(self.netz, "halbe_breite_m", 0.0) or 0.0)
+        if len(linie) < 2 or halb <= 0:
+            return
+        t = linie[1] - linie[0]
+        t /= max(np.linalg.norm(t), 1e-9)
+        links = np.array([-t[1], t[0]])
+
+        def quad(mitte, vor, quer, laenge, breite, uv_u, uv_v):
+            ecken = [mitte - vor * laenge / 2 - quer * breite / 2, mitte + vor * laenge / 2 - quer * breite / 2,
+                     mitte + vor * laenge / 2 + quer * breite / 2, mitte - vor * laenge / 2 + quer * breite / 2]
+            pos = np.array([[e[0], e[1], 0.006] for e in ecken], dtype=np.float32)
+            uv = np.array([[0, 0], [uv_u, 0], [uv_u, uv_v], [0, uv_v]], dtype=np.float32)
+            return pos, uv
+
+        b = type("B", (), {})()
+        b.positionen, b.uv = quad(linie[0], t, links, 1.6, 2 * halb, 2.0, 2 * halb / 0.8)
+        b.normalen = np.tile(np.array([[0, 0, 1]], dtype=np.float32), (4, 1))
+        b.indizes = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.uint32)
+        karo = np.zeros((2, 2, 3), dtype=np.uint8)
+        karo[0, 0] = karo[1, 1] = 240
+        karo[0, 1] = karo[1, 0] = 18
+        textur = mesh.textur_hochladen(self.ctx, Image.fromarray(karo, "RGB"))
+        textur.filter = (moderngl.NEAREST_MIPMAP_LINEAR, moderngl.NEAREST)
+        self._eigene_texturen.append(textur)
+        self.flaechen.append(_Flaeche(band_hochladen(self.ctx, self.programm, b),
+                                      (1, 1, 1), textur, None, 1.0, 0.0, 0.6))
+
+        # Startplätze: ein weißer Balken quer vor jedem Startplatz.
+        pos_alle, idx_alle = [], []
+        for (x, y, winkel) in getattr(self.netz, "start_positionen", []) or []:
+            vor = np.array([np.cos(winkel), np.sin(winkel)])
+            quer = np.array([-vor[1], vor[0]])
+            mitte = np.array([x, y]) + vor * 2.9
+            p, _uv = quad(mitte, vor, quer, 0.25, 2.6, 1, 1)
+            basis = len(pos_alle) * 4
+            pos_alle.append(p)
+            idx_alle += [[basis, basis + 1, basis + 2], [basis, basis + 2, basis + 3]]
+        if pos_alle:
+            s = type("B", (), {})()
+            s.positionen = np.vstack(pos_alle)
+            s.uv = np.zeros((len(s.positionen), 2), dtype=np.float32)
+            s.normalen = np.tile(np.array([[0, 0, 1]], dtype=np.float32), (len(s.positionen), 1))
+            s.indizes = np.array(idx_alle, dtype=np.uint32)
+            self.flaechen.append(_Flaeche(band_hochladen(self.ctx, self.programm, s),
+                                          (0.92, 0.92, 0.9), None, None, 1.0, 0.0, 0.6))
 
     def _grosser_boden(self):
         """Ein Boden bis weit hinter die Kulisse, in Metern kachelnd."""

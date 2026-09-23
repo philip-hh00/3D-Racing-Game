@@ -686,6 +686,49 @@ def tribuene():
     return teile
 
 
+def startbruecke(spannweite: float = 27.0):
+    """Portal über der Start-/Ziellinie, quer entlang lokal X, Banner nach ±Y.
+
+    Gitterstützen, Traverse mit Banner auf beiden Seiten und eine
+    Startampel. Die Spannweite reicht über die breiteste Strecke samt
+    Begrenzung; auf schmaleren Strecken stehen die Stützen etwas weiter weg.
+    """
+    stahl = farbe("portal_stahl", (60, 62, 68), 0.4, 0.8)
+    rot = farbe("ampel_rot", (200, 20, 20), 0.3, emission=(1.0, 0.1, 0.05), staerke=2.0)
+    dunkel = farbe("ampel_gehaeuse", (15, 15, 17), 0.5)
+    banner = tex_mat("startbanner", ERZEUGT / "startbanner.jpg", rauheit=0.5)
+    teile = []
+    halb = spannweite / 2
+    hoehe = 7.5
+    for x in (-halb, halb):
+        for dx in (-0.35, 0.35):
+            for dy in (-0.35, 0.35):
+                teile.append(kasten("stuetze", (x + dx, dy, hoehe / 2), (0.14, 0.14, hoehe), stahl))
+        for z in range(1, 8):
+            teile.append(kasten("strebe", (x, 0, z * hoehe / 8), (0.8, 0.8, 0.06), stahl))
+        teile.append(kasten("fuss", (x, 0, 0.15), (1.4, 1.4, 0.3), farbe("beton", (150, 150, 148), 0.9)))
+    teile.append(kasten("traverse", (0, 0, hoehe + 0.6), (spannweite + 1.0, 0.9, 1.9), stahl))
+    for seite in (1, -1):
+        bm = bmesh.new()
+        y = seite * 0.46
+        v = [bm.verts.new(p) for p in ((-halb + 1, y, hoehe - 0.2), (halb - 1, y, hoehe - 0.2),
+                                        (halb - 1, y, hoehe + 1.4), (-halb + 1, y, hoehe + 1.4))]
+        f = bm.faces.new(v if seite > 0 else list(reversed(v)))
+        uvl = bm.loops.layers.uv.verify()
+        ecken = ((1, 0), (0, 0), (0, 1), (1, 1)) if seite > 0 else ((0, 1), (1, 1), (1, 0), (0, 0))
+        for l, w in zip(f.loops, ecken):
+            l[uvl].uv = w
+        teile.append(g.objekt_aus(bm, "banner", [banner]))
+    # Startampel: fünf Lampenpaare in der Mitte unter der Traverse.
+    teile.append(kasten("ampel", (0, 0, hoehe - 0.7), (3.2, 0.5, 0.8), dunkel))
+    for i in range(5):
+        for seite in (1, -1):
+            lampe = zylinder("lampe", (-1.28 + i * 0.64, seite * 0.26, hoehe - 0.7), 0.2, 0.2, 0.04,
+                             rot, 16, achse="Y")
+            teile.append(lampe)
+    return teile
+
+
 def zaun():
     holz = wand("holz")
     teile = []
@@ -866,6 +909,8 @@ def alle_bauen(nur: set[str] | None, vorschau: Path | None) -> None:
     for i in range(6):
         if soll(f"gemeinsam/bande_{i}"):
             fertig(f"gemeinsam/bande_{i}", werbebande(i), radius_m=3.1)
+    if soll("gemeinsam/startbruecke"):
+        fertig("gemeinsam/startbruecke", startbruecke(), radius_m=2.0)
     if soll("gemeinsam/tribuene"):
         fertig("gemeinsam/tribuene", tribuene(), radius_m=16.0)
 
