@@ -313,6 +313,7 @@ class _Flaeche:
     metallic: float = 0.0
     rauheit: float = 0.9
     ton: tuple = (1.0, 1.0, 1.0)
+    makro: float = 0.0
 
 
 def _textur_laden(ctx, ordner: Path | None, name: str, cache: dict):
@@ -501,6 +502,7 @@ class Rennszene:
         t = self.thema
         breite = 2.0 * float(getattr(self.netz, "halbe_breite_m", 0.0) or 0.0)
         for band in self.netz.baender:
+            name = band.name
             uv = np.array(band.uv, dtype=np.float32, copy=True)
             textur = mr = None
             kachel = STRECKE_KACHEL_M
@@ -530,8 +532,9 @@ class Rennszene:
             band_neu = type("B", (), {})()
             band_neu.positionen, band_neu.normalen = band.positionen, band.normalen
             band_neu.uv, band_neu.indizes = uv, band.indizes
+            makro = {"untergrund": 0.28, "fahrbahn": 0.08}.get(name, 0.0)
             self.flaechen.append(_Flaeche(band_hochladen(ctx, self.programm, band_neu),
-                                          farbe, textur, mr, kachel, 0.0, rauheit, ton))
+                                          farbe, textur, mr, kachel, 0.0, rauheit, ton, makro))
         self._startlinie_hochladen()
         if t is not None:
             for s in begrenzung.bauen(self.netz, t.begrenzung):
@@ -696,6 +699,7 @@ class Rennszene:
         shader.setzen(p, "rauheit_faktor", f.rauheit if f.mr is None else 1.0)
         shader.setzen(p, "uv_skala", 1.0 / max(f.kachel_m, 1e-3))
         shader.setzen(p, "farbton", tuple(f.ton))
+        shader.setzen(p, "makro", f.makro)
         shader.setzen(p, "emission", (0.0, 0.0, 0.0))
         shader.setzen(p, "klarlack", 0.0)
         shader.setzen(p, "alpha_faktor", 1.0)
@@ -717,6 +721,7 @@ class Rennszene:
             f.vao.render()
         shader.setzen(p, "uv_skala", 1.0)
         shader.setzen(p, "farbton", (1.0, 1.0, 1.0))
+        shader.setzen(p, "makro", 0.0)
 
     def _schatten_zeichnen(self, mvp: np.ndarray, staende) -> None:
         self.schattenwerfer.beginnen(mvp)

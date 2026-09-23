@@ -93,3 +93,36 @@ ferngesteuertes Fahrzeug und ein KI-Wagen für sie gleich aus.
 Zwei Ausnahmen von der pygame-Regel, beide alt und beide bewusst:
 `fenster.py` öffnet das Fenster, und `ansicht.py` liest den Speicher einer
 pygame-Fläche, um sie hochzuladen. Beides ist der Übergang selbst.
+
+## Modelle aus Blender: Knoten und Materialien
+
+Die GLB-Dateien entstehen mit den Skripten unter `tools/blender/` und liegen
+bereits im Achsensystem oben (`export_yup=False`); `mesh.laden` dreht nichts.
+
+**Fahrzeuge** (`assets/vehicles/<key>.glb`) haben diese Knoten:
+
+| Knoten | Ursprung | Bewegung |
+|---|---|---|
+| `karosserie` | Fahrzeugmitte am Boden | mit dem Fahrzeug, neigt sich (Nicken/Wanken) |
+| `rad_vl` `rad_vr` `rad_hl` `rad_hr` | Nabenmitte | rollen um Y, vorne lenken um Z |
+| `sattel_vl` … `sattel_hr` | Nabenmitte | lenken mit, rollen nicht |
+
+Alles, was sich mit dem Rad dreht, muss um Y rotationssymmetrisch sein —
+sonst eiert es. Die Materialnamen sind Vertrag mit dem Renderer:
+
+* `lack` — Hauptlack, einfarbig per Faktor, **keine Textur**. Die Lackierung
+  aus der Werkstatt ersetzt Farbe, Metallic und Rauheit (`lack.werte_3d`).
+* `lack2` — Zweitfarbe/Livree; beim Finish „zweifarbig“ umgefärbt.
+* `glas` — `alphaMode BLEND`, wird nach allem Deckenden gezeichnet.
+* Übrige (`chrom`, `felge`, `gummi`, `licht_vorn` …) bleiben, wie sie sind.
+
+**Umgebung** (`assets/umgebung/<gruppe>/<name>.glb`, dazu `_lod1.glb`):
+Ursprung mittig am Boden. Objekte, die zur Strecke ausgerichtet werden, zeigen
+mit ihrer Vorderseite nach **+Y**. Laub-Materialien enden auf `_maske` und
+werden ausgestanzt statt gemischt. Platzbedarf, Höhe und LOD-Abstand stehen in
+`assets/umgebung/katalog.json`.
+
+**Themen** (`data/themen/<name>.json`) sagen, was um eine Strecke steht; die
+Strecke wählt ihr Thema über `background_texture`. Platziert wird zufällig,
+aber mit einem Keim aus dem Streckennamen — jede Strecke sieht bei jedem
+Rennen gleich aus.

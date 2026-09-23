@@ -101,6 +101,7 @@ uniform float alpha_faktor;
 uniform float alpha_schwelle;    // > 0: ausstanzen (Laub)
 uniform float uv_skala;          // Kachelung fuer Boden und Fahrbahn
 uniform vec3  farbton;           // Faerbt eine Textur ein (Gras gruener, Sand waermer)
+uniform float makro;             // Grossraeumige Helligkeitsschwankung gegen sichtbare Kacheln
 
 uniform vec3 kamera_position;
 uniform vec3 sonne_richtung;     // zeigt ZUR Sonne, normiert
@@ -205,6 +206,21 @@ float sonnenlicht(vec3 n, vec3 l) {
     return mix(1.0, licht, blende);
 }
 
+/* Werterauschen in Weltkoordinaten. Eine Bodentextur von acht Metern
+   wiederholt sich auf einem Kilometer 125-mal, und das Auge findet das Muster
+   sofort. Zwei Oktaven Helligkeit darueber, 30 und 90 Meter gross, brechen es. */
+float rauschen_hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+}
+
+float rauschen(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(rauschen_hash(i), rauschen_hash(i + vec2(1, 0)), u.x),
+               mix(rauschen_hash(i + vec2(0, 1)), rauschen_hash(i + vec2(1, 1)), u.x), u.y);
+}
+
 vec3 aces(vec3 x) {
     const float a = 2.51;
     const float b = 0.03;
@@ -219,6 +235,10 @@ void main() {
     vec4 textur = texture(basisfarbe, tuv);
     vec3 basis = nach_linear(mix(grundton, textur.rgb, hat_basisfarbe)) * farbton;
     float alpha = alpha_faktor * mix(1.0, textur.a, hat_basisfarbe);
+    if (makro > 0.0) {
+        float r = 0.65 * rauschen(welt_position.xy / 30.0) + 0.35 * rauschen(welt_position.xy / 90.0 + 17.0);
+        basis *= mix(1.0 - makro, 1.0 + makro * 0.7, r);
+    }
     if (alpha_schwelle > 0.0 && alpha < alpha_schwelle) discard;
 
     /* glTF legt Rauheit in den Gruen- und Metallic in den Blaukanal. */
@@ -425,7 +445,7 @@ def _vorgaben(p) -> None:
         ("grundton", (0.5, 0.5, 0.5)), ("metallic_faktor", 1.0),
         ("rauheit_faktor", 1.0), ("emission", (0.0, 0.0, 0.0)),
         ("klarlack", 0.0), ("alpha_faktor", 1.0), ("alpha_schwelle", 0.0),
-        ("uv_skala", 1.0), ("farbton", (1.0, 1.0, 1.0)),
+        ("uv_skala", 1.0), ("farbton", (1.0, 1.0, 1.0)), ("makro", 0.0),
         ("entfaerbung", 0.0), ("deckkraft", 1.0),
         ("himmel_zenit", HIMMEL_ZENIT), ("himmel_horizont", HIMMEL_HORIZONT),
         ("boden_farbe", BODEN_FARBE),
