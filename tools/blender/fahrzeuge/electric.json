@@ -85,7 +85,8 @@
       "z": [0.63, 1.0],
       "auf": ["zierteil"],
       "mat": "licht_vorn",
-      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}]
+      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}],
+      "linsen": {"anzahl": 2, "radius": 0.013, "lage": 0.5, "rand_anteil": 0.25}
     },
     {
       "ansicht": "oben",
@@ -95,7 +96,8 @@
       "z": [0.63, 1.0],
       "auf": ["zierteil"],
       "mat": "licht_vorn",
-      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}]
+      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}],
+      "linsen": {"anzahl": 2, "radius": 0.013, "lage": 0.5, "rand_anteil": 0.25}
     },
     {
       "ansicht": "seite",
@@ -134,10 +136,17 @@
   "sicken": [
     {
       "z": 0.44,
-      "tiefe": [[0.27, 0.0], [0.33, -0.014], [0.64, -0.014], [0.7, 0.0]],
+      "tiefe": [[0.27, 0.0], [0.33, -0.02], [0.64, -0.02], [0.7, 0.0]],
       "breite": 0.13,
       "oben_anteil": 0.8
+    },
+    {
+      "z": [[0.05, 0.835], [0.3, 0.855], [0.6, 0.815], [0.85, 0.755], [0.95, 0.68]],
+      "tiefe": [[0.06, 0.0], [0.12, 0.016], [0.85, 0.016], [0.93, 0.0]],
+      "breite": 0.06,
+      "oben_anteil": 0.3
     }
   ],
-  "diffusor": false
+  "diffusor": false,
+  "profil_punkte": [2, 1, 6, 10, 4, 3, 6]
 }
