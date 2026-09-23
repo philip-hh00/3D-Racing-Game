@@ -112,6 +112,7 @@ uniform float himmel_mips;
 uniform float himmel_helligkeit;
 uniform vec3  nebel_farbe;
 uniform float nebel_dichte;
+uniform float nebel_faktor;      // Kulisse: weniger Dunst, sonst verschwinden die Berge
 uniform float belichtung;
 
 /* Fuer den Ghost: entfaerben und durchscheinend zeichnen. */
@@ -275,7 +276,7 @@ void main() {
 
     /* --- Nebel ------------------------------------------------------------ */
     float abstand = length(kamera_position - welt_position);
-    float nebel = 1.0 - exp(-pow(abstand * nebel_dichte, 1.6));
+    float nebel = 1.0 - exp(-pow(abstand * nebel_dichte * nebel_faktor, 1.6));
     vec3 dunst = mix(nebel_farbe, himmel(normalize(welt_position - kamera_position) * vec3(1.0, 1.0, 0.1), 0.6), 0.5);
     farbe = mix(farbe, dunst, clamp(nebel, 0.0, 1.0));
 
@@ -431,7 +432,7 @@ def _vorgaben(p) -> None:
         ("sonne_richtung", tuple(np.asarray(SONNE_RICHTUNG) / np.linalg.norm(SONNE_RICHTUNG))),
         ("sonne_farbe", SONNE_FARBE), ("himmel_mips", 8.0),
         ("himmel_helligkeit", 1.0), ("nebel_farbe", HIMMEL_HORIZONT),
-        ("nebel_dichte", 0.0), ("belichtung", 1.0),
+        ("nebel_dichte", 0.0), ("nebel_faktor", 1.0), ("belichtung", 1.0),
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

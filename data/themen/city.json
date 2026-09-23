@@ -29,17 +29,17 @@
     "dichte": 0.0009
   },
   "boden": {
-    "textur": "beton",
-    "kachel_m": 6.0,
+    "textur": "gras",
+    "kachel_m": 8.0,
     "farbe": [
       0.45,
       0.45,
       0.44
     ],
     "ton": [
-      0.95,
-      0.95,
-      1.0
+      0.7,
+      1.1,
+      0.55
     ]
   },
   "fahrbahn": {
@@ -82,10 +82,10 @@
   "deko": [
     {
       "modell": "city/wohnblock_1|city/wohnblock_2|city/wohnblock_3|city/backstein_1|city/backstein_2",
-      "dichte_je_ha": 1.1,
+      "dichte_je_ha": 2.2,
       "abstand_m": [
-        26,
-        190
+        24,
+        200
       ],
       "skala": [
         0.95,
@@ -96,7 +96,7 @@
     },
     {
       "modell": "city/buero_turm_1|city/buero_turm_2|city/buero_turm_3",
-      "dichte_je_ha": 0.22,
+      "dichte_je_ha": 0.35,
       "abstand_m": [
         70,
         300
@@ -111,7 +111,7 @@
     },
     {
       "modell": "natur/laubbaum_2|natur/laubbaum_1",
-      "dichte_je_ha": 3.0,
+      "dichte_je_ha": 5.0,
       "abstand_m": [
         6,
         24

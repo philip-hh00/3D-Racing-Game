@@ -343,6 +343,54 @@ def _randsteintextur(ctx, farben):
 
 
 # ---------------------------------------------------------------------------
+# Ein Fahrzeug zeichnen — geteilt von Rennszene und Werkstattvorschau
+# ---------------------------------------------------------------------------
+
+def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None) -> None:
+    """Material setzen; ``lack`` und ``lack2`` bekommen die Lackierung."""
+    material_setzen(p, hm)
+    name = hm.daten.name
+    if name in ("lack", "lack2"):
+        shader.setzen(p, "klarlack", 1.0)
+        if lack is not None:
+            farbe = lack.farbe if name == "lack" else lack.zweitfarbe
+            if farbe is not None:
+                shader.setzen(p, "grundton", tuple(float(c) for c in farbe))
+                shader.setzen(p, "hat_basisfarbe", 0.0)
+                shader.setzen(p, "metallic_faktor", float(lack.metallic))
+                shader.setzen(p, "rauheit_faktor", float(lack.rauheit))
+                shader.setzen(p, "klarlack", float(lack.klarlack))
+                if lack.leuchten and name == "lack":
+                    lin = [float(c) ** 2.2 * lack.leuchten for c in farbe]
+                    shader.setzen(p, "emission", tuple(lin))
+
+
+def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
+                           lack: Lackwerte | None, durchsichtig) -> None:
+    """Alle Teile eines Fahrzeugs an ihren Matrizen zeichnen.
+
+    ``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles.
+    Den Mischmodus stellt der Aufrufer ein.
+    """
+    for name, m in matrizen.items():
+        teil = modell.teil(name)
+        if teil is None:
+            continue
+        gesetzt = False
+        for st in teil.stuecke:
+            hm = modell.materialien[st.material] if st.material < len(modell.materialien) else None
+            glas = hm is not None and hm.daten.durchsichtig
+            if durchsichtig is not None and glas != durchsichtig:
+                continue
+            if not gesetzt:
+                shader.modell_setzen(p, m)
+                gesetzt = True
+            if hm is not None:
+                lack_material_setzen(p, hm, lack)
+            st.vao.render()
+
+
+# ---------------------------------------------------------------------------
 # Die Szene
 # ---------------------------------------------------------------------------
 
@@ -634,22 +682,7 @@ class Rennszene:
         return {t.name: grund @ matrix.verschiebung(t.versatz) for t in fm.modell.teile}
 
     def _material_setzen(self, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None) -> None:
-        p = self.programm
-        material_setzen(p, hm)
-        name = hm.daten.name
-        if name in ("lack", "lack2"):
-            shader.setzen(p, "klarlack", 1.0)
-            if lack is not None:
-                farbe = lack.farbe if name == "lack" else lack.zweitfarbe
-                if farbe is not None:
-                    shader.setzen(p, "grundton", tuple(float(c) for c in farbe))
-                    shader.setzen(p, "hat_basisfarbe", 0.0)
-                    shader.setzen(p, "metallic_faktor", float(lack.metallic))
-                    shader.setzen(p, "rauheit_faktor", float(lack.rauheit))
-                    shader.setzen(p, "klarlack", float(lack.klarlack))
-                    if lack.leuchten and name == "lack":
-                        lin = [float(c) ** 2.2 * lack.leuchten for c in farbe]
-                        shader.setzen(p, "emission", tuple(lin))
+        lack_material_setzen(self.programm, hm, lack)
 
     def _fahrzeug_zeichnen(self, stand: Fahrzeugstand, durchsichtig) -> None:
         """``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles (Ghost)."""
@@ -676,22 +709,8 @@ class Rennszene:
             shader.setzen(p, "deckkraft", 1.0)
         shader.setzen(p, "uv_skala", 1.0)
 
-        for name, m in self._teilmatrizen(stand, fahrzeugmodell).items():
-            teil = modell.teil(name)
-            if teil is None:
-                continue
-            gesetzt = False
-            for st in teil.stuecke:
-                hm = modell.materialien[st.material] if st.material < len(modell.materialien) else None
-                glas = hm is not None and hm.daten.durchsichtig
-                if durchsichtig is not None and glas != durchsichtig:
-                    continue
-                if not gesetzt:
-                    shader.modell_setzen(p, m)
-                    gesetzt = True
-                if hm is not None:
-                    self._material_setzen(hm, stand.lack)
-                st.vao.render()
+        fahrzeugteile_zeichnen(p, modell, self._teilmatrizen(stand, fahrzeugmodell),
+                               stand.lack, durchsichtig)
 
         self.ctx.depth_mask = True
         if stand.entfaerbt or durchsichtig:

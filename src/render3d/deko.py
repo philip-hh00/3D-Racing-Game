@@ -230,6 +230,8 @@ class Dekozeichner:
                            (m.stufen[1], auswahl & (d >= m.lod_abstand)))
             else:
                 gruppen = ((m.stufen[0], auswahl),)
+            if durchgang != "schatten":
+                shader.setzen(self.programm, "nebel_faktor", 0.45 if m.kulisse else 1.0)
             for stufe, maske in gruppen:
                 anzahl = self._schreiben(stufe, m.matrizen[maske])
                 if anzahl == 0:

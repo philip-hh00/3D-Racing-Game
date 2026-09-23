@@ -169,6 +169,11 @@ def test_jede_bibliothek_der_werkzeuge_und_tests_ist_irgendwo_notiert():
     """
     gefunden = _fremdmodule([os.path.join(_ROOT, "tools"),
                              os.path.join(_ROOT, "tests")])
+    # tools/blender/ laeuft im Python von Blender (blender.exe -b -P ...), mit
+    # bpy, bmesh und mathutils von dort — die Pipeline fuehrt es nie aus.
+    blender = os.path.join(_ROOT, "tools", "blender")
+    gefunden = {m: d for m, d in gefunden.items()
+                if not all(os.path.abspath(x).startswith(blender) for x in d)}
     erlaubt = _requirements() | _requirements("requirements-dev.txt")
     # Eigene Module und Ordner werden per sys.path importiert und sind keine
     # Fremdbibliotheken.

@@ -131,34 +131,9 @@ HOLD_ABORT_BUTTON_AFTER_S = 5.0
 
 
 def lackwerte(kennung):
-    """Eine Lackierung (``"metallic:rubinrot"``) als Zahlen für die 3D-Szene.
-
-    ``None`` für Werkslack: dann trägt das Modell seine eigene Farbe. Die
-    Finishes übersetzen sich in Material: Metallic glänzt metallisch, Neon
-    leuchtet ein wenig, Zweifarbig färbt die Zweitfarbe (Dach, Streifen,
-    Livree — Material ``lack2``) hell oder dunkel, je nach Grundfarbe.
-    """
+    """Die Lackierung als Zahlen für die 3D-Szene — siehe ``lack.werte_3d``."""
     from src.core import lack
-    from src.render3d.rennszene import Lackwerte
-    teile = lack.zerlege(kennung) if isinstance(kennung, str) else None
-    if teile is None:
-        return None
-    finish_key, farb_key = teile
-    farbe = lack.farbe(farb_key)
-    fin = lack.finish(finish_key) or {}
-    if farbe is None:
-        return None
-    rgb = tuple(c / 255.0 for c in farbe["rgb"])
-    werte = Lackwerte(farbe=rgb)
-    if finish_key == "metallic":
-        werte.metallic, werte.rauheit = 0.55, 0.22
-    elif finish_key == "neon":
-        werte.rauheit, werte.leuchten = 0.28, 0.35
-    elif finish_key == "zweifarbig":
-        hell = sum(rgb) / 3 > 0.55
-        zweit = fin.get("zweitfarbe_dunkel" if hell else "zweitfarbe_hell", [40, 40, 44])
-        werte.zweitfarbe = tuple(c / 255.0 for c in zweit)
-    return werte
+    return lack.werte_3d(kennung)
 
 
 class RaceState(BaseState):

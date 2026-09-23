@@ -627,6 +627,12 @@ class CarSelectState(BaseState):
         car_world_pos = (self.turntable_center[0], world_y)
         rotation_angle = (self._time * 0.8) % (2 * math.pi)
 
+        # Das 3D-Modell auf dem Drehteller, in der Lackierung aus dem Profil.
+        # Ohne OpenGL bleibt das Sprite darunter.
+        if self._auto_3d_zeichnen(screen, selected_key, rotation_angle):
+            self._details_text_zeichnen(screen, config)
+            return
+
         # Draw car shadow slightly offset
         scale_factor = 1.6
         shadow_w = int(config.height_px * scale_factor)
@@ -642,7 +648,30 @@ class CarSelectState(BaseState):
 
         # Draw actual vector vehicle with scale
         renderer.draw(screen, car_world_pos, rotation_angle, pygame.Vector2(0, 0), scale=scale_factor)
+        self._details_text_zeichnen(screen, config)
 
+    def _auto_3d_zeichnen(self, screen: pygame.Surface, key: str, winkel_rad: float) -> bool:
+        from src.core import lack
+        from src.core import profile as _prof
+        from src.states.menu.werkstatt_page import fahrzeugvorschau
+        vorschau = fahrzeugvorschau()
+        if vorschau is None:
+            return False
+        kasten = pygame.Rect(0, 0, int(self.turntable_radius * 2.6), int(self.turntable_radius * 1.7))
+        kasten.center = (self.turntable_center[0], self.turntable_center[1] - 10)
+        try:
+            ergebnis = vorschau.bild(key, lack.werte_3d(_prof.current().paint(key)),
+                                     math.degrees(winkel_rad), kasten.size)
+        except Exception as fehler:                    # pragma: no cover - Treiber
+            print(f"[CarSelect] 3D-Vorschau fehlgeschlagen: {fehler}")
+            return False
+        if ergebnis is None:
+            return False
+        pixel, groesse = ergebnis
+        screen.blit(pygame.image.frombuffer(pixel, groesse, "RGBA"), kasten.topleft)
+        return True
+
+    def _details_text_zeichnen(self, screen: pygame.Surface, config) -> None:
         # --- 2. TITLE & DESCRIPTION ---
         # Draw vehicle header
         desc_x = self.right_panel_rect.x + 50

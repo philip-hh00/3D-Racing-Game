@@ -138,14 +138,14 @@ class Schattenkarte:
         self.fbo.clear(depth=1.0)
         self.ctx.enable(moderngl.DEPTH_TEST)
         self.ctx.disable(moderngl.BLEND)
-        # Rückseiten-Versatz im Rasterizer spart Schattenakne auf flachen Dächern.
         for p in (self.programm, self.programm_instanz):
             shader.matrix_setzen(p, "licht_mvp", self.licht_mvp)
         return vorher
 
     def beenden(self, vorher) -> None:
         fbo, viewport, scissor = vorher
-        fbo.use()
+        if fbo is not None:
+            fbo.use()
         self.ctx.viewport = viewport
         self.ctx.scissor = scissor
 

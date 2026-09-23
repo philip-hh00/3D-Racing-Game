@@ -36,7 +36,6 @@ from src.entities.vehicle import VehicleConfig         # noqa: E402
 from src.physics.physics_world import PhysicsWorld     # noqa: E402
 from src.render3d import (ansicht, camera, federung, fenster, platzierung,  # noqa: E402
                           rennszene, thema, track_mesh, vehicle_node)
-from src.states.race_state import lackwerte            # noqa: E402
 from src.track.track import Track                      # noqa: E402
 
 
@@ -127,7 +126,7 @@ def main(argv=None) -> int:
             kennung=1, schluessel=a.fahrzeug, pos_m=pos, gierwinkel_rad=auto.angle,
             weg_m=auto.signed_speed * M_PER_PX * dt,
             lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(auto),
-            lack=lackwerte(lacke[lack_index]),
+            lack=lack.werte_3d(lacke[lack_index]),
             nick_rad=aufhaengung.nick_rad, wank_rad=aufhaengung.wank_rad)
         szene.fortschreiben([stand])
 

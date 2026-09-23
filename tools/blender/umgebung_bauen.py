@@ -788,7 +788,7 @@ def gelaende(name, breite, tiefe, hoehe, seed, stil: str, aufloesung: int = 64):
         zm = f.calc_center_median().z
         steil = 1 - f.normal.z
         if stil == "schnee":
-            f.material_index = 2 if zm > hoehe * (0.55 + 0.1 * steil) and steil < 0.5 else (1 if steil > 0.3 or zm > hoehe * 0.35 else 0)
+            f.material_index = 2 if zm > hoehe * (0.42 + 0.15 * steil) and steil < 0.7 else (1 if steil > 0.3 or zm > hoehe * 0.3 else 0)
         elif stil == "wueste":
             f.material_index = 1 if steil > 0.25 else (0 if zm < hoehe * 0.1 else 2 if zm > hoehe * 0.85 else 1)
         else:

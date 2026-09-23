@@ -189,6 +189,36 @@ def normalisiere(kenn: str | None) -> str:
     return kenn if (isinstance(kenn, str) and zerlege(kenn) is not None) else WERK
 
 
+def werte_3d(kennung):
+    """Eine Lackierung (``"metallic:rubinrot"``) als Zahlen für die 3D-Szene.
+
+    ``None`` für Werkslack: dann trägt das Modell seine eigene Farbe. Die
+    Finishes übersetzen sich in Material: Metallic glänzt metallisch, Neon
+    leuchtet ein wenig, Zweifarbig färbt die Zweitfarbe (Dach, Streifen,
+    Livree — Material ``lack2``) hell oder dunkel, je nach Grundfarbe.
+    """
+    from src.render3d.rennszene import Lackwerte
+    teile = zerlege(kennung) if isinstance(kennung, str) else None
+    if teile is None:
+        return None
+    finish_key, farb_key = teile
+    grund = farbe(farb_key)
+    fin = finish(finish_key) or {}
+    if grund is None:
+        return None
+    rgb = tuple(c / 255.0 for c in grund["rgb"])
+    werte = Lackwerte(farbe=rgb)
+    if finish_key == "metallic":
+        werte.metallic, werte.rauheit = 0.55, 0.22
+    elif finish_key == "neon":
+        werte.rauheit, werte.leuchten = 0.28, 0.35
+    elif finish_key == "zweifarbig":
+        hell = sum(rgb) / 3 > 0.55
+        zweit = fin.get("zweitfarbe_dunkel" if hell else "zweitfarbe_hell", [40, 40, 44])
+        werte.zweitfarbe = tuple(c / 255.0 for c in zweit)
+    return werte
+
+
 def ki_lack(vehicle_id: int) -> str:
     """Die Lackierung des KI-Autos: **immer Werkslack** (entschieden 06.08.2026).
 

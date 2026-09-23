@@ -33,6 +33,36 @@ from src.ui.widgets import Button, Stepper
 #: Sichtbare Kacheln im Flottenstreifen.
 KACHELN = 7
 
+_vorschau = None
+_vorschau_versucht = False
+
+
+def fahrzeugvorschau():
+    """Die 3D-Vorschau, einmal je Programmlauf gebaut — oder ``None``.
+
+    Einmal: der OpenGL-Kontext lebt so lange wie das Fenster, und die Modelle,
+    die man in der Werkstatt durchblättert, sollen nicht jedes Mal neu geladen
+    werden. ``None`` ohne Kontext (Testlauf) oder wenn der Aufbau scheitert —
+    dann zeigt die Werkstatt das Sprite wie bisher.
+    """
+    global _vorschau, _vorschau_versucht
+    if _vorschau is not None or _vorschau_versucht:
+        return _vorschau
+    ctx = display.kontext()
+    if ctx is None:
+        return None
+    _vorschau_versucht = True
+    try:
+        from src.core.paths import bundle_dir
+        from src.render3d.vorschau import Fahrzeugvorschau
+        wurzel = bundle_dir()
+        _vorschau = Fahrzeugvorschau(ctx, wurzel / "assets" / "vehicles",
+                                     wurzel / "assets" / "himmel")
+    except Exception as fehler:                        # pragma: no cover - Treiber
+        print(f"[Werkstatt] Keine 3D-Vorschau: {fehler}")
+        _vorschau = None
+    return _vorschau
+
 
 class _Feld:
     """Eine gezeichnete Flaeche, die auch der Fokus erreichen soll.
@@ -699,12 +729,15 @@ class WerkstattPage(Page):
 
         cfg = self._cfg()
         kenn = self._kennung()
-        bild = lack.sprite(self._key(), cfg.visual_type if cfg else self._key(),
-                           kenn, lack.BREITE_VORSCHAU)
-        if bild is not None:
-            kasten = pygame.Rect(0, 0, int(r.width * 0.72), int(r.height * 0.66))
-            kasten.center = (r.centerx, r.centery + 10)
-            self._auto_zeichnen(screen, bild, kasten, self.winkel)
+        kasten = pygame.Rect(0, 0, int(r.width * 0.72), int(r.height * 0.66))
+        kasten.center = (r.centerx, r.centery + 10)
+        # Das 3D-Modell, genau so lackiert, wie es auf der Strecke faehrt. Ohne
+        # OpenGL (Testlauf, alter Treiber) bleibt das Sprite.
+        if not self._auto_3d_zeichnen(screen, kasten, kenn):
+            bild = lack.sprite(self._key(), cfg.visual_type if cfg else self._key(),
+                               kenn, lack.BREITE_VORSCHAU)
+            if bild is not None:
+                self._auto_zeichnen(screen, bild, kasten, self.winkel)
 
         theme.text(screen, tr(cfg.name) if cfg else self._key(), theme.TITLE,
                    theme.TEXT, (r.x + 44, r.y + 26), max_w=r.width - 480)
@@ -759,6 +792,22 @@ class WerkstattPage(Page):
             theme.text(screen, tr("Für dieses Fahrzeug ist bisher nur der Werkslack abgestimmt."),
                        theme.HINT, theme.TEXT_FAINT, (r.right - 24, dy + 16),
                        topright=True, max_w=r.width - 1100)
+
+    def _auto_3d_zeichnen(self, screen, kasten: pygame.Rect, kenn: str) -> bool:
+        vorschau = fahrzeugvorschau()
+        if vorschau is None:
+            return False
+        try:
+            ergebnis = vorschau.bild(self._key(), lack.werte_3d(kenn), self.winkel,
+                                     (kasten.width, kasten.height))
+        except Exception as fehler:                    # pragma: no cover - Treiber
+            print(f"[Werkstatt] 3D-Vorschau fehlgeschlagen: {fehler}")
+            return False
+        if ergebnis is None:
+            return False
+        pixel, groesse = ergebnis
+        screen.blit(pygame.image.frombuffer(pixel, groesse, "RGBA"), kasten.topleft)
+        return True
 
     def _auto_zeichnen(self, screen, bild: pygame.Surface, kasten: pygame.Rect,
                        winkel: float) -> None:

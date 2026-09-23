@@ -37,9 +37,9 @@
       0.3
     ],
     "ton": [
-      0.9,
-      1.02,
-      0.85
+      0.82,
+      1.05,
+      0.72
     ]
   },
   "fahrbahn": {
@@ -134,14 +134,14 @@
   "kulisse": [
     {
       "modell": "mountain/schneeberg_1|mountain/schneeberg_2",
-      "anzahl": 10,
+      "anzahl": 12,
       "radius_m": [
-        480,
-        950
+        750,
+        1300
       ],
       "skala": [
-        0.85,
-        1.35
+        1.0,
+        1.6
       ]
     }
   ]
