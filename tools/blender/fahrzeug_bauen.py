@@ -1410,6 +1410,70 @@ def reifen(ms: Masse, p, mats):
     return ob, rr
 
 
+def turbinen_felge(p, mats, rr: float, y_rand: float) -> list:
+    """Aero-Felge im Turbinenstil: dunkle Grundscheibe, heller Außenring und
+    Nabenteller, dazwischen gebogene Schaufeln (``felgen_schaufeln``,
+    ``felgen_bogen_grad``, ``felgen_schaufel_breite_m``). Außenseite bei +Y,
+    rotationssymmetrisch um Y.
+    """
+    fm = mats["felge"]
+    teile = [zylinder_y("aerogrund", (0, y_rand - 0.03, 0), rr - 0.014, 0.012,
+                        mats["kunststoff"], segmente=64)]
+
+    def ring(name, r0, r1, y0, y1, seg=64):
+        # Kreisring als geschlossener Drehkörper (Querschnitt: Rechteck).
+        prof = [(r0, y0), (r1, y0), (r1, y1), (r0, y1)]
+        punkte, flaechen = [], []
+        for s in range(seg):
+            w = 2 * math.pi * s / seg
+            for r_, y in prof:
+                punkte.append((r_ * math.cos(w), y, r_ * math.sin(w)))
+        for s in range(seg):
+            for i in range(4):
+                a, b = s * 4 + i, s * 4 + (i + 1) % 4
+                c, d = ((s + 1) % seg) * 4 + (i + 1) % 4, ((s + 1) % seg) * 4 + i
+                flaechen.append((a, b, c, d))
+        ob = g.objekt_aus_daten(name, punkte, flaechen, [fm])
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        bm.to_mesh(ob.data)
+        bm.free()
+        return ob
+
+    teile.append(ring("aeroring", rr * 0.8, rr - 0.012, y_rand - 0.03, y_rand - 0.006))
+    teile.append(zylinder_y("aeroteller", (0, y_rand - 0.02, 0), rr * 0.42, 0.028, fm, segmente=48))
+    n = p.get("felgen_schaufeln", 10)
+    bogen = math.radians(p.get("felgen_bogen_grad", 28))
+    sb = p.get("felgen_schaufel_breite_m", 0.03)
+    r0, r1 = rr * 0.4, rr * 0.82
+    y0, y1 = y_rand - 0.03, y_rand - 0.004
+    schritte = 8
+    for i in range(n):
+        w0 = 2 * math.pi * i / n
+        bm = bmesh.new()
+        ringe = []
+        for k in range(schritte + 1):
+            t = k / schritte
+            r_ = r0 + (r1 - r0) * t
+            w = w0 + bogen * t
+            b = sb * (1 - 0.4 * t) / 2
+            # Quer zur Schaufel: tangential in der Radebene
+            tx, tz = -math.sin(w), math.cos(w)
+            cx, cz = r_ * math.cos(w), r_ * math.sin(w)
+            ringe.append([bm.verts.new((cx + s * b * tx, y, cz + s * b * tz))
+                          for s, y in ((-1, y0), (1, y0), (1, y1), (-1, y1))])
+        for k in range(schritte):
+            a, c = ringe[k], ringe[k + 1]
+            for j in range(4):
+                bm.faces.new((a[j], a[(j + 1) % 4], c[(j + 1) % 4], c[j]))
+        bm.faces.new(ringe[0])
+        bm.faces.new(list(reversed(ringe[-1])))
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        teile.append(g.objekt_aus(bm, "schaufel", [fm]))
+    return teile
+
+
 def felge(ms: Masse, p, mats, rr: float):
     """Felge mit Speichen je Design, Außenseite bei +Y."""
     b = ms.reifen_b
@@ -1443,6 +1507,8 @@ def felge(ms: Masse, p, mats, rr: float):
             loch.location = (0, y_rand, 0)
             g.transform_anwenden(loch)
             teile.append(loch)
+    elif design == "turbine":
+        teile += turbinen_felge(p, mats, rr, y_rand)
     else:
         muster = {
             "fuenf": [(0.0, 0.075, 0.045)],
