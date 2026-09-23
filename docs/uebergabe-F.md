@@ -62,7 +62,7 @@ Szene allein (`szene_foto`, GP Arena mit rund 1 100 Objekten): 8–9 ms.
 
 ## Offen / Ideen
 
-* Startampel leuchtet dauerhaft rot; an den Countdown koppeln.
+* Startampel geht im Countdown an und beim Start aus (alle Lampen gemeinsam, nicht einzeln hochzählend).
 * Felswände der Kulisse strecken die Textur an steilen Flanken (planare UV).
 * Innenraum der Fahrzeuge ist nur angedeutet (Wanne, Sitze, Lenkrad).
 * `tools/ComfyUI/` (rund 40 GB, alte Erzeugungsseite) liegt noch lokal und

@@ -2334,6 +2334,10 @@ class RaceState(BaseState):
         if ctx is None:
             return
 
+        # Startampel: im Countdown an, mit dem Start aus — wie im Motorsport.
+        zustand = getattr(self.race_manager, "state", "") if self.race_manager else ""
+        self.szene.ampel_setzen(1.0 if zustand == "countdown" else 0.0)
+
         briefkasten = display.ansichtsfenster(display.current_win_size())
         x, y, b, h = briefkasten
         if self._split and len(self._kameras) > 1:
