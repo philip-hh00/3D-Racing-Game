@@ -823,10 +823,20 @@ def gelaende(name, breite, tiefe, hoehe, seed, stil: str, aufloesung: int = 64):
     uvl = bm.loops.layers.uv.verify()
     for j in range(n):
         for i in range(n):
-            f = bm.faces.new((raster[j][i], raster[j][i + 1], raster[j + 1][i + 1], raster[j + 1][i]))
-            for l in f.loops:
-                l[uvl].uv = (l.vert.co.x / 24.0, l.vert.co.y / 24.0)
+            bm.faces.new((raster[j][i], raster[j][i + 1], raster[j + 1][i + 1], raster[j + 1][i]))
     bm.normal_update()
+    # Steile Flanken von der Seite projizieren, flache von oben — sonst zieht
+    # sich die Felstextur an jeder Wand zu Streifen.
+    for f in bm.faces:
+        n_ = f.normal
+        for l in f.loops:
+            c = l.vert.co
+            if n_.z > 0.7:
+                l[uvl].uv = (c.x / 24.0, c.y / 24.0)
+            elif abs(n_.x) > abs(n_.y):
+                l[uvl].uv = (c.y / 24.0, c.z / 24.0)
+            else:
+                l[uvl].uv = (c.x / 24.0, c.z / 24.0)
     for f in bm.faces:
         zm = f.calc_center_median().z
         steil = 1 - f.normal.z
