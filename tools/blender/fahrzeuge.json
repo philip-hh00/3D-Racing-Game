@@ -2,25 +2,35 @@
   "_hinweis": "Form je Fahrzeug fuer tools/blender/fahrzeug_bauen.py. u laeuft von 0 (Heck) bis 1 (Front) ueber die ganze Sprite-Laenge, v von -1 (rechts) bis +1 (links) ueber die ganze Sprite-Breite, Hoehen z in Metern. Laenge, Breite, Radstand und Raddurchmesser kommen aus data/vehicles/<key>.json. Eintraege erben von einer _vorlage; Unterobjekte werden zusammengefuehrt, Zonen angehaengt.",
   "_vorlagen": {
     "kompakt": {
-      "deck": [[0, 0.86], [0.02, 0.93], [0.06, 0.98], [0.15, 1.0], [0.4, 1.0], [0.6, 0.99], [0.72, 0.965], [0.8, 0.93], [0.88, 0.86], [0.94, 0.78], [0.98, 0.69], [1.0, 0.58]],
+      "deck": [[0, 0.76], [0.02, 0.84], [0.05, 0.91], [0.1, 0.97], [0.15, 0.99], [0.4, 1.0], [0.6, 0.99], [0.72, 0.965], [0.8, 0.93], [0.88, 0.86], [0.94, 0.78], [0.98, 0.69], [1.0, 0.58]],
       "unten": [[0, 0.36], [0.03, 0.27], [0.08, 0.22], [0.15, 0.18], [0.85, 0.18], [0.93, 0.22], [0.98, 0.28], [1, 0.36]],
-      "haube": 0.03,
-      "kabine": {"dach_woelbung": 0.04, "sitzreihen": 2},
+      "haube": 0.04,
+      "kabine": {"dach_woelbung": 0.06, "sitzreihen": 2, "dachkante_radius": 0.09, "kehle_m": 0.06},
       "zoll": 17,
       "reifenbreite_m": 0.215,
       "felge": "fuenf",
       "kennzeichen": {"vorn_m": 0.45, "hinten_m": 0.7},
       "auspuff": {"anzahl": 1},
-      "stossfaenger": {"vorn": [0.55, 0.87], "hinten": [0.6, 0.14]}
+      "stossfaenger": {"vorn": [0.55, 0.87], "hinten": [0.6, 0.14]},
+      "profil_punkte": [2, 1, 6, 10, 4, 3, 6],
+      "schulter_radius": 0.07,
+      "seiten_radius": 0.2,
+      "haube_form": 1.7,
+      "front_buckel_m": 0.14,
+      "heck_buckel_m": 0.08,
+      "sicken": [
+        {"z": [[0.0, 0.84], [0.5, 0.87], [0.9, 0.84], [1.0, 0.78]], "tiefe": [[0.03, 0.0], [0.1, 0.02], [0.88, 0.02], [0.96, 0.0]], "breite": 0.08},
+        {"z": 0.44, "tiefe": [[0.26, 0.0], [0.32, 0.012], [0.68, 0.012], [0.74, 0.0]], "breite": 0.06}
+      ]
     },
     "limousine": {
       "deck": [[0, 0.84], [0.02, 0.94], [0.06, 1.0], [0.14, 1.02], [0.3, 1.0], [0.5, 0.99], [0.65, 0.98], [0.75, 0.95], [0.85, 0.9], [0.93, 0.83], [0.98, 0.74], [1.0, 0.62]],
       "unten": [[0, 0.38], [0.03, 0.28], [0.08, 0.22], [0.14, 0.18], [0.86, 0.18], [0.93, 0.22], [0.98, 0.28], [1, 0.36]],
-      "haube": 0.03,
-      "seiten_radius": 0.15,
-      "front_buckel_m": 0.1,
-      "heck_buckel_m": 0.07,
-      "kabine": {"dach_woelbung": 0.045, "sitzreihen": 2, "seitenrahmen": "chrom"},
+      "haube": 0.04,
+      "seiten_radius": 0.2,
+      "front_buckel_m": 0.14,
+      "heck_buckel_m": 0.08,
+      "kabine": {"dach_woelbung": 0.06, "sitzreihen": 2, "seitenrahmen": "chrom", "dachkante_radius": 0.09, "kehle_m": 0.06},
       "zoll": 19,
       "reifenbreite_m": 0.245,
       "felge": "vielspeichen",
@@ -28,7 +38,14 @@
       "auspuff": {"anzahl": 2, "radius_m": 0.04},
       "griffe": "chrom",
       "wischer": true,
-      "stossfaenger": {"vorn": [0.56, 0.88], "hinten": [0.62, 0.17]}
+      "stossfaenger": {"vorn": [0.56, 0.88], "hinten": [0.62, 0.17]},
+      "profil_punkte": [2, 1, 6, 10, 4, 3, 6],
+      "schulter_radius": 0.07,
+      "haube_form": 1.7,
+      "sicken": [
+        {"z": [[0.0, 0.86], [0.5, 0.88], [0.9, 0.85], [1.0, 0.8]], "tiefe": [[0.02, 0.0], [0.08, 0.02], [0.9, 0.02], [0.97, 0.0]], "breite": 0.08},
+        {"z": 0.42, "tiefe": [[0.3, 0.0], [0.36, 0.012], [0.7, 0.012], [0.76, 0.0]], "breite": 0.06}
+      ]
     },
     "supersport": {
       "deck": [[0, 0.64], [0.02, 0.76], [0.06, 0.84], [0.15, 0.9], [0.25, 0.9], [0.35, 0.87], [0.5, 0.84], [0.62, 0.8], [0.72, 0.78], [0.8, 0.77], [0.88, 0.71], [0.94, 0.61], [0.98, 0.5], [1.0, 0.4]],
@@ -120,8 +137,8 @@
     "reifen_v": 0.975,
     "spiegel": {"u": 0.627, "v": 0.995},
     "kabine": {
-      "dach": [[0.06, 0.9], [0.075, 1.02], [0.1, 1.12], [0.15, 1.28], [0.2, 1.39], [0.235, 1.43], [0.3, 1.455], [0.45, 1.46], [0.55, 1.445], [0.575, 1.43], [0.62, 1.32], [0.68, 1.17], [0.74, 1.04], [0.79, 0.93]],
-      "dach_v": [[0.1, 0.52], [0.2, 0.55], [0.5, 0.56], [0.575, 0.58], [0.62, 0.61], [0.75, 0.7]],
+      "dach": [[0.0, 0.95], [0.008, 1.02], [0.025, 1.07], [0.06, 1.1], [0.085, 1.13], [0.12, 1.23], [0.17, 1.35], [0.21, 1.41], [0.235, 1.435], [0.3, 1.455], [0.45, 1.46], [0.55, 1.445], [0.575, 1.43], [0.62, 1.32], [0.68, 1.17], [0.74, 1.04], [0.79, 0.93]],
+      "dach_v": [[0.0, 0.46], [0.06, 0.5], [0.1, 0.52], [0.2, 0.55], [0.5, 0.56], [0.575, 0.58], [0.62, 0.61], [0.75, 0.7]],
       "basis_v": 0.8,
       "frontscheibe": [[0.574, 0], [0.578, 0.35], [0.59, 0.58], [0.6, 0.63], [0.72, 0.7], [0.74, 0.6], [0.752, 0.3], [0.755, 0]],
       "heckscheibe": [[0.237, 0], [0.233, 0.4], [0.222, 0.55], [0.105, 0.56], [0.097, 0.45], [0.095, 0]],
@@ -132,21 +149,22 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.45, 0.66], [0.82, 0.63], [0.86, 0.65], [0.86, 0.73], [0.45, 0.725]],
+        "punkte": [[0.45, 0.66], [0.82, 0.63], [0.86, 0.65], [0.86, 0.74], [0.45, 0.735]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 2, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.86, 0.0], [1.2, 0.0], [1.2, 1.3], [0.86, 1.3]]}
         ]
       },
       {
         "ansicht": "hinten",
-        "punkte": [[0.35, 0.85], [0.86, 0.82], [0.92, 0.99], [0.35, 0.96]],
+        "punkte": [[0.35, 0.7799999999999999], [0.86, 0.7559999999999999], [0.92, 0.8919999999999999], [0.35, 0.8679999999999999]],
         "spiegeln": true,
         "und": [
           {"ansicht": "oben", "punkte": [[-0.1, 0.2], [0.14, 0.2], [0.14, 1.1], [-0.1, 1.1]]}
@@ -200,10 +218,47 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "vorn",
+        "punkte": [[0.6, 0.31], [0.76, 0.32], [0.76, 0.4], [0.6, 0.395]],
+        "spiegeln": true,
+        "n_min": -0.5,
+        "mat": "zierteil",
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.025, "rand": "kunststoff"}
+        ],
+        "linsen": {"anzahl": 1, "radius": 0.02880000000000001, "lage": 0.5, "rand_anteil": 0.0},
+        "u": [0.88, 1.2]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.62, 0.45], [0.82, 0.45], [0.82, 0.47200000000000003], [0.62, 0.47200000000000003]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.615], [0.3, 0.615], [0.3, 0.7849999999999999], [-0.3, 0.7849999999999999]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
     ],
     "front_buckel_m": 0.1,
-    "seiten_radius": 0.15
+    "seiten_radius": 0.15,
+    "spoiler": [
+      {"art": "dach", "u": 0.24, "laenge_m": 0.14, "v": 0.5, "mat": "lack", "neigung_m": 0.01}
+    ],
+    "splitter": true,
+    "splitter_ueberstand_m": 0.0
   },
   "rookie_2": {
     "vorlage": "kompakt",
@@ -214,8 +269,8 @@
     "reifen_v": 0.96,
     "spiegel": {"u": 0.625, "v": 0.995, "mat": "zierteil"},
     "kabine": {
-      "dach": [[0.05, 0.9], [0.065, 1.02], [0.09, 1.12], [0.14, 1.28], [0.2, 1.39], [0.27, 1.415], [0.45, 1.42], [0.53, 1.405], [0.557, 1.39], [0.6, 1.29], [0.66, 1.15], [0.72, 1.03], [0.77, 0.93]],
-      "dach_v": [[0.1, 0.5], [0.2, 0.52], [0.55, 0.54], [0.6, 0.58], [0.74, 0.7]],
+      "dach": [[0.0, 0.95], [0.008, 1.02], [0.025, 1.06], [0.055, 1.09], [0.075, 1.12], [0.1, 1.2], [0.15, 1.33], [0.2, 1.4], [0.27, 1.415], [0.45, 1.42], [0.53, 1.405], [0.557, 1.39], [0.6, 1.29], [0.66, 1.15], [0.72, 1.03], [0.77, 0.93]],
+      "dach_v": [[0.0, 0.44], [0.06, 0.48], [0.1, 0.5], [0.2, 0.52], [0.55, 0.54], [0.6, 0.58], [0.74, 0.7]],
       "basis_v": 0.8,
       "frontscheibe": [[0.557, 0], [0.56, 0.35], [0.57, 0.55], [0.575, 0.62], [0.7, 0.7], [0.735, 0.6], [0.75, 0.3], [0.753, 0]],
       "heckscheibe": [[0.2, 0], [0.197, 0.4], [0.185, 0.5], [0.085, 0.52], [0.075, 0.4], [0.072, 0]],
@@ -249,21 +304,22 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.42, 0.68], [0.7999999999999999, 0.64], [0.84, 0.66], [0.84, 0.72], [0.42, 0.715]],
+        "punkte": [[0.42, 0.68], [0.7999999999999999, 0.64], [0.84, 0.66], [0.84, 0.73], [0.42, 0.725]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 2, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.86, 0.0], [1.2, 0.0], [1.2, 1.3], [0.86, 1.3]]}
         ]
       },
       {
         "ansicht": "hinten",
-        "punkte": [[0.4, 0.86], [0.84, 0.82], [0.9, 0.98], [0.45, 0.97]],
+        "punkte": [[0.4, 0.7879999999999999], [0.84, 0.7559999999999999], [0.9, 0.8839999999999999], [0.45, 0.8759999999999999]],
         "spiegeln": true,
         "und": [
           {"ansicht": "oben", "punkte": [[-0.1, 0.2], [0.15, 0.2], [0.15, 1.1], [-0.1, 1.1]]}
@@ -321,6 +377,26 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.6, 0.45], [0.8, 0.45], [0.8, 0.47200000000000003], [0.6, 0.47200000000000003]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.615], [0.3, 0.615], [0.3, 0.7849999999999999], [-0.3, 0.7849999999999999]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
     ]
   },
@@ -332,8 +408,8 @@
     "reifen_v": 0.955,
     "spiegel": {"u": 0.645, "v": 0.995},
     "kabine": {
-      "dach": [[0.03, 0.9], [0.045, 1.0], [0.07, 1.15], [0.11, 1.32], [0.16, 1.42], [0.25, 1.46], [0.45, 1.47], [0.54, 1.455], [0.565, 1.44], [0.61, 1.33], [0.67, 1.18], [0.72, 1.05], [0.77, 0.93]],
-      "dach_v": [[0.1, 0.6], [0.2, 0.62], [0.55, 0.62], [0.6, 0.64], [0.74, 0.72]],
+      "dach": [[0.0, 0.95], [0.008, 1.02], [0.02, 1.05], [0.045, 1.1], [0.07, 1.17], [0.11, 1.32], [0.16, 1.42], [0.25, 1.46], [0.45, 1.47], [0.54, 1.455], [0.565, 1.44], [0.61, 1.33], [0.67, 1.18], [0.72, 1.05], [0.77, 0.93]],
+      "dach_v": [[0.0, 0.5], [0.05, 0.56], [0.1, 0.6], [0.2, 0.62], [0.55, 0.62], [0.6, 0.64], [0.74, 0.72]],
       "basis_v": 0.8,
       "frontscheibe": [[0.565, 0], [0.567, 0.4], [0.57, 0.62], [0.575, 0.68], [0.7, 0.73], [0.735, 0.6], [0.752, 0.3], [0.755, 0]],
       "heckscheibe": [[0.162, 0], [0.16, 0.5], [0.15, 0.64], [0.07, 0.66], [0.06, 0.5], [0.058, 0]],
@@ -348,21 +424,22 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.46, 0.66], [0.8099999999999999, 0.64], [0.85, 0.66], [0.85, 0.73], [0.46, 0.725]],
+        "punkte": [[0.46, 0.66], [0.8099999999999999, 0.64], [0.85, 0.66], [0.85, 0.74], [0.46, 0.735]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 2, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.87, 0.0], [1.2, 0.0], [1.2, 1.3], [0.87, 1.3]]}
         ]
       },
       {
         "ansicht": "hinten",
-        "punkte": [[0.5, 0.86], [0.86, 0.82], [0.92, 0.98], [0.52, 0.97]],
+        "punkte": [[0.5, 0.7879999999999999], [0.86, 0.7559999999999999], [0.92, 0.8839999999999999], [0.52, 0.8759999999999999]],
         "spiegeln": true,
         "und": [
           {"ansicht": "oben", "punkte": [[-0.1, 0.2], [0.13, 0.2], [0.13, 1.1], [-0.1, 1.1]]}
@@ -417,8 +494,45 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "vorn",
+        "punkte": [[0.62, 0.31], [0.78, 0.32], [0.78, 0.4], [0.62, 0.395]],
+        "spiegeln": true,
+        "n_min": -0.5,
+        "mat": "zierteil",
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.025, "rand": "kunststoff"}
+        ],
+        "linsen": {"anzahl": 1, "radius": 0.02880000000000001, "lage": 0.5, "rand_anteil": 0.0},
+        "u": [0.88, 1.2]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.62, 0.45], [0.82, 0.45], [0.82, 0.47200000000000003], [0.62, 0.47200000000000003]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.615], [0.3, 0.615], [0.3, 0.7849999999999999], [-0.3, 0.7849999999999999]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
-    ]
+    ],
+    "spoiler": [
+      {"art": "dach", "u": 0.165, "laenge_m": 0.1, "v": 0.56, "mat": "lack", "neigung_m": 0.01}
+    ],
+    "splitter": true,
+    "splitter_ueberstand_m": 0.0
   },
   "limousine": {
     "vorlage": "limousine",
@@ -441,21 +555,22 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.5, 0.68], [0.82, 0.65], [0.86, 0.67], [0.86, 0.75], [0.5, 0.745]],
+        "punkte": [[0.5, 0.68], [0.82, 0.65], [0.86, 0.67], [0.86, 0.76], [0.5, 0.755]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 3, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.88, 0.0], [1.2, 0.0], [1.2, 1.3], [0.88, 1.3]]}
         ]
       },
       {
         "ansicht": "hinten",
-        "punkte": [[0.5, 0.84], [0.86, 0.8], [0.92, 0.99], [0.55, 0.98]],
+        "punkte": [[0.45, 0.88], [0.86, 0.85], [0.92, 0.97], [0.5, 0.97]],
         "spiegeln": true,
         "und": [
           {"ansicht": "oben", "punkte": [[-0.1, 0.2], [0.1, 0.2], [0.1, 1.1], [-0.1, 1.1]]}
@@ -511,8 +626,41 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "vorn",
+        "punkte": [[0.66, 0.28], [0.8, 0.29000000000000004], [0.8, 0.36], [0.66, 0.355]],
+        "spiegeln": true,
+        "n_min": -0.5,
+        "mat": "zierteil",
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.025, "rand": "kunststoff"}
+        ],
+        "linsen": {"anzahl": 1, "radius": 0.025599999999999987, "lage": 0.5, "rand_anteil": 0.0},
+        "u": [0.88, 1.2]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.64, 0.47], [0.84, 0.47], [0.84, 0.492], [0.64, 0.492]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.655], [0.3, 0.655], [0.3, 0.825], [-0.3, 0.825]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
-    ]
+    ],
+    "spoiler": []
   },
   "limousine_2": {
     "vorlage": "limousine",
@@ -537,14 +685,15 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.46, 0.685], [0.7799999999999999, 0.65], [0.82, 0.67], [0.82, 0.73], [0.46, 0.725]],
+        "punkte": [[0.46, 0.685], [0.7799999999999999, 0.65], [0.82, 0.67], [0.82, 0.74], [0.46, 0.735]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 3, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.88, 0.0], [1.2, 0.0], [1.2, 1.3], [0.88, 1.3]]}
         ]
@@ -607,7 +756,42 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "vorn",
+        "punkte": [[0.66, 0.28], [0.8, 0.29000000000000004], [0.8, 0.36], [0.66, 0.355]],
+        "spiegeln": true,
+        "n_min": -0.5,
+        "mat": "zierteil",
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.025, "rand": "kunststoff"}
+        ],
+        "linsen": {"anzahl": 1, "radius": 0.025599999999999987, "lage": 0.5, "rand_anteil": 0.0},
+        "u": [0.88, 1.2]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.64, 0.47], [0.84, 0.47], [0.84, 0.492], [0.64, 0.492]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.655], [0.3, 0.655], [0.3, 0.825], [-0.3, 0.825]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
+    ],
+    "spoiler": [
+      {"art": "lippe", "u": 0.035, "v": 0.6, "mat": "lack"}
     ]
   },
   "limousine_3": {
@@ -636,21 +820,22 @@
     "zonen": [
       {
         "ansicht": "vorn",
-        "punkte": [[0.48, 0.68], [0.7999999999999999, 0.65], [0.84, 0.67], [0.84, 0.75], [0.48, 0.745]],
+        "punkte": [[0.48, 0.68], [0.7999999999999999, 0.65], [0.84, 0.67], [0.84, 0.76], [0.48, 0.755]],
         "spiegeln": true,
         "n_min": -0.7,
-        "mat": "licht_vorn",
+        "mat": "scheinwerferglas",
         "stufen": [
-          {"dicke": 0.004, "tiefe": -0.014, "rand": "kunststoff"},
-          {"dicke": 0.012, "tiefe": 0.0, "rand": "scheinwerferglas"}
+          {"dicke": 0.004, "tiefe": -0.032, "rand": "kunststoff"},
+          {"dicke": 0.009, "tiefe": 0.0, "rand": "licht_vorn"}
         ],
+        "linsen": {"anzahl": 3, "lage": 0.48, "rand_anteil": 0.2},
         "und": [
           {"ansicht": "oben", "punkte": [[0.88, 0.0], [1.2, 0.0], [1.2, 1.3], [0.88, 1.3]]}
         ]
       },
       {
         "ansicht": "hinten",
-        "punkte": [[0.5, 0.84], [0.84, 0.8], [0.9, 0.99], [0.55, 0.98]],
+        "punkte": [[0.45, 0.88], [0.86, 0.85], [0.92, 0.97], [0.5, 0.97]],
         "spiegeln": true,
         "und": [
           {"ansicht": "oben", "punkte": [[-0.1, 0.2], [0.09, 0.2], [0.09, 1.1], [-0.1, 1.1]]}
@@ -715,8 +900,41 @@
         "stufen": [
           {"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}
         ]
+      },
+      {
+        "ansicht": "vorn",
+        "punkte": [[0.66, 0.28], [0.8, 0.29000000000000004], [0.8, 0.36], [0.66, 0.355]],
+        "spiegeln": true,
+        "n_min": -0.5,
+        "mat": "zierteil",
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.025, "rand": "kunststoff"}
+        ],
+        "linsen": {"anzahl": 1, "radius": 0.025599999999999987, "lage": 0.5, "rand_anteil": 0.0},
+        "u": [0.88, 1.2]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[0.64, 0.47], [0.84, 0.47], [0.84, 0.492], [0.64, 0.492]],
+        "spiegeln": true,
+        "n_min": 0.3,
+        "mat": "licht_hinten",
+        "stufen": [
+          {"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}
+        ],
+        "u": [-0.2, 0.1]
+      },
+      {
+        "ansicht": "hinten",
+        "punkte": [[-0.3, 0.655], [0.3, 0.655], [0.3, 0.825], [-0.3, 0.825]],
+        "mat": "lack",
+        "n_min": 0.2,
+        "stufen": [
+          {"dicke": 0.006, "tiefe": -0.014, "rand": "lack"}
+        ]
       }
-    ]
+    ],
+    "spoiler": []
   },
   "supercar": {
     "vorlage": "supersport",

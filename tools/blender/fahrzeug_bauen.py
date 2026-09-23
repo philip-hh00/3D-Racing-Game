@@ -459,7 +459,11 @@ class Form:
             y = wr * (1 - t)
             return (y, self.oben(u, y))
 
-        segmente = [(2, None), (1, None), (3, None), (3, None), (4, haube), (3, fenster), (6, dach)]
+        # Optional mehr Punkte je Abschnitt (für Sicken an der Flanke); ohne
+        # Angabe bleibt es bei der bisherigen Punktzahl.
+        anzahl = p.get("profil_punkte", [2, 1, 3, 3, 4, 3, 6])
+        segmente = [(anzahl[0], None), (anzahl[1], None), (anzahl[2], None), (anzahl[3], None),
+                    (anzahl[4], haube), (anzahl[5], fenster), (anzahl[6], dach)]
         rundungen = [
             None,
             (wert(p.get("boden_radius"), u, 0.04), 3),
@@ -470,7 +474,42 @@ class Form:
             (wert(k.get("dachkante_radius"), u, 0.06), 5),
             None,
         ]
-        return verrundeter_linienzug(schluessel, segmente, rundungen)
+        punkte, abschnitt = verrundeter_linienzug(schluessel, segmente, rundungen)
+        if p.get("sicken"):
+            punkte = self.sicken_praegen(u, punkte, abschnitt)
+        return punkte, abschnitt
+
+    def sicken_praegen(self, u, punkte, abschnitt):
+        """Charakterlinien an der Flanke: ein schmaler Grat, der nach außen steht.
+
+        ``sicken``: Liste aus ``{"z": Höhe, "tiefe": Überstand, "breite":
+        halbe Breite}`` — Höhe und Überstand dürfen Kurven über u sein, so
+        läuft eine Sicke vorn und hinten weich aus. Oben endet der Grat
+        steiler als unten (``oben_anteil``): so fängt die Kante das Licht wie
+        eine gekantete Blechfalz.
+        """
+        neu = list(punkte)
+        for s in self.p["sicken"]:
+            zs = wert(s["z"], u, 0.7)
+            t_ = wert(s.get("tiefe"), u, 0.01)
+            if abs(t_) < 1e-5:
+                continue
+            b = s.get("breite", 0.05)
+            oben = b * s.get("oben_anteil", 0.45)
+            for i in range(1, len(punkte) - 1):
+                if abschnitt[i - 1] not in (SEG_FLANKE_U, SEG_FLANKE_O) and \
+                        abschnitt[min(i, len(abschnitt) - 1)] not in (SEG_FLANKE_U, SEG_FLANKE_O):
+                    continue
+                y, z = neu[i]
+                d = z - zs
+                if -b < d <= 0:
+                    f = (1 + d / b) ** 2
+                elif 0 < d < oben:
+                    f = (1 - d / oben) ** 1.5
+                else:
+                    continue
+                neu[i] = (y + t_ * f, z)
+        return neu
 
 
 def verrundeter_linienzug(schluessel, segmente, rundungen):
@@ -1618,6 +1657,50 @@ def karosserie_bauen(fo: Form, p, mats):
     return ob, zonen, radhaeuser
 
 
+def linsen_bauen(ob_haut, fo: Form, zonen: list, mats):
+    """Projektorlinsen in Leuchtenzonen: Chromtopf mit leuchtendem Kern.
+
+    Zonenschlüssel ``linsen``: ``{"anzahl": n, "radius": r, "lage": 0..1
+    (Höhe im Polygon), "kern": Material, "topf": Material}``. Die Linsen
+    sitzen per Strahl auf dem vertieften Boden der Zone — so bekommt der
+    Scheinwerfer Tiefe, statt eine flache Leuchtfläche zu sein. Zonen ohne
+    ``linsen`` bleiben unberührt.
+    """
+    ms = fo.ms
+    teile = []
+    erlaubt = {KAROSSERIE_MATS.index(n) for n in
+               ("licht_vorn", "scheinwerferglas", "kunststoff", "zierteil", "licht_hinten", "chrom")}
+    for z in zonen:
+        ln = z.get("linsen")
+        if not ln:
+            continue
+        ansicht = z["ansicht"]
+        ia, ib, ic = ACHSEN[ansicht]
+        for poly in zone_polygone(z, ms):
+            a0, a1 = min(q[0] for q in poly), max(q[0] for q in poly)
+            b0, b1 = min(q[1] for q in poly), max(q[1] for q in poly)
+            n = ln.get("anzahl", 2)
+            r = ln.get("radius", min(0.032, 0.32 * (b1 - b0)))
+            rand = ln.get("rand_anteil", 0.22)
+            for k in range(n):
+                a = a0 + (a1 - a0) * (rand + (1 - 2 * rand) * (k + 0.5) / n)
+                b = b0 + (b1 - b0) * ln.get("lage", 0.5)
+                start = [0.0, 0.0, 0.0]
+                start[ia], start[ib] = a, b
+                richtung = [0.0, 0.0, 0.0]
+                start[ic] = -10.0 if ansicht == "hinten" else 10.0
+                richtung[ic] = 1.0 if ansicht == "hinten" else -1.0
+                ok, ort, normale, fi = ob_haut.ray_cast(Vector(start), Vector(richtung))
+                if not ok or ob_haut.data.polygons[fi].material_index not in erlaubt:
+                    continue
+                topf = zylinder_x("linse", (0, 0, 0), r, 0.02, mats[ln.get("topf", "chrom")], segmente=20)
+                kern = zylinder_x("linsenkern", (0.004, 0, 0), r * 0.62, 0.02, mats[ln.get("kern", "licht_vorn")],
+                                  segmente=16)
+                linse = g.verbinden([topf, kern], "linse")
+                teile.append(auf_flaeche(linse, ort, normale, 0.006))
+    return teile
+
+
 def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | None,
                    draufsicht_ordner: Path | None = None):
     g.szene_leeren()
@@ -1626,7 +1709,7 @@ def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | Non
     mats = materialien(p)
 
     karosserie, zonen, radhaeuser = karosserie_bauen(fo, p, mats)
-    lamellen = lamellen_bauen(karosserie, fo, zonen, mats)
+    lamellen = lamellen_bauen(karosserie, fo, zonen, mats) + linsen_bauen(karosserie, fo, zonen, mats)
     for pol in karosserie.data.polygons:
         pol.use_smooth = True
     g.glatt(karosserie, p.get("glatt_grad", 40))
