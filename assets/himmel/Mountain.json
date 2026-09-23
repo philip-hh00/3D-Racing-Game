@@ -1,0 +1,19 @@
+{
+  "quelle": "https://polyhaven.com/a/rustig_koppie_puresky",
+  "sonne_richtung": [
+    0.7212,
+    0.5063,
+    0.4727
+  ],
+  "sonne_hoehe_grad": 28.2,
+  "horizont_linear": [
+    0.4087,
+    0.4834,
+    0.5829
+  ],
+  "zenit_linear": [
+    0.0323,
+    0.059,
+    0.1372
+  ]
+}

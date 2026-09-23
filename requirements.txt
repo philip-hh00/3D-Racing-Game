@@ -1,6 +1,6 @@
 # =============================================================================
 #  Laufzeitabhaengigkeiten. Zwei Bloecke: das Spiel und die Asset-Aufbereitung.
-#  Die Erzeugungsseite (ComfyUI, TRELLIS, Torch) hat ihre eigene Umgebung unter
+#  Die Erzeugungsseite (Blender, siehe tools/blender/) hat ihre eigene Umgebung unter
 #  tools/ComfyUI/venv und steht hier bewusst nicht drin.
 # =============================================================================
 
@@ -23,12 +23,12 @@ sounddevice>=0.4.6
 moderngl>=5.10.0
 
 # --- Modelle laden -----------------------------------------------------------
-# Das Spiel liest die GLB-Fahrzeuge zur Laufzeit (src/render3d/mesh.py), also
-# gehoeren trimesh und pillow ins ausgelieferte Buendel.
+# Das Spiel liest die GLB-Modelle zur Laufzeit selbst (src/render3d/mesh.py)
+# und braucht pillow fuer die Texturen. trimesh steht in requirements-dev.txt:
+# nur die Tests erzeugen damit GLB-Dateien.
 #
 # scipy steht bewusst NICHT hier, sondern in requirements-dev.txt: es wird nur
-# von trellis_import.py gebraucht (orientierte Bounding-Box), also auf dem
-# Entwicklungsrechner. Diese Grenze verwischt leicht und wird von
+# von Werkzeugen unter tools/ gebraucht, also auf dem Entwicklungsrechner.
+# Diese Grenze verwischt leicht und wird von
 # tests/test_auslieferung.py namentlich bewacht.
-trimesh>=4.0.0
 pillow>=10.0.0

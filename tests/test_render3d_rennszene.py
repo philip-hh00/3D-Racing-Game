@@ -82,6 +82,9 @@ class _Knotenattrappe:
     def lenken(self, winkel_rad):
         self.lenkwinkel_rad = winkel_rad
 
+    def neigen(self, nick_rad=0.0, wank_rad=0.0):
+        self.neigung = (nick_rad, wank_rad)
+
 
 def _stand(kennung, weg_m=0.0, lenkwinkel_rad=0.0):
     return rennszene.Fahrzeugstand(

@@ -133,16 +133,18 @@ implementation_plan.txt
 #  Nur 3D-Projekt
 # =============================================================================
 
-# --- Erzeugungsseite: ComfyUI, TRELLIS, Torch, Modelle (rund 40 GB) ----------
+# --- Alte Erzeugungsseite (ComfyUI/TRELLIS), falls noch lokal vorhanden -------
 tools/ComfyUI/
 
-# --- Roh-Output von TRELLIS, aus den Quellbildern reproduzierbar -------------
+# --- Rohmaterial: CC0-Downloads, erzeugte Texturen, alte Modelle -------------
+# Reproduzierbar mit tools/assets_laden.py und tools/texturen_erzeugen.py.
 rohdaten/
 
-# --- 3D-Meshes: 24 MB je Fahrzeug, mal 15 ------------------------------------
-# Erzeugt aus rohdaten/ mit trellis_import.py. Lackmaske und Teileliste sind
-# klein und bleiben versioniert.
+# --- 3D-Assets: erzeugt mit den Blender-Skripten unter tools/blender/ --------
+# Teilelisten, Katalog und Himmels-JSON sind klein und bleiben versioniert.
 assets/**/*.glb
+assets/texturen/
+assets/himmel/*.jpg
 assets/**/*.gltf
 assets/**/*.bin
 assets/**/*_kontrolle.png

@@ -1,0 +1,455 @@
+{
+  "city/backstein_1": {
+    "radius_m": 12.4,
+    "hoehe_m": 13.8,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "city/backstein_2": {
+    "radius_m": 8.68,
+    "hoehe_m": 13.86,
+    "dreiecke": 34,
+    "schatten": true
+  },
+  "city/buero_turm_1": {
+    "radius_m": 16.12,
+    "hoehe_m": 74.4,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "city/buero_turm_2": {
+    "radius_m": 18.6,
+    "hoehe_m": 48.2,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "city/buero_turm_3": {
+    "radius_m": 18.6,
+    "hoehe_m": 99.6,
+    "dreiecke": 120,
+    "schatten": true
+  },
+  "city/hydrant": {
+    "radius_m": 0.11,
+    "hoehe_m": 0.8,
+    "dreiecke": 1500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 300
+  },
+  "city/laterne": {
+    "radius_m": 0.44,
+    "hoehe_m": 6.0,
+    "dreiecke": 2999,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 492
+  },
+  "city/muelltonne": {
+    "radius_m": 0.27,
+    "hoehe_m": 1.0,
+    "dreiecke": 1500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 300
+  },
+  "city/skyline": {
+    "radius_m": 100,
+    "hoehe_m": 134.6,
+    "dreiecke": 588,
+    "schatten": false
+  },
+  "city/stromkasten": {
+    "radius_m": 0.24,
+    "hoehe_m": 1.3,
+    "dreiecke": 1500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 300
+  },
+  "city/wohnblock_1": {
+    "radius_m": 14.88,
+    "hoehe_m": 20.0,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "city/wohnblock_2": {
+    "radius_m": 18.6,
+    "hoehe_m": 16.9,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "city/wohnblock_3": {
+    "radius_m": 11.16,
+    "hoehe_m": 26.2,
+    "dreiecke": 96,
+    "schatten": true
+  },
+  "desert/fels_1": {
+    "radius_m": 2.62,
+    "hoehe_m": 2.09,
+    "dreiecke": 3000,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 499
+  },
+  "desert/fels_2": {
+    "radius_m": 1.9,
+    "hoehe_m": 1.73,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 400
+  },
+  "desert/kaktus_1": {
+    "radius_m": 1.2,
+    "hoehe_m": 6.5,
+    "dreiecke": 2152,
+    "schatten": true
+  },
+  "desert/kaktus_2": {
+    "radius_m": 1.2,
+    "hoehe_m": 4.5,
+    "dreiecke": 1716,
+    "schatten": true
+  },
+  "desert/kaktus_3": {
+    "radius_m": 1.2,
+    "hoehe_m": 8.0,
+    "dreiecke": 2156,
+    "schatten": true
+  },
+  "desert/klippe": {
+    "radius_m": 46.36,
+    "hoehe_m": 65.95,
+    "dreiecke": 11999,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 2999
+  },
+  "desert/koecherbaum_1": {
+    "radius_m": 0.96,
+    "hoehe_m": 5.5,
+    "dreiecke": 6000,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 899
+  },
+  "desert/koecherbaum_2": {
+    "radius_m": 0.9,
+    "hoehe_m": 3.8,
+    "dreiecke": 4000,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 699
+  },
+  "desert/lehmhaus_1": {
+    "radius_m": 5.58,
+    "hoehe_m": 4.8,
+    "dreiecke": 108,
+    "schatten": true
+  },
+  "desert/lehmhaus_2": {
+    "radius_m": 8.06,
+    "hoehe_m": 7.8,
+    "dreiecke": 108,
+    "schatten": true
+  },
+  "desert/steppenbusch": {
+    "radius_m": 0.69,
+    "hoehe_m": 1.1,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 693
+  },
+  "desert/tafelberg": {
+    "radius_m": 152.0,
+    "hoehe_m": 112.32,
+    "dreiecke": 8192,
+    "schatten": false
+  },
+  "desert/toter_stamm": {
+    "radius_m": 0.16,
+    "hoehe_m": 2.6,
+    "dreiecke": 1500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 300
+  },
+  "forest/waldhuegel": {
+    "radius_m": 240.0,
+    "hoehe_m": 86.9,
+    "dreiecke": 9746,
+    "schatten": false
+  },
+  "gemeinsam/bande_0": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/bande_1": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/bande_2": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/bande_3": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/bande_4": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/bande_5": {
+    "radius_m": 3.1,
+    "hoehe_m": 1.25,
+    "dreiecke": 38,
+    "schatten": true
+  },
+  "gemeinsam/betonblock": {
+    "radius_m": 0.59,
+    "hoehe_m": 1.05,
+    "dreiecke": 1498,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 200
+  },
+  "gemeinsam/reifenstapel": {
+    "radius_m": 1.0,
+    "hoehe_m": 0.8,
+    "dreiecke": 3840,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 12
+  },
+  "gemeinsam/tribuene": {
+    "radius_m": 16.0,
+    "hoehe_m": 9.32,
+    "dreiecke": 9564,
+    "schatten": true
+  },
+  "mountain/almhuette": {
+    "radius_m": 7.44,
+    "hoehe_m": 9.22,
+    "dreiecke": 46,
+    "schatten": true
+  },
+  "mountain/schneeberg_1": {
+    "radius_m": 360.0,
+    "hoehe_m": 291.6,
+    "dreiecke": 8192,
+    "schatten": false
+  },
+  "mountain/schneeberg_2": {
+    "radius_m": 280.0,
+    "hoehe_m": 231.0,
+    "dreiecke": 8192,
+    "schatten": false
+  },
+  "natur/baumstumpf": {
+    "radius_m": 0.83,
+    "hoehe_m": 0.74,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 399
+  },
+  "natur/busch_1": {
+    "radius_m": 1.2,
+    "hoehe_m": 1.9,
+    "dreiecke": 52,
+    "schatten": true
+  },
+  "natur/busch_2": {
+    "radius_m": 0.8,
+    "hoehe_m": 1.21,
+    "dreiecke": 52,
+    "schatten": true
+  },
+  "natur/farn": {
+    "radius_m": 0.34,
+    "hoehe_m": 0.4,
+    "dreiecke": 784,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 299
+  },
+  "natur/felsbrocken": {
+    "radius_m": 1.54,
+    "hoehe_m": 1.55,
+    "dreiecke": 2000,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 400
+  },
+  "natur/findling": {
+    "radius_m": 1.61,
+    "hoehe_m": 2.07,
+    "dreiecke": 3000,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 500
+  },
+  "natur/holzhuette": {
+    "radius_m": 4.96,
+    "hoehe_m": 5.28,
+    "dreiecke": 34,
+    "schatten": true
+  },
+  "natur/laubbaum_1": {
+    "radius_m": 2.04,
+    "hoehe_m": 11.86,
+    "dreiecke": 244,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 134
+  },
+  "natur/laubbaum_2": {
+    "radius_m": 1.56,
+    "hoehe_m": 8.76,
+    "dreiecke": 244,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 134
+  },
+  "natur/laubbaum_3": {
+    "radius_m": 2.52,
+    "hoehe_m": 15.24,
+    "dreiecke": 244,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 134
+  },
+  "natur/moosfels_1": {
+    "radius_m": 2.42,
+    "hoehe_m": 2.39,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 400
+  },
+  "natur/moosfels_2": {
+    "radius_m": 1.52,
+    "hoehe_m": 1.78,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 400
+  },
+  "natur/stein": {
+    "radius_m": 0.82,
+    "hoehe_m": 0.9,
+    "dreiecke": 1500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 300
+  },
+  "natur/tanne_1": {
+    "radius_m": 1.92,
+    "hoehe_m": 12.1,
+    "dreiecke": 528,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 148
+  },
+  "natur/tanne_2": {
+    "radius_m": 1.56,
+    "hoehe_m": 9.1,
+    "dreiecke": 388,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 116
+  },
+  "natur/tanne_3": {
+    "radius_m": 2.16,
+    "hoehe_m": 15.1,
+    "dreiecke": 640,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 70,
+    "dreiecke_lod1": 180
+  },
+  "natur/totholz": {
+    "radius_m": 1.95,
+    "hoehe_m": 0.46,
+    "dreiecke": 2500,
+    "schatten": true,
+    "lod1": true,
+    "lod_abstand_m": 60,
+    "dreiecke_lod1": 400
+  },
+  "plains/bauernhaus": {
+    "radius_m": 8.68,
+    "hoehe_m": 10.0,
+    "dreiecke": 34,
+    "schatten": true
+  },
+  "plains/heuballen": {
+    "radius_m": 0.9,
+    "hoehe_m": 1.4,
+    "dreiecke": 76,
+    "schatten": true
+  },
+  "plains/huegel": {
+    "radius_m": 280.0,
+    "hoehe_m": 62.6,
+    "dreiecke": 8612,
+    "schatten": false
+  },
+  "plains/scheune": {
+    "radius_m": 11,
+    "hoehe_m": 11.38,
+    "dreiecke": 34,
+    "schatten": true
+  },
+  "plains/windrad": {
+    "radius_m": 6,
+    "hoehe_m": 117.54,
+    "dreiecke": 108,
+    "schatten": false
+  },
+  "plains/zaun": {
+    "radius_m": 2.0,
+    "hoehe_m": 1.2,
+    "dreiecke": 60,
+    "schatten": true
+  }
+}

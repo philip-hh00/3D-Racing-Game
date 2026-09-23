@@ -1,8 +1,9 @@
 """Ein Fahrzeug aus Karosserie und vier Rädern, die drehen und lenken.
 
-TRELLIS liefert ein verschmolzenes Netz; ``trellis_pipeline.radschnitt`` trennt
-daraus Karosserie und Räder und legt die Nabenpositionen in
-``<key>_teile.json`` ab. Dieses Modul macht aus beidem ein Fahrzeug, das sich
+Die Modelle kommen aus Blender (``tools/blender/fahrzeug_bauen.py``): jedes Rad
+ist ein eigener Knoten mit Ursprung in der Nabenmitte, dazu je Rad ein
+Bremssattel, der mitlenkt, aber nicht mitrollt. Die Nabenpositionen stehen in
+``<key>_teile.json``. Dieses Modul macht daraus ein Fahrzeug, das sich
 bewegt: die Räder rollen mit dem zurückgelegten Weg und die Vorderräder folgen
 dem Lenkeinschlag.
 
@@ -41,52 +42,22 @@ class Radplatz:
     name: str
     nabe: np.ndarray            # (3,) Meter, im Fahrzeugkoordinatensystem
     gelenkt: bool
-    #: Verschiebung der Drehachse gegenüber dem Ursprung des Radnetzes.
-    #: Die automatische Nabenbestimmung trifft die Radmitte nicht immer — sie
-    #: muss aus einem Netz schließen, in dem Reifen und Radlauf zusammenhängen.
-    #: Liegt die Achse daneben, kreist das Rad beim Rollen. Mit
-    #: ``tools/radpruefer.py`` lässt sich die Abweichung von Hand einstellen;
-    #: sie landet in ``trellis_import.json`` und wird hier angewandt, ohne das
-    #: Netz neu erzeugen zu müssen.
-    korrektur: np.ndarray = field(
-        default_factory=lambda: np.zeros(3, dtype=np.float64))
+
+    @property
+    def sattel(self) -> str:
+        """Name des Bremssattels, der zu diesem Rad gehört."""
+        return "sattel_" + self.name.removeprefix("rad_")
 
 
-def korrekturen_lesen(pfad: str | Path, fahrzeug: str) -> dict[str, np.ndarray]:
-    """Nabenkorrekturen aus ``trellis_import.json``.
-
-    Aufbau: ``{"rookie": {"naben": {"rad_vl": [0.01, 0.0, -0.02]}}}``. Fehlt
-    die Datei oder der Eintrag, wird nicht korrigiert.
-    """
-    try:
-        with open(pfad, encoding="utf-8") as fh:
-            daten = json.load(fh)
-    except (OSError, ValueError):
-        return {}
-    eintrag = daten.get(fahrzeug)
-    naben = eintrag.get("naben") if isinstance(eintrag, dict) else None
-    if not isinstance(naben, dict):
-        return {}
-    return {str(name): np.asarray(wert, dtype=np.float64)
-            for name, wert in naben.items()
-            if isinstance(wert, (list, tuple)) and len(wert) == 3}
-
-
-def teile_lesen(pfad: str | Path,
-                korrekturen: dict[str, np.ndarray] | None = None
-                ) -> tuple[list[Radplatz], float]:
+def teile_lesen(pfad: str | Path) -> tuple[list[Radplatz], float]:
     """``<key>_teile.json`` einlesen: Radplätze und Raddurchmesser."""
     with open(pfad, encoding="utf-8") as fh:
         daten = json.load(fh)
     gelenkt = set(daten.get("gelenkt") or [])
-    korrekturen = korrekturen or {}
     plaetze = [
         Radplatz(name=str(r["name"]),
                  nabe=np.asarray(r["nabe"], dtype=np.float64),
-                 gelenkt=str(r["name"]) in gelenkt,
-                 korrektur=np.asarray(
-                     korrekturen.get(str(r["name"]), (0.0, 0.0, 0.0)),
-                     dtype=np.float64))
+                 gelenkt=str(r["name"]) in gelenkt)
         for r in daten.get("raeder", []) or []
     ]
     return plaetze, float(daten.get("raddurchmesser_m", 0.65))
@@ -107,22 +78,13 @@ class Fahrzeugknoten:
         self.radradius_m = raddurchmesser_m / 2.0
         self.rollwinkel_rad = 0.0
         self.lenkwinkel_rad = 0.0
+        self.nick_rad = 0.0
+        self.wank_rad = 0.0
 
     @classmethod
-    def aus_datei(cls, pfad: str | Path,
-                  korrektur_datei: str | Path | None = None,
-                  fahrzeug: str | None = None) -> "Fahrzeugknoten":
-        """Aus ``<key>_teile.json``, wahlweise mit Nabenkorrekturen.
-
-        Ohne ``fahrzeug`` wird der Schlüssel aus dem Dateinamen abgeleitet:
-        ``rookie_teile.json`` gehört zu ``rookie``.
-        """
-        pfad = Path(pfad)
-        if fahrzeug is None:
-            fahrzeug = pfad.stem.removesuffix("_teile")
-        korrekturen = (korrekturen_lesen(korrektur_datei, fahrzeug)
-                       if korrektur_datei else {})
-        plaetze, durchmesser = teile_lesen(pfad, korrekturen)
+    def aus_datei(cls, pfad: str | Path) -> "Fahrzeugknoten":
+        """Aus ``<key>_teile.json``."""
+        plaetze, durchmesser = teile_lesen(pfad)
         return cls(plaetze, durchmesser)
 
     # -- Zustand ---------------------------------------------------------
@@ -137,36 +99,64 @@ class Fahrzeugknoten:
     def lenken(self, winkel_rad: float) -> None:
         self.lenkwinkel_rad = float(winkel_rad)
 
+    def neigen(self, nick_rad: float = 0.0, wank_rad: float = 0.0) -> None:
+        """Den Aufbau nicken (+: Front runter) und wanken (+: rechts runter) lassen.
+
+        Die Räder bleiben, wo sie sind — sie hängen nicht an der Karosserie,
+        sondern am Fahrzeug. Der Federweg ergibt sich so von selbst (siehe
+        :mod:`src.render3d.federung`).
+        """
+        self.nick_rad = float(nick_rad)
+        self.wank_rad = float(wank_rad)
+
+    def aufbau_matrix(self) -> np.ndarray | None:
+        """Die Neigung des Aufbaus relativ zum Fahrzeug, um den Wankpol.
+
+        Gedreht wird um einen Punkt auf Nabenhöhe: so neigt sich das Dach
+        sichtbar, während der Schweller kaum wandert — wie bei einem echten
+        Auto, dessen Wankachse knapp über der Straße liegt.
+        """
+        if not self.nick_rad and not self.wank_rad:
+            return None
+        pol = matrix.verschiebung(0.0, 0.0, self.radradius_m)
+        zurueck = matrix.verschiebung(0.0, 0.0, -self.radradius_m)
+        return pol @ matrix.drehung_y(self.nick_rad) @ matrix.drehung_x(self.wank_rad) @ zurueck
+
     def setzen(self, rollwinkel_rad: float = 0.0, lenkwinkel_rad: float = 0.0) -> None:
         self.rollwinkel_rad = float(rollwinkel_rad)
         self.lenkwinkel_rad = float(lenkwinkel_rad)
 
     # -- Matrizen --------------------------------------------------------
-    def rad_matrix(self, rad: Radplatz) -> np.ndarray:
-        """Wo dieses Rad steht, relativ zum Fahrzeug.
+    def lenk_matrix(self, rad: Radplatz) -> np.ndarray:
+        """Nabe an ihrem Platz, um den Lenkeinschlag gedreht — ohne Rollen.
 
-        Mit Korrektur wird um einen Punkt gedreht, der neben dem Ursprung des
-        Netzes liegt: erst den Ursprung auf die wahre Radmitte schieben
-        (``-korrektur``), dann drehen, dann alles zusammen an den Platz
-        (``nabe + korrektur``). Das Netz selbst bleibt unangetastet, die
-        Korrektur wirkt also ohne neuen Import.
+        So steht der Bremssattel: er schwenkt mit dem Rad, dreht sich aber
+        nicht mit ihm.
         """
-        hat_korrektur = bool(np.any(rad.korrektur))
-        m = matrix.verschiebung(np.asarray(rad.nabe) + rad.korrektur
-                                if hat_korrektur else rad.nabe)
+        m = matrix.verschiebung(rad.nabe)
         if rad.gelenkt and self.lenkwinkel_rad:
             m = m @ matrix.drehung_z(self.lenkwinkel_rad)
-        m = m @ matrix.drehung_y(self.rollwinkel_rad)
-        if hat_korrektur:
-            m = m @ matrix.verschiebung(-np.asarray(rad.korrektur))
         return m
 
-    def matrizen(self, pos_m, gierwinkel_rad: float) -> dict[str, np.ndarray]:
-        """Modellmatrix je Teilname, einschließlich Karosserie."""
+    def rad_matrix(self, rad: Radplatz) -> np.ndarray:
+        """Wo dieses Rad steht, relativ zum Fahrzeug."""
+        return self.lenk_matrix(rad) @ matrix.drehung_y(self.rollwinkel_rad)
+
+    def matrizen(self, pos_m, gierwinkel_rad: float,
+                 karosserie: np.ndarray | None = None) -> dict[str, np.ndarray]:
+        """Modellmatrix je Teilname, einschließlich Karosserie und Sätteln.
+
+        ``karosserie`` ist eine zusätzliche Lage des Aufbaus relativ zum
+        Fahrzeug (Nicken, Wanken, Einfedern); die Räder bleiben davon
+        unberührt auf der Straße.
+        """
         basis = matrix.fahrzeug(pos_m, gierwinkel_rad)
-        ergebnis = {KAROSSERIE: basis}
+        if karosserie is None:
+            karosserie = self.aufbau_matrix()
+        ergebnis = {KAROSSERIE: basis if karosserie is None else basis @ karosserie}
         for rad in self.raeder:
             ergebnis[rad.name] = basis @ self.rad_matrix(rad)
+            ergebnis[rad.sattel] = basis @ self.lenk_matrix(rad)
         return ergebnis
 
 

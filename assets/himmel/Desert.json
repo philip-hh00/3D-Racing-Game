@@ -1,0 +1,19 @@
+{
+  "quelle": "https://polyhaven.com/a/qwantani_noon_puresky",
+  "sonne_richtung": [
+    0.521,
+    0.3802,
+    0.7642
+  ],
+  "sonne_hoehe_grad": 49.8,
+  "horizont_linear": [
+    0.6227,
+    0.6906,
+    0.7641
+  ],
+  "zenit_linear": [
+    0.1487,
+    0.2384,
+    0.426
+  ]
+}

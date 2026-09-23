@@ -191,7 +191,13 @@ def test_v_waechst_monoton_entlang_der_strecke_und_ueberschreitet_eins():
 # ---------------------------------------------------------------------------
 
 
-def test_randsteine_liegen_aussen_an_der_fahrbahn_und_ueberlappen_sie_nicht():
+def test_randsteine_liegen_innen_an_der_fahrbahnkante():
+    """Die Randsteine liegen auf der Fahrbahn, bündig mit ihrer Kante.
+
+    Die Wände des Spiels fallen mit der Fahrbahnkante zusammen; dort stehen in
+    3D die Leitplanken. Außen liegende Randsteine schöben die Planke einen
+    Meter hinter die Stelle, an der das Auto abprallt.
+    """
     radius_px, breite_px, randstein_m = 500.0, 200.0, 1.0
     strecke = _kreis_strecke(radius_px, n=180, breite_px=breite_px)
     netz = track_mesh.bauen(strecke, randstein_m=randstein_m)
@@ -206,20 +212,14 @@ def test_randsteine_liegen_aussen_an_der_fahrbahn_und_ueberlappen_sie_nicht():
     abstand_links = np.linalg.norm(links.positionen[:, :2], axis=1)
     abstand_rechts = np.linalg.norm(rechts.positionen[:, :2], axis=1)
 
-    # "Links" und "rechts" sind relativ zur Fahrtrichtung definiert
-    # (links = hoch x tangente), nicht zur Kreisgeometrie. Bei dieser
-    # Kreisstrecke wird die Mittellinie in mathematisch positivem Sinn
-    # (gegen den Uhrzeigersinn) abgetastet; dabei zeigt "links" zur
-    # Kreismitte. Der linke Randstein liegt daher auf der Innenseite,
-    # direkt an der Fahrbahnkante angrenzend, ohne in sie hineinzuragen.
-    assert abstand_links.max() == pytest.approx(radius_m - halbe_breite_m, rel=1e-6)
-    assert abstand_links.min() == pytest.approx(
-        radius_m - halbe_breite_m - randstein_m, rel=1e-6)
-
-    # Der rechte Randstein liegt entsprechend aussen (groesserer Radius).
-    assert abstand_rechts.min() == pytest.approx(radius_m + halbe_breite_m, rel=1e-6)
-    assert abstand_rechts.max() == pytest.approx(
-        radius_m + halbe_breite_m + randstein_m, rel=1e-6)
+    # Gegen den Uhrzeigersinn abgetastet zeigt "links" zur Kreismitte.
+    assert abstand_links.min() == pytest.approx(radius_m - halbe_breite_m, rel=1e-6)
+    assert abstand_links.max() == pytest.approx(
+        radius_m - halbe_breite_m + randstein_m, rel=1e-6)
+    assert abstand_rechts.max() == pytest.approx(radius_m + halbe_breite_m, rel=1e-6)
+    assert abstand_rechts.min() == pytest.approx(
+        radius_m + halbe_breite_m - randstein_m, rel=1e-6)
+    assert (links.positionen[:, 2] > 0).all()
 
 
 # ---------------------------------------------------------------------------

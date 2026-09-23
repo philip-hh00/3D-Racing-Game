@@ -1,0 +1,151 @@
+{
+  "name": "Plains",
+  "himmel": "Plains",
+  "himmel_farben": {
+    "zenit": [
+      0.26,
+      0.42,
+      0.7
+    ],
+    "horizont": [
+      0.75,
+      0.8,
+      0.86
+    ]
+  },
+  "sonne_farbe": [
+    3.1,
+    2.95,
+    2.7
+  ],
+  "belichtung": 1.0,
+  "himmel_helligkeit": 1.0,
+  "nebel": {
+    "farbe": [
+      0.74,
+      0.8,
+      0.86
+    ],
+    "dichte": 0.0009
+  },
+  "boden": {
+    "textur": "wiese",
+    "kachel_m": 8.0,
+    "farbe": [
+      0.34,
+      0.46,
+      0.22
+    ],
+    "ton": [
+      0.8,
+      1.1,
+      0.62
+    ]
+  },
+  "fahrbahn": {
+    "textur": "asphalt",
+    "kachel_m": 9.0
+  },
+  "begrenzung": "leitplanke",
+  "rand": [
+    {
+      "modell": "gemeinsam/bande_0|gemeinsam/bande_1|gemeinsam/bande_2|gemeinsam/bande_3|gemeinsam/bande_4|gemeinsam/bande_5",
+      "art": "reihe",
+      "abstand_m": 2.2,
+      "je_m": 28,
+      "seite": "aussen",
+      "radius_m": 3.0
+    },
+    {
+      "modell": "gemeinsam/reifenstapel",
+      "art": "kurven",
+      "abstand_m": 1.6,
+      "je_m": 10,
+      "radius_m": 1.0
+    },
+    {
+      "modell": "gemeinsam/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    },
+    {
+      "modell": "plains/zaun",
+      "art": "reihe",
+      "abstand_m": 7.0,
+      "je_m": 4.1,
+      "seite": "aussen",
+      "radius_m": 0.4
+    }
+  ],
+  "deko": [
+    {
+      "modell": "plains/bauernhaus|plains/scheune",
+      "dichte_je_ha": 0.1,
+      "abstand_m": [
+        40,
+        260
+      ],
+      "radius_m": 12,
+      "drehen": false
+    },
+    {
+      "modell": "natur/laubbaum_1|natur/laubbaum_2|natur/laubbaum_3",
+      "dichte_je_ha": 2.5,
+      "abstand_m": [
+        10,
+        280
+      ],
+      "skala": [
+        0.8,
+        1.25
+      ],
+      "radius_m": 3.0
+    },
+    {
+      "modell": "natur/busch_1|natur/busch_2",
+      "dichte_je_ha": 3.5,
+      "abstand_m": [
+        5,
+        150
+      ],
+      "radius_m": 1.2
+    },
+    {
+      "modell": "plains/heuballen",
+      "dichte_je_ha": 1.5,
+      "abstand_m": [
+        10,
+        160
+      ],
+      "radius_m": 1.0
+    }
+  ],
+  "kulisse": [
+    {
+      "modell": "plains/huegel",
+      "anzahl": 10,
+      "radius_m": [
+        450,
+        850
+      ],
+      "skala": [
+        0.9,
+        1.4
+      ]
+    },
+    {
+      "modell": "plains/windrad",
+      "anzahl": 7,
+      "radius_m": [
+        220,
+        420
+      ],
+      "skala": [
+        0.9,
+        1.1
+      ]
+    }
+  ]
+}

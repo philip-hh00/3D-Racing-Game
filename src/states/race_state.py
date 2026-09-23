@@ -39,7 +39,7 @@ DNF_FALLBACK_TIME = 300.0
 # eingestellt wurden.
 SICHTFELD_GRAD = 55.0
 NAHE_EBENE_M = 0.2
-FERNE_EBENE_M = 1200.0
+FERNE_EBENE_M = 3200.0
 KAMERA_ABSTAND_M = 7.5
 KAMERA_HOEHE_M = 2.8
 KAMERA_ZIELHOEHE_M = 1.0
@@ -128,6 +128,37 @@ def score_team_rows(rows: list[dict]) -> tuple[float, float]:
 #: Ideallinien - ein automatischer Abbruch wuerde funktionierende Rennen
 #: zerreissen. Der Host sieht die Lage und entscheidet.
 HOLD_ABORT_BUTTON_AFTER_S = 5.0
+
+
+def lackwerte(kennung):
+    """Eine Lackierung (``"metallic:rubinrot"``) als Zahlen für die 3D-Szene.
+
+    ``None`` für Werkslack: dann trägt das Modell seine eigene Farbe. Die
+    Finishes übersetzen sich in Material: Metallic glänzt metallisch, Neon
+    leuchtet ein wenig, Zweifarbig färbt die Zweitfarbe (Dach, Streifen,
+    Livree — Material ``lack2``) hell oder dunkel, je nach Grundfarbe.
+    """
+    from src.core import lack
+    from src.render3d.rennszene import Lackwerte
+    teile = lack.zerlege(kennung) if isinstance(kennung, str) else None
+    if teile is None:
+        return None
+    finish_key, farb_key = teile
+    farbe = lack.farbe(farb_key)
+    fin = lack.finish(finish_key) or {}
+    if farbe is None:
+        return None
+    rgb = tuple(c / 255.0 for c in farbe["rgb"])
+    werte = Lackwerte(farbe=rgb)
+    if finish_key == "metallic":
+        werte.metallic, werte.rauheit = 0.55, 0.22
+    elif finish_key == "neon":
+        werte.rauheit, werte.leuchten = 0.28, 0.35
+    elif finish_key == "zweifarbig":
+        hell = sum(rgb) / 3 > 0.55
+        zweit = fin.get("zweitfarbe_dunkel" if hell else "zweitfarbe_hell", [40, 40, 44])
+        werte.zweitfarbe = tuple(c / 255.0 for c in zweit)
+    return werte
 
 
 class RaceState(BaseState):
@@ -2145,23 +2176,66 @@ class RaceState(BaseState):
         auf einen zweiten Zeichenweg.
         """
         self.szene = None
+        self._aufhaengungen = {}
         from src.core import display
         if display.kontext() is None:
             return
+        import json
         from src.core.paths import bundle_dir
-        from src.render3d import rennszene, track_mesh
+        from src.render3d import platzierung, rennszene, thema, track_mesh
         try:
-            netz = track_mesh.aus_datei(self._track_path)
+            with open(self._track_path, encoding="utf-8") as fh:
+                strecke = json.load(fh)
+            netz = track_mesh.bauen(strecke)
             wurzel = bundle_dir()
-            self.szene = rennszene.Rennszene(
+            streckenthema = thema.laden(wurzel / "data" / "themen",
+                                        thema.thema_der_strecke(strecke))
+            orte = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m,
+                                          streckenthema, netz.name or str(self._track_path))
+            fahrzeuge = [getattr(v, "config_key", "") or "rookie"
+                         for v in (*self._humans, *self.ai_vehicles, *self._remote_vehicles)]
+            szene = rennszene.Rennszene(
                 display.kontext(), netz,
                 modellordner=wurzel / "assets" / "vehicles",
-                korrektur_datei=wurzel / "trellis_import.json")
+                thema=streckenthema,
+                texturordner=wurzel / "assets" / "texturen",
+                himmelordner=wurzel / "assets" / "himmel",
+                umgebungsordner=wurzel / "assets" / "umgebung",
+                platzierungen=orte, fahrzeuge=fahrzeuge, sofort=False)
+            # Laden in Schritten, dazwischen der Ladebildschirm: alles liegt
+            # lokal, aber bei tausend Bäumen und acht Autos dauert es doch
+            # ein, zwei Sekunden, und ein stehendes Fenster wirkt abgestürzt.
+            for anteil, text in szene.aufbauen():
+                self._ladebild(anteil, text, strecke.get("name", ""))
+            self.szene = szene
         except Exception as fehler:
             # Ein Fehler in der Darstellung darf kein Rennen kosten. Die
             # Strecke laeuft weiter, man sieht sie nur nicht.
+            import traceback
+            traceback.print_exc()
             print(f"[RaceState] 3D-Szene nicht aufgebaut: {fehler}")
             self.szene = None
+
+    def _ladebild(self, anteil: float, text: str, streckenname: str) -> None:
+        """Ein Bild des Ladebildschirms: Streckenname, Balken, was gerade lädt."""
+        from src.core import display
+        pygame.event.pump()
+        display.bild_beginnen()
+        flaeche = display.virtual_surface()
+        b, h = flaeche.get_size()
+        flaeche.fill(theme.BG_DARK + (255,))
+        theme.text(flaeche, streckenname or tr("Rennen"), theme.TITLE, theme.TEXT,
+                   (b // 2, h // 2 - 120), center=True)
+        theme.text(flaeche, tr("Strecke wird geladen …"), theme.BODY, theme.TEXT_DIM,
+                   (b // 2, h // 2 - 40), center=True)
+        balken = pygame.Rect(b // 2 - 400, h // 2 + 20, 800, 22)
+        pygame.draw.rect(flaeche, theme.PANEL_LIGHT, balken, border_radius=11)
+        voll = balken.copy()
+        voll.width = max(22, int(balken.width * max(0.0, min(1.0, anteil))))
+        pygame.draw.rect(flaeche, theme.ACCENT, voll, border_radius=11)
+        theme.text(flaeche, text, theme.HINT, theme.TEXT_FAINT,
+                   (b // 2, h // 2 + 80), center=True)
+        display.bild_abschliessen()
 
     def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
         """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.
@@ -2180,14 +2254,44 @@ class RaceState(BaseState):
     def _stand_von(self, fahrzeug, dt: float):
         """Einen Fahrzeugstand aus einem Fahrzeug des Spiels bauen."""
         from src.render3d import rennszene, vehicle_node
+        kennung = int(getattr(fahrzeug, "id", 0))
+        nick, wank = self._neigung(kennung, fahrzeug, dt)
         return rennszene.Fahrzeugstand(
-            kennung=int(getattr(fahrzeug, "id", 0)),
+            kennung=kennung,
             schluessel=getattr(fahrzeug, "config_key", "") or "rookie",
             pos_m=welt3d(fahrzeug.position),
             gierwinkel_rad=float(fahrzeug.angle),
             weg_m=self._weg_in_diesem_bild(fahrzeug, dt),
             lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(fahrzeug),
+            lack=lackwerte(getattr(fahrzeug, "lack", None)),
+            nick_rad=nick, wank_rad=wank,
         )
+
+    def _neigung(self, kennung: int, fahrzeug, dt: float) -> tuple[float, float]:
+        """Nicken und Wanken aus der Beschleunigung, die die Physik ohnehin rechnet.
+
+        Rein optisch (siehe ``src/render3d/federung.py``). Ein ferngesteuertes
+        Fahrzeug ohne eigene Physik bleibt gerade.
+        """
+        from src.render3d import federung
+        koerper = getattr(getattr(fahrzeug, "physics", None), "body", None)
+        if koerper is None or dt <= 0.0:
+            return 0.0, 0.0
+        try:
+            v = (float(koerper.velocity.x) * M_PER_PX, float(koerper.velocity.y) * M_PER_PX)
+        except (AttributeError, TypeError):
+            return 0.0, 0.0
+        aufhaengungen = getattr(self, "_aufhaengungen", None)
+        if aufhaengungen is None:
+            aufhaengungen = self._aufhaengungen = {}
+        eintrag = aufhaengungen.get(kennung)
+        if eintrag is None:
+            eintrag = aufhaengungen[kennung] = [federung.Aufhaengung(), v]
+        aufhaengung, v_alt = eintrag
+        laengs, quer = federung.beschleunigung_im_fahrzeug(v, v_alt, float(fahrzeug.angle), dt)
+        aufhaengung.fortschreiben(laengs, quer, dt)
+        eintrag[1] = v
+        return aufhaengung.nick_rad, aufhaengung.wank_rad
 
     def _ghost_stand(self):
         """Der Ghost als Fahrzeugstand, entfaerbt.
@@ -2269,7 +2373,7 @@ class RaceState(BaseState):
             projektion = kamera3d.perspektive(
                 SICHTFELD_GRAD, vb / max(1, vh), NAHE_EBENE_M, FERNE_EBENE_M)
             mvp = projektion @ kam.blickmatrix()
-            self.szene.zeichnen(mvp, kam.auge, self._staende)
+            self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=kam.ziel)
             self._letzte_sicht = (mvp, ausschnitt, briefkasten)
 
     def auf_bildschirm(self, pos_px, hoehe_m: float = 0.0):

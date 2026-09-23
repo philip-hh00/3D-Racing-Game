@@ -1,0 +1,148 @@
+{
+  "name": "Mountain",
+  "himmel": "Mountain",
+  "himmel_farben": {
+    "zenit": [
+      0.2,
+      0.33,
+      0.6
+    ],
+    "horizont": [
+      0.74,
+      0.78,
+      0.84
+    ]
+  },
+  "sonne_farbe": [
+    3.1,
+    2.85,
+    2.55
+  ],
+  "belichtung": 1.0,
+  "himmel_helligkeit": 1.0,
+  "nebel": {
+    "farbe": [
+      0.74,
+      0.79,
+      0.86
+    ],
+    "dichte": 0.0007
+  },
+  "boden": {
+    "textur": "fels_gras",
+    "kachel_m": 16.0,
+    "farbe": [
+      0.38,
+      0.42,
+      0.3
+    ],
+    "ton": [
+      0.9,
+      1.02,
+      0.85
+    ]
+  },
+  "fahrbahn": {
+    "textur": "asphalt",
+    "kachel_m": 9.0
+  },
+  "begrenzung": "leitplanke",
+  "rand": [
+    {
+      "modell": "gemeinsam/bande_0|gemeinsam/bande_1|gemeinsam/bande_2|gemeinsam/bande_3|gemeinsam/bande_4|gemeinsam/bande_5",
+      "art": "reihe",
+      "abstand_m": 2.2,
+      "je_m": 28,
+      "seite": "aussen",
+      "radius_m": 3.0
+    },
+    {
+      "modell": "gemeinsam/reifenstapel",
+      "art": "kurven",
+      "abstand_m": 1.6,
+      "je_m": 10,
+      "radius_m": 1.0
+    },
+    {
+      "modell": "gemeinsam/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    }
+  ],
+  "deko": [
+    {
+      "modell": "mountain/almhuette",
+      "dichte_je_ha": 0.14,
+      "abstand_m": [
+        30,
+        220
+      ],
+      "radius_m": 9,
+      "drehen": false
+    },
+    {
+      "modell": "natur/tanne_1|natur/tanne_2|natur/tanne_3",
+      "dichte_je_ha": 9.0,
+      "abstand_m": [
+        12,
+        280
+      ],
+      "skala": [
+        0.8,
+        1.35
+      ],
+      "radius_m": 2.4
+    },
+    {
+      "modell": "natur/findling|natur/felsbrocken",
+      "dichte_je_ha": 2.5,
+      "abstand_m": [
+        6,
+        260
+      ],
+      "skala": [
+        0.7,
+        2.4
+      ],
+      "radius_m": 2.4
+    },
+    {
+      "modell": "natur/stein",
+      "dichte_je_ha": 4.0,
+      "abstand_m": [
+        4,
+        180
+      ],
+      "skala": [
+        0.6,
+        1.5
+      ],
+      "radius_m": 1.0
+    },
+    {
+      "modell": "natur/busch_2",
+      "dichte_je_ha": 3.0,
+      "abstand_m": [
+        4,
+        100
+      ],
+      "radius_m": 1.0
+    }
+  ],
+  "kulisse": [
+    {
+      "modell": "mountain/schneeberg_1|mountain/schneeberg_2",
+      "anzahl": 10,
+      "radius_m": [
+        480,
+        950
+      ],
+      "skala": [
+        0.85,
+        1.35
+      ]
+    }
+  ]
+}

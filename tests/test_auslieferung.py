@@ -52,15 +52,6 @@ OPTIONAL = {
     # tools/video_ton_extrahieren.py — bringt ein eigenes ffmpeg mit. Einmalig
     # gebraucht, um den Ton aus einer Videoaufnahme zu ziehen.
     "imageio_ffmpeg",
-    # tools/freistellen.py — stellt ein Bild frei, bevor es an TRELLIS geht.
-    # Der Import steht in der Funktion, nicht am Dateianfang: rembg zieht
-    # onnxruntime nach (mehrere hundert Megabyte) und wird nur von diesem
-    # einen Werkzeug gebraucht. Es liegt bereits in der ComfyUI-Umgebung
-    # (tools/ComfyUI/venv), aus der das Werkzeug auch gestartet wird —
-    # tools/freistellen.bat ruft genau dieses Python auf. In die
-    # Entwicklungsanforderungen gehoert es deshalb nicht: sonst installiert
-    # jeder, der nur die Tests laufen lassen will, ein halbes Gigabyte mit.
-    "rembg",
 }
 
 

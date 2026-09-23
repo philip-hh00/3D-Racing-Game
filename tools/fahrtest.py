@@ -1,25 +1,24 @@
-"""Fahrtest: die echte Physik des Spiels, dargestellt in 3D.
+"""Fahrtest: die echte Physik des Spiels, in der ganzen 3D-Welt.
 
-    python tools\\fahrtest.py [--fahrzeug rookie] [--strecke oval]
+    python tools\\fahrtest.py [--fahrzeug rookie] [--strecke oval] [--lack metallic:kobaltblau]
 
     W / S     Gas und Bremse
     A / D     Lenken
     Leertaste Handbremse
-    R         Zurueck an den Start
+    R         Zurück an den Start
+    L         Nächste Lackierung (Werkslack → Palette → …)
     Esc       Ende
 
-Der Unterschied zu ``vorschau3d.py``: dort schiebt sich das Fahrzeug an der
-Mittellinie entlang, hier fährt es. Gerechnet wird mit **pymunk und den
-unveränderten Fahrzeugdaten des Spiels** — ``VehicleConfig``, ``PlayerVehicle``,
-``PhysicsWorld``, dieselben Streckenwände. Nur gezeichnet wird anders.
-
-Das ist der Nachweis für Phase D: die Physik bleibt in 2D, die Darstellung wird
-3D, und beides passt über ``M_PER_PX`` zusammen. Geht das hier, geht es auch in
-``RaceState``.
+Gerechnet wird mit **pymunk und den unveränderten Fahrzeugdaten des Spiels** —
+``VehicleConfig``, ``PlayerVehicle``, ``PhysicsWorld``, dieselben
+Streckenwände. Gezeichnet wird mit derselben :class:`Rennszene` wie im
+Rennen: Himmel, Schatten, Umgebung des Streckenthemas, Nicken und Wanken.
+So lassen sich neue Fahrzeuge und Lackierungen ohne Menü und Rennen prüfen.
 """
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import sys
 from pathlib import Path
@@ -30,26 +29,19 @@ import pygame
 WURZEL = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(WURZEL))
 
-import moderngl                                        # noqa: E402
-
+from src.core import lack                              # noqa: E402
 from src.core.settings import M_PER_PX                 # noqa: E402
 from src.entities.player_vehicle import PlayerVehicle  # noqa: E402
 from src.entities.vehicle import VehicleConfig         # noqa: E402
 from src.physics.physics_world import PhysicsWorld     # noqa: E402
-from src.render3d import (ansicht, camera, fenster, matrix, mesh,  # noqa: E402
-                          shader, track_mesh, vehicle_node)
+from src.render3d import (ansicht, camera, federung, fenster, platzierung,  # noqa: E402
+                          rennszene, thema, track_mesh, vehicle_node)
+from src.states.race_state import lackwerte            # noqa: E402
 from src.track.track import Track                      # noqa: E402
-
-from vorschau3d import BANDFARBEN, _band_hochladen     # noqa: E402
 
 
 def welt3d(pos_px) -> np.ndarray:
-    """Eine Spielposition in Pixeln als Weltpunkt in Metern.
-
-    pymunk rechnet Y nach oben, die 3D-Welt auch — hier wird also **nicht**
-    gespiegelt. Die Spiegelung in ``src/utils/math_utils.py`` gehört zum
-    2D-Zeichnen, wo pygame Y nach unten zählt, und hat hier nichts verloren.
-    """
+    """Eine Spielposition in Pixeln als Weltpunkt in Metern (nicht gespiegelt)."""
     return np.array([pos_px[0] * M_PER_PX, pos_px[1] * M_PER_PX, 0.0])
 
 
@@ -57,28 +49,27 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--fahrzeug", default="rookie")
     p.add_argument("--strecke", default="oval")
+    p.add_argument("--lack", default=lack.WERK)
     a = p.parse_args(argv)
 
-    glb = WURZEL / "assets" / "vehicles" / f"{a.fahrzeug}.glb"
-    teile_datei = WURZEL / "assets" / "vehicles" / f"{a.fahrzeug}_teile.json"
     fahrzeug_json = WURZEL / "data" / "vehicles" / f"{a.fahrzeug}.json"
     strecke_json = WURZEL / "data" / "tracks" / f"{a.strecke}.json"
-    for datei in (glb, fahrzeug_json, strecke_json):
+    for datei in (fahrzeug_json, strecke_json):
         if not datei.is_file():
             print(f"FEHLER: {datei} fehlt", file=sys.stderr)
             return 2
 
     pygame.init()
     ctx, hud = fenster.oeffnen(titel=f"Fahrtest: {a.fahrzeug} auf {a.strecke}")
-    programm = shader.programm(ctx)
-
-    modell = mesh.hochladen(ctx, programm, mesh.laden(glb))
-    teile_nach_name = {t.name: t for t in modell.teile}
-    netz = track_mesh.aus_datei(strecke_json)
-    baender = [(band, _band_hochladen(ctx, programm, band)) for band in netz.baender]
-    knoten = (vehicle_node.Fahrzeugknoten.aus_datei(
-        teile_datei, korrektur_datei=WURZEL / "trellis_import.json",
-        fahrzeug=a.fahrzeug) if teile_datei.is_file() else None)
+    daten = json.loads(strecke_json.read_text(encoding="utf-8"))
+    netz = track_mesh.bauen(daten)
+    th = thema.laden(WURZEL / "data" / "themen", thema.thema_der_strecke(daten))
+    orte = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m, th, netz.name)
+    szene = rennszene.Rennszene(
+        ctx, netz, WURZEL / "assets" / "vehicles", thema=th,
+        texturordner=WURZEL / "assets" / "texturen", himmelordner=WURZEL / "assets" / "himmel",
+        umgebungsordner=WURZEL / "assets" / "umgebung", platzierungen=orte,
+        fahrzeuge=[a.fahrzeug])
 
     # --- Die Physik des Spiels, unverändert ------------------------------
     welt = PhysicsWorld()
@@ -92,6 +83,11 @@ def main(argv=None) -> int:
                              config_key=a.fahrzeug)
 
     auto = neu_setzen()
+    lacke = [lack.WERK] + [lack.kennung(f["key"], c["key"])
+                           for f in lack.finishes() for c in lack.farben_fuer(f["key"])]
+    lack_index = lacke.index(a.lack) if a.lack in lacke else 0
+    aufhaengung = federung.Aufhaengung()
+    v_alt = (0.0, 0.0)
 
     bild = ansicht.Ansicht3D(ctx, fenster.VIRTUELL)
     kamera = camera.Verfolgerkamera(abstand_m=7.5, hoehe_m=2.8, zielhoehe_m=1.0)
@@ -114,6 +110,8 @@ def main(argv=None) -> int:
                     welt.remove_body(auto.physics.body, auto.physics.shape)
                     auto = neu_setzen()
                     kamera.setzen(welt3d(auto.position), auto.angle)
+                elif e.key == pygame.K_l:
+                    lack_index = (lack_index + 1) % len(lacke)
 
         auto.handle_input()
         welt.step(dt)
@@ -121,63 +119,39 @@ def main(argv=None) -> int:
 
         pos = welt3d(auto.position)
         kamera.folgen(pos, auto.angle, dt)
-        if knoten is not None:
-            # Der Rollwinkel kommt aus dem tatsaechlich gefahrenen Weg, mit
-            # Vorzeichen: rueckwaerts drehen die Raeder rueckwaerts.
-            knoten.weg_zuruecklegen(auto.signed_speed * M_PER_PX * dt)
-            knoten.lenken(vehicle_node.lenkwinkel_aus_fahrzeug(auto))
+        v = (auto.physics.body.velocity.x * M_PER_PX, auto.physics.body.velocity.y * M_PER_PX)
+        laengs, quer = federung.beschleunigung_im_fahrzeug(v, v_alt, auto.angle, dt)
+        v_alt = v
+        aufhaengung.fortschreiben(laengs, quer, dt)
+        stand = rennszene.Fahrzeugstand(
+            kennung=1, schluessel=a.fahrzeug, pos_m=pos, gierwinkel_rad=auto.angle,
+            weg_m=auto.signed_speed * M_PER_PX * dt,
+            lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(auto),
+            lack=lackwerte(lacke[lack_index]),
+            nick_rad=aufhaengung.nick_rad, wank_rad=aufhaengung.wank_rad)
+        szene.fortschreiben([stand])
 
         groesse = pygame.display.get_window_size()
-        P = camera.perspektive(55.0, fenster.seitenverhaeltnis(groesse), 0.2, 1200.0)
+        P = camera.perspektive(55.0, fenster.seitenverhaeltnis(groesse), 0.2, 3200.0)
         mvp = P @ kamera.blickmatrix()
-
-        bild.neues_bild(himmel=shader.HIMMEL_HORIZONT)
-        programm["mvp"].write(mvp.T.astype("f4").tobytes())
-        programm["kamera_position"].value = tuple(float(w) for w in kamera.auge)
-
-        programm["hat_basisfarbe"].value = 0.0
-        programm["hat_metallic_rauheit"].value = 0.0
-        programm["metallic_faktor"].value = 0.0
-        programm["rauheit_faktor"].value = 0.92
-        shader.modell_setzen(programm, matrix.einheit())
-        for band, vao in baender:
-            programm["grundton"].value = BANDFARBEN.get(band.name, (0.5, 0.5, 0.5))
-            vao.render()
-
-        programm["hat_basisfarbe"].value = 1.0 if modell.basisfarbe else 0.0
-        programm["hat_metallic_rauheit"].value = 1.0 if modell.metallic_rauheit else 0.0
-        programm["metallic_faktor"].value = 1.0
-        programm["rauheit_faktor"].value = 1.0
-        if modell.basisfarbe:
-            modell.basisfarbe.use(0)
-        if modell.metallic_rauheit:
-            modell.metallic_rauheit.use(1)
-        if knoten is not None:
-            for name, m in knoten.matrizen(pos, auto.angle).items():
-                teil = teile_nach_name.get(name)
-                if teil is not None:
-                    shader.modell_setzen(programm, m)
-                    teil.vao.render()
-        else:
-            grund = matrix.fahrzeug(pos, auto.angle)
-            for teil in modell.teile:
-                shader.modell_setzen(programm, grund @ matrix.verschiebung(teil.versatz))
-                teil.vao.render()
+        bild.neues_bild()
+        szene.zeichnen(mvp, kamera.auge, [stand], fokus=kamera.ziel)
 
         hud.fill((0, 0, 0, 0))
         zeilen = [
             f"{auto.speed * M_PER_PX * 3.6:5.0f} km/h",
             f"Gang {getattr(auto.engine, 'gear', 0) + 1}   "
             f"{getattr(auto.engine, 'rpm', 0.0):5.0f} U/min",
-            f"Lenkung {math.degrees(auto.physics.steer_angle):+5.1f} Grad",
+            f"Lack {lack.anzeigename(lacke[lack_index])}",
             f"{uhr.get_fps():5.1f} fps",
-            "W/S Gas-Bremse   A/D Lenken   Leertaste Handbremse   R Start   Esc Ende",
+            "W/S Gas-Bremse   A/D Lenken   Leertaste Handbremse   R Start   L Lack   Esc Ende",
         ]
         for i, text in enumerate(zeilen):
             hud.blit(schrift.render(text, True, (255, 255, 255)), (40, 40 + i * 42))
         bild.hud_zeichnen(hud)
         pygame.display.flip()
 
+    szene.freigeben()
     pygame.quit()
     return 0
 

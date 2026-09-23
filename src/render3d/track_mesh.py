@@ -32,6 +32,9 @@ M_PER_PX: float = 0.08
 #: Z-Fighting mit der Fahrbahn bei z = 0, aber optisch nicht wahrnehmbar.
 UNTERGRUND_VERSATZ_M: float = -0.01
 
+#: Randsteine liegen knapp über der Fahrbahn, auf der sie aufliegen.
+RANDSTEIN_HOEHE_M: float = 0.004
+
 #: Ab welchem Abstand zwei aufeinanderfolgende Punkte als "derselbe Punkt"
 #: gelten und der zweite verworfen wird. Verhindert entartete Dreiecke,
 #: wenn eine Streckendatei die Mittellinie versehentlich mit einem
@@ -72,6 +75,14 @@ class Streckennetz:
     #: als ruckartiges Einlenken, obwohl die Position sauber laeuft.
     tangenten: np.ndarray = field(
         default_factory=lambda: np.zeros((0, 2), dtype=np.float64))
+    halbe_breite_m: float = 0.0
+    #: Fahrbahnkanten, (n, 2) — dort stehen die Wände des Spiels.
+    rand_links: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
+    rand_rechts: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
+    #: Linksrichtung je Punkt, (n, 2), auf Länge 1.
+    links: np.ndarray = field(default_factory=lambda: np.zeros((0, 2)))
+    name: str = ""
+    thema: str = ""
 
     def band(self, name: str) -> Band | None:
         for b in self.baender:
@@ -331,21 +342,24 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
         _band_aus_ringen("fahrbahn", punkte_links, punkte_rechts, 0.0, 1.0, v_werte),
         _band_aus_ringen(
             "randstein_links",
-            punkte_links + links * randstein_m, punkte_links,
+            punkte_links, punkte_links - links * randstein_m,
             1.0, 0.0, v_werte),
         _band_aus_ringen(
             "randstein_rechts",
-            punkte_rechts, punkte_rechts - links * randstein_m,
+            punkte_rechts + links * randstein_m, punkte_rechts,
             0.0, 1.0, v_werte),
     ]
+    # Randsteine liegen **auf** der Fahrbahn, am Rand innen: die Wände des
+    # Spiels fallen mit der Fahrbahnkante zusammen, und dort stehen in 3D die
+    # Leitplanken. Lägen die Randsteine außen, stünde die Planke einen Meter
+    # hinter der Stelle, an der das Auto abprallt. Zwei Millimeter über der
+    # Fahrbahn, gegen Z-Fighting.
+    for band in baender[1:]:
+        band.positionen[:, 2] = RANDSTEIN_HOEHE_M
 
     # Untergrund: Bounding-Box ueber Mittellinie und Randsteine, damit die
     # Ebene die ganze sichtbare Strecke sicher umschliesst, plus Rand.
-    alle_punkte_m = np.concatenate([
-        mittellinie_m,
-        punkte_links + links * randstein_m,
-        punkte_rechts - links * randstein_m,
-    ])
+    alle_punkte_m = np.concatenate([mittellinie_m, punkte_links, punkte_rechts])
     min_xy = alle_punkte_m.min(axis=0) - untergrund_rand_m
     max_xy = alle_punkte_m.max(axis=0) + untergrund_rand_m
     baender.append(_rechteck_band(
@@ -369,7 +383,12 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
     return Streckennetz(baender=baender, laenge_m=laenge_m,
                          start_positionen=start_positionen,
                          mittellinie=mittellinie_m,
-                         tangenten=tangenten)
+                         tangenten=tangenten,
+                         halbe_breite_m=halbe_breite_m,
+                         rand_links=punkte_links, rand_rechts=punkte_rechts,
+                         links=links,
+                         name=str(strecke.get("name", "")),
+                         thema=str(strecke.get("theme") or strecke.get("background_texture") or ""))
 
 
 def aus_datei(pfad: str | Path, randstein_m: float = 1.0,

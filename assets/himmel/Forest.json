@@ -1,0 +1,19 @@
+{
+  "quelle": "https://polyhaven.com/a/kloppenheim_05_puresky",
+  "sonne_richtung": [
+    0.2171,
+    0.1574,
+    0.9634
+  ],
+  "sonne_hoehe_grad": 74.4,
+  "horizont_linear": [
+    0.2962,
+    0.3077,
+    0.3586
+  ],
+  "zenit_linear": [
+    0.4466,
+    0.5263,
+    0.7225
+  ]
+}

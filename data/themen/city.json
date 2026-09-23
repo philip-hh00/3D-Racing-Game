@@ -1,0 +1,163 @@
+{
+  "name": "City",
+  "himmel": "City",
+  "himmel_farben": {
+    "zenit": [
+      0.25,
+      0.38,
+      0.62
+    ],
+    "horizont": [
+      0.7,
+      0.76,
+      0.84
+    ]
+  },
+  "sonne_farbe": [
+    3.1,
+    2.95,
+    2.75
+  ],
+  "belichtung": 1.0,
+  "himmel_helligkeit": 1.0,
+  "nebel": {
+    "farbe": [
+      0.72,
+      0.77,
+      0.84
+    ],
+    "dichte": 0.0009
+  },
+  "boden": {
+    "textur": "beton",
+    "kachel_m": 6.0,
+    "farbe": [
+      0.45,
+      0.45,
+      0.44
+    ],
+    "ton": [
+      0.95,
+      0.95,
+      1.0
+    ]
+  },
+  "fahrbahn": {
+    "textur": "asphalt",
+    "kachel_m": 9.0
+  },
+  "begrenzung": "betonmauer",
+  "rand": [
+    {
+      "modell": "gemeinsam/bande_0|gemeinsam/bande_1|gemeinsam/bande_2|gemeinsam/bande_3|gemeinsam/bande_4|gemeinsam/bande_5",
+      "art": "reihe",
+      "abstand_m": 2.2,
+      "je_m": 28,
+      "seite": "aussen",
+      "radius_m": 3.0
+    },
+    {
+      "modell": "gemeinsam/reifenstapel",
+      "art": "kurven",
+      "abstand_m": 1.6,
+      "je_m": 10,
+      "radius_m": 1.0
+    },
+    {
+      "modell": "gemeinsam/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    },
+    {
+      "modell": "city/laterne",
+      "art": "reihe",
+      "abstand_m": 3.2,
+      "je_m": 32,
+      "seite": "beide",
+      "radius_m": 0.8
+    }
+  ],
+  "deko": [
+    {
+      "modell": "city/wohnblock_1|city/wohnblock_2|city/wohnblock_3|city/backstein_1|city/backstein_2",
+      "dichte_je_ha": 1.1,
+      "abstand_m": [
+        26,
+        190
+      ],
+      "skala": [
+        0.95,
+        1.1
+      ],
+      "radius_m": 17,
+      "drehen": false
+    },
+    {
+      "modell": "city/buero_turm_1|city/buero_turm_2|city/buero_turm_3",
+      "dichte_je_ha": 0.22,
+      "abstand_m": [
+        70,
+        300
+      ],
+      "skala": [
+        0.9,
+        1.2
+      ],
+      "radius_m": 22,
+      "drehen": false,
+      "seite": "aussen"
+    },
+    {
+      "modell": "natur/laubbaum_2|natur/laubbaum_1",
+      "dichte_je_ha": 3.0,
+      "abstand_m": [
+        6,
+        24
+      ],
+      "skala": [
+        0.75,
+        1.0
+      ],
+      "radius_m": 2.8
+    },
+    {
+      "modell": "natur/busch_1|natur/busch_2",
+      "dichte_je_ha": 2.0,
+      "abstand_m": [
+        4,
+        22
+      ],
+      "radius_m": 1.2
+    },
+    {
+      "modell": "city/hydrant|city/muelltonne|city/stromkasten",
+      "dichte_je_ha": 2.0,
+      "abstand_m": [
+        3.5,
+        14
+      ],
+      "skala": [
+        1.0,
+        1.0
+      ],
+      "radius_m": 0.8,
+      "drehen": false
+    }
+  ],
+  "kulisse": [
+    {
+      "modell": "city/skyline",
+      "anzahl": 11,
+      "radius_m": [
+        380,
+        650
+      ],
+      "skala": [
+        0.9,
+        1.3
+      ]
+    }
+  ]
+}

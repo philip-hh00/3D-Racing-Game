@@ -1,0 +1,170 @@
+{
+  "name": "Forest",
+  "himmel": "Forest",
+  "himmel_farben": {
+    "zenit": [
+      0.26,
+      0.4,
+      0.66
+    ],
+    "horizont": [
+      0.72,
+      0.78,
+      0.86
+    ]
+  },
+  "sonne_farbe": [
+    3.0,
+    2.9,
+    2.7
+  ],
+  "belichtung": 1.0,
+  "himmel_helligkeit": 1.0,
+  "nebel": {
+    "farbe": [
+      0.68,
+      0.75,
+      0.8
+    ],
+    "dichte": 0.0011
+  },
+  "boden": {
+    "textur": "gras",
+    "kachel_m": 8.0,
+    "farbe": [
+      0.3,
+      0.42,
+      0.2
+    ],
+    "ton": [
+      0.72,
+      1.12,
+      0.55
+    ]
+  },
+  "fahrbahn": {
+    "textur": "asphalt",
+    "kachel_m": 9.0
+  },
+  "begrenzung": "leitplanke",
+  "rand": [
+    {
+      "modell": "gemeinsam/bande_0|gemeinsam/bande_1|gemeinsam/bande_2|gemeinsam/bande_3|gemeinsam/bande_4|gemeinsam/bande_5",
+      "art": "reihe",
+      "abstand_m": 2.2,
+      "je_m": 28,
+      "seite": "aussen",
+      "radius_m": 3.0
+    },
+    {
+      "modell": "gemeinsam/reifenstapel",
+      "art": "kurven",
+      "abstand_m": 1.6,
+      "je_m": 10,
+      "radius_m": 1.0
+    },
+    {
+      "modell": "gemeinsam/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    }
+  ],
+  "deko": [
+    {
+      "modell": "natur/holzhuette",
+      "dichte_je_ha": 0.12,
+      "abstand_m": [
+        30,
+        200
+      ],
+      "radius_m": 7,
+      "drehen": false
+    },
+    {
+      "modell": "natur/tanne_1|natur/tanne_2|natur/tanne_3",
+      "dichte_je_ha": 16.0,
+      "abstand_m": [
+        12,
+        280
+      ],
+      "skala": [
+        0.8,
+        1.3
+      ],
+      "radius_m": 2.4
+    },
+    {
+      "modell": "natur/laubbaum_1|natur/laubbaum_3",
+      "dichte_je_ha": 5.0,
+      "abstand_m": [
+        10,
+        260
+      ],
+      "skala": [
+        0.8,
+        1.2
+      ],
+      "radius_m": 3.0
+    },
+    {
+      "modell": "natur/busch_1|natur/busch_2",
+      "dichte_je_ha": 6.0,
+      "abstand_m": [
+        4,
+        80
+      ],
+      "radius_m": 1.2
+    },
+    {
+      "modell": "natur/farn",
+      "dichte_je_ha": 6.0,
+      "abstand_m": [
+        4,
+        60
+      ],
+      "skala": [
+        1.0,
+        1.8
+      ],
+      "radius_m": 0.6
+    },
+    {
+      "modell": "natur/baumstumpf|natur/totholz",
+      "dichte_je_ha": 1.0,
+      "abstand_m": [
+        5,
+        120
+      ],
+      "radius_m": 1.5
+    },
+    {
+      "modell": "natur/moosfels_1|natur/moosfels_2",
+      "dichte_je_ha": 1.2,
+      "abstand_m": [
+        6,
+        200
+      ],
+      "skala": [
+        0.7,
+        1.4
+      ],
+      "radius_m": 2.4
+    }
+  ],
+  "kulisse": [
+    {
+      "modell": "forest/waldhuegel",
+      "anzahl": 10,
+      "radius_m": [
+        380,
+        720
+      ],
+      "skala": [
+        0.9,
+        1.4
+      ]
+    }
+  ]
+}

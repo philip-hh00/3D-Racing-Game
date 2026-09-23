@@ -131,9 +131,32 @@ def test_gelenktes_rad_bleibt_beim_rollen_senkrecht():
 
 
 # -- Fahrzeug als Ganzes -----------------------------------------------------
-def test_matrizen_enthalten_karosserie_und_vier_raeder():
+def test_matrizen_enthalten_karosserie_vier_raeder_und_saettel():
     m = _knoten().matrizen((0.0, 0.0), 0.0)
-    assert set(m) == {KAROSSERIE, "rad_vl", "rad_vr", "rad_hl", "rad_hr"}
+    assert set(m) == {KAROSSERIE, "rad_vl", "rad_vr", "rad_hl", "rad_hr",
+                      "sattel_vl", "sattel_vr", "sattel_hl", "sattel_hr"}
+
+
+def test_der_sattel_lenkt_mit_rollt_aber_nicht():
+    k = _knoten()
+    k.lenken(0.4)
+    k.setzen(rollwinkel_rad=1.3, lenkwinkel_rad=0.4)
+    m = k.matrizen((0.0, 0.0), 0.0)
+    oben = (0.0, 0.0, 0.2)
+    # Rollen dreht einen Punkt über der Nabe nach vorn, der Sattel bleibt oben.
+    assert _punkt(m["sattel_vl"], oben)[2] == pytest.approx(RADIUS + 0.2, abs=GENAU)
+    assert _punkt(m["rad_vl"], oben)[2] < RADIUS + 0.2 - 1e-3
+    # Gelenkt: ein Punkt vor der Nabe wandert nach links.
+    vorn = _punkt(m["sattel_vl"], (0.2, 0.0, 0.0))
+    assert vorn[1] > k.raeder[0].nabe[1] + 1e-3
+
+
+def test_die_karosserie_kann_sich_neigen_ohne_die_raeder():
+    k = _knoten()
+    neigung = matrix.drehung_x(0.05)
+    m = k.matrizen((0.0, 0.0), 0.0, karosserie=neigung)
+    assert np.allclose(m[KAROSSERIE], neigung)
+    assert np.allclose(m["rad_vl"], k.matrizen((0.0, 0.0), 0.0)["rad_vl"])
 
 
 def test_das_fahrzeug_nimmt_die_raeder_mit():
@@ -178,69 +201,13 @@ def test_teileliste_wird_gelesen(tmp_path):
     assert plaetze[0].gelenkt and not plaetze[1].gelenkt
 
 
+@pytest.mark.skipif(not __import__("pathlib").Path("assets/vehicles/rookie_teile.json").is_file(),
+                    reason="Fahrzeuge noch nicht mit tools/blender/fahrzeug_bauen.py erzeugt")
 def test_knoten_aus_der_echten_teileliste():
     k = Fahrzeugknoten.aus_datei("assets/vehicles/rookie_teile.json")
     assert len(k.raeder) == 4
     assert sum(r.gelenkt for r in k.raeder) == 2, "genau die Vorderraeder lenken"
     assert k.radradius_m == pytest.approx(0.325)
-
-
-# -- Nabenkorrektur von Hand -------------------------------------------------
-def test_korrektur_verschiebt_die_drehachse_und_nicht_das_rad():
-    """Ohne Drehung darf eine Korrektur nichts verschieben.
-
-    Sie sagt nur, wo die Achse liegt - nicht, wo das Rad steht.
-    """
-    k = _knoten()
-    ohne = _punkt(k.rad_matrix(k.raeder[0]), (0.1, 0, 0.1))
-    k.raeder[0].korrektur = np.array([0.03, 0.0, -0.02])
-    mit = _punkt(k.rad_matrix(k.raeder[0]), (0.1, 0, 0.1))
-    assert mit == pytest.approx(ohne, abs=GENAU)
-
-
-def test_ohne_korrektur_kreist_ein_versetztes_rad():
-    """Der Fehler, den das Werkzeug behebt.
-
-    Sitzt die Achse neben der Radmitte, wandert die Radmitte beim Rollen -
-    genau das war am Fahrzeug als Auf und Ab zu sehen.
-    """
-    k = _knoten()
-    versatz = np.array([0.04, 0.0, 0.03])
-    k.setzen(rollwinkel_rad=math.pi)
-    ohne = _punkt(k.rad_matrix(k.raeder[0]), versatz)
-    assert np.linalg.norm(ohne - (k.raeder[0].nabe - versatz)) < GENAU
-
-
-def test_mit_passender_korrektur_bleibt_die_radmitte_stehen():
-    k = _knoten()
-    versatz = np.array([0.04, 0.0, 0.03])
-    k.raeder[0].korrektur = versatz
-    orte = []
-    for winkel in (0.0, 1.0, 2.5, 4.0):
-        k.setzen(rollwinkel_rad=winkel)
-        orte.append(_punkt(k.rad_matrix(k.raeder[0]), versatz))
-    for ort in orte[1:]:
-        assert ort == pytest.approx(orte[0], abs=GENAU), \
-            "die korrigierte Radmitte darf beim Rollen nicht wandern"
-
-
-def test_korrekturen_werden_aus_der_konfiguration_gelesen(tmp_path):
-    from src.render3d.vehicle_node import korrekturen_lesen
-
-    pfad = tmp_path / "trellis_import.json"
-    pfad.write_text(json.dumps({
-        "rookie": {"flip": True, "naben": {"rad_vl": [0.01, -0.02, 0.03]}},
-        "supercar": {"flip": False},
-    }), encoding="utf-8")
-    assert korrekturen_lesen(pfad, "rookie")["rad_vl"] == pytest.approx(
-        [0.01, -0.02, 0.03])
-    assert korrekturen_lesen(pfad, "supercar") == {}
-    assert korrekturen_lesen(pfad, "gibtsnicht") == {}
-
-
-def test_fehlende_konfiguration_ist_kein_fehler(tmp_path):
-    from src.render3d.vehicle_node import korrekturen_lesen
-    assert korrekturen_lesen(tmp_path / "fehlt.json", "rookie") == {}
 
 
 def test_durchmesser_null_wird_abgelehnt():

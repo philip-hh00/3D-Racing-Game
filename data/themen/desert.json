@@ -1,0 +1,173 @@
+{
+  "name": "Desert",
+  "himmel": "Desert",
+  "himmel_farben": {
+    "zenit": [
+      0.3,
+      0.45,
+      0.72
+    ],
+    "horizont": [
+      0.82,
+      0.8,
+      0.74
+    ]
+  },
+  "sonne_farbe": [
+    3.4,
+    3.05,
+    2.6
+  ],
+  "belichtung": 0.95,
+  "himmel_helligkeit": 1.0,
+  "nebel": {
+    "farbe": [
+      0.86,
+      0.8,
+      0.7
+    ],
+    "dichte": 0.0007
+  },
+  "boden": {
+    "textur": "sand",
+    "kachel_m": 14.0,
+    "farbe": [
+      0.76,
+      0.62,
+      0.44
+    ],
+    "ton": [
+      1.18,
+      0.98,
+      0.74
+    ]
+  },
+  "fahrbahn": {
+    "textur": "asphalt",
+    "kachel_m": 9.0
+  },
+  "begrenzung": "reifenwand",
+  "rand": [
+    {
+      "modell": "gemeinsam/bande_0|gemeinsam/bande_1|gemeinsam/bande_2|gemeinsam/bande_3|gemeinsam/bande_4|gemeinsam/bande_5",
+      "art": "reihe",
+      "abstand_m": 2.2,
+      "je_m": 28,
+      "seite": "aussen",
+      "radius_m": 3.0
+    },
+    {
+      "modell": "gemeinsam/reifenstapel",
+      "art": "kurven",
+      "abstand_m": 1.6,
+      "je_m": 10,
+      "radius_m": 1.0
+    },
+    {
+      "modell": "gemeinsam/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    }
+  ],
+  "deko": [
+    {
+      "modell": "desert/lehmhaus_1|desert/lehmhaus_2",
+      "dichte_je_ha": 0.25,
+      "abstand_m": [
+        30,
+        220
+      ],
+      "radius_m": 9,
+      "drehen": false
+    },
+    {
+      "modell": "desert/kaktus_1|desert/kaktus_2|desert/kaktus_3",
+      "dichte_je_ha": 4.5,
+      "abstand_m": [
+        6,
+        260
+      ],
+      "skala": [
+        0.7,
+        1.25
+      ],
+      "radius_m": 1.5
+    },
+    {
+      "modell": "desert/koecherbaum_1|desert/koecherbaum_2",
+      "dichte_je_ha": 2.0,
+      "abstand_m": [
+        8,
+        240
+      ],
+      "skala": [
+        0.8,
+        1.3
+      ],
+      "radius_m": 1.6
+    },
+    {
+      "modell": "desert/toter_stamm",
+      "dichte_je_ha": 0.8,
+      "abstand_m": [
+        6,
+        160
+      ],
+      "radius_m": 1.0
+    },
+    {
+      "modell": "desert/steppenbusch",
+      "dichte_je_ha": 6.0,
+      "abstand_m": [
+        3,
+        200
+      ],
+      "skala": [
+        0.7,
+        1.6
+      ],
+      "radius_m": 1.0
+    },
+    {
+      "modell": "desert/fels_1|desert/fels_2",
+      "dichte_je_ha": 3.0,
+      "abstand_m": [
+        5,
+        260
+      ],
+      "skala": [
+        0.6,
+        2.2
+      ],
+      "radius_m": 2.4
+    }
+  ],
+  "kulisse": [
+    {
+      "modell": "desert/tafelberg",
+      "anzahl": 9,
+      "radius_m": [
+        450,
+        850
+      ],
+      "skala": [
+        0.8,
+        1.4
+      ]
+    },
+    {
+      "modell": "desert/klippe",
+      "anzahl": 7,
+      "radius_m": [
+        200,
+        340
+      ],
+      "skala": [
+        0.8,
+        1.3
+      ]
+    }
+  ]
+}

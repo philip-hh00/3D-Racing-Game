@@ -1,0 +1,19 @@
+{
+  "quelle": "https://polyhaven.com/a/kloofendal_48d_partly_cloudy_puresky",
+  "sonne_richtung": [
+    0.5546,
+    0.3767,
+    0.742
+  ],
+  "sonne_hoehe_grad": 47.9,
+  "horizont_linear": [
+    0.3162,
+    0.3398,
+    0.4124
+  ],
+  "zenit_linear": [
+    0.3547,
+    0.3852,
+    0.4872
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "_hinweis": "CC0-Quellen fuer die Umgebung, alle von Poly Haven (polyhaven.com, Lizenz CC0 1.0). tools/assets_laden.py laedt sie nach rohdaten/cc0/ und bereitet Texturen und Himmel fuer das Spiel auf.",
+  "modelle": [
+    "quiver_tree_01",
+    "quiver_tree_02",
+    "dead_quiver_trunk",
+    "wild_rooibos_bush",
+    "namaqualand_boulder_02",
+    "namaqualand_boulder_05",
+    "namaqualand_cliff_01",
+    "rock_moss_set_01",
+    "boulder_01",
+    "rock_07",
+    "rock_09",
+    "stone_01",
+    "tree_stump_01",
+    "dead_tree_trunk",
+    "fern_02",
+    "shrub_02",
+    "shrub_03",
+    "shrub_04",
+    "fir_sapling",
+    "pine_sapling_small",
+    "jacaranda_tree",
+    "street_lamp_01",
+    "street_lamp_02",
+    "concrete_road_barrier_02",
+    "fire_hydrant",
+    "utility_box_01",
+    "metal_trash_can",
+    "old_tyre"
+  ],
+  "texturen": {
+    "asphalt": "asphalt_track",
+    "beton": "concrete_pavement_03",
+    "sand": "aerial_sand",
+    "gras": "sparse_grass",
+    "wiese": "leafy_grass",
+    "fels_gras": "aerial_grass_rock",
+    "waldboden": "forest_ground_04",
+    "putz": "white_plaster_rough_01",
+    "ziegel": "red_brick_03",
+    "betonwand": "concrete_wall_008",
+    "dachziegel": "clay_roof_tiles_02",
+    "dach_grau": "grey_roof_01",
+    "holz": "wood_plank_wall",
+    "wellblech": "corrugated_iron",
+    "rinde": "bark_brown_02",
+    "felswand": "rock_face_03",
+    "sandstein": "red_sandstone_wall"
+  },
+  "himmel": {
+    "City": "kloofendal_48d_partly_cloudy_puresky",
+    "Desert": "qwantani_noon_puresky",
+    "Forest": "kloppenheim_05_puresky",
+    "Mountain": "rustig_koppie_puresky",
+    "Plains": "sunflowers_puresky"
+  },
+  "blaetter": {
+    "laub": [
+      "jacaranda_tree",
+      "leaves_diff",
+      null
+    ],
+    "nadeln": [
+      "fir_sapling",
+      "twigs_diff",
+      "twigs_alpha"
+    ],
+    "kiefer": [
+      "pine_sapling_small",
+      "twig_diff",
+      "twig_alpha"
+    ],
+    "busch": [
+      "shrub_02",
+      "Diffuse",
+      "Alpha"
+    ]
+  }
+}

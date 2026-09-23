@@ -41,8 +41,13 @@ def modellordner(tmp_path_factory):
     """Ein Ersatzfahrzeug aus fünf Kisten: Karosserie und vier Räder."""
     ordner = tmp_path_factory.mktemp("vehicles")
     szene = trimesh.Scene()
-    szene.add_geometry(trimesh.creation.box((4.0, 1.8, 1.2)),
-                       node_name="karosserie", geom_name="karosserie")
+    karosserie = trimesh.creation.box((4.0, 1.8, 1.2))
+    from trimesh.visual.material import PBRMaterial
+    karosserie.visual = trimesh.visual.TextureVisuals(
+        uv=np.zeros((len(karosserie.vertices), 2)),
+        material=PBRMaterial(name="lack", baseColorFactor=[200, 30, 30, 255],
+                             metallicFactor=0.0, roughnessFactor=0.4))
+    szene.add_geometry(karosserie, node_name="karosserie", geom_name="karosserie")
     naben = {"rad_vl": (1.3, 0.8), "rad_vr": (1.3, -0.8),
              "rad_hl": (-1.3, 0.8), "rad_hr": (-1.3, -0.8)}
     for name, (x, y) in naben.items():

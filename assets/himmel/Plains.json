@@ -1,0 +1,19 @@
+{
+  "quelle": "https://polyhaven.com/a/sunflowers_puresky",
+  "sonne_richtung": [
+    0.591,
+    0.4313,
+    0.6817
+  ],
+  "sonne_hoehe_grad": 43.0,
+  "horizont_linear": [
+    0.3076,
+    0.3294,
+    0.2938
+  ],
+  "zenit_linear": [
+    0.0789,
+    0.1087,
+    0.1368
+  ]
+}

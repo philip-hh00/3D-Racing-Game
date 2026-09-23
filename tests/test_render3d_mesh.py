@@ -168,18 +168,14 @@ def test_teil_unbekannter_name_liefert_none(glb_pfad):
 
 
 @pytest.mark.skipif(not ROOKIE_GLB.is_file(),
-                    reason="rookie.glb liegt nicht im Repo (grosses Binaerasset)")
+                    reason="rookie.glb wird mit tools/blender/fahrzeug_bauen.py erzeugt")
 def test_echtes_rookie_glb_liefert_fuenf_teile_mit_erwarteten_groessen():
     daten = mesh.laden(ROOKIE_GLB)
-    assert len(daten.teile) == 5
-    assert {t.name for t in daten.teile} == {
-        "karosserie", "rad_vl", "rad_vr", "rad_hl", "rad_hr"}
+    assert {"karosserie", "rad_vl", "rad_vr", "rad_hl", "rad_hr"} <= {t.name for t in daten.teile}
 
     karosserie = daten.teil("karosserie")
-    assert karosserie.indizes.shape[0] > 100_000
-
-    assert daten.basisfarbe is not None
-    assert daten.basisfarbe.size == (2048, 2048)
+    assert karosserie.indizes.shape[0] > 10_000
+    assert daten.material("lack") is not None, "ohne Lackmaterial keine Werkstatt"
 
 
 def _standalone_kontext():
@@ -219,10 +215,12 @@ def test_hochladen_erzeugt_vaos_und_texturen_im_standalone_kontext(glb_pfad):
 
         assert len(modell.teile) == 5
         for teil in modell.teile:
-            assert isinstance(teil.vao, moderngl.VertexArray)
+            assert teil.stuecke
+            for st in teil.stuecke:
+                assert isinstance(st.vao, moderngl.VertexArray)
             assert teil.versatz.shape == (3,)
-        assert isinstance(modell.basisfarbe, moderngl.Texture)
-        assert isinstance(modell.metallic_rauheit, moderngl.Texture)
+        assert any(isinstance(m.basisfarbe, moderngl.Texture) for m in modell.materialien)
+        assert any(isinstance(m.metallic_rauheit, moderngl.Texture) for m in modell.materialien)
         assert modell.teil("rad_hr") is not None
         assert modell.teil("gibtsnicht") is None
     finally:
@@ -305,12 +303,13 @@ def test_hochgeladene_textur_zeigt_untere_bildhaelfte_bei_v_zwischen_0_und_04():
         versatz = np.zeros(3, dtype=np.float32)
 
         teilnetz = mesh.Teilnetz(
-            name="quadrat", positionen=positionen, normalen=normalen, uv=uv,
-            indizes=indizes, versatz=versatz)
+            name="quadrat",
+            stuecke=[mesh.Stueck(material=0, positionen=positionen, normalen=normalen,
+                                 uv=uv, indizes=indizes)],
+            versatz=versatz)
         daten = mesh.Modelldaten(
             teile=[teilnetz],
-            basisfarbe=_bild_oben_blau_unten_rot(),
-            metallic_rauheit=None)
+            materialien=[mesh.Material(name="test", basisfarbe=_bild_oben_blau_unten_rot())])
 
         modell = mesh.hochladen(ctx, programm, daten)
 
@@ -318,9 +317,9 @@ def test_hochgeladene_textur_zeigt_untere_bildhaelfte_bei_v_zwischen_0_und_04():
         fbo = ctx.framebuffer(color_attachments=[ctx.texture(groesse, 4)])
         fbo.use()
         ctx.clear(0.0, 0.0, 0.0, 1.0)
-        modell.basisfarbe.use(location=0)
+        modell.materialien[0].basisfarbe.use(location=0)
         programm["u_textur"] = 0
-        modell.teil("quadrat").vao.render()
+        modell.teil("quadrat").stuecke[0].vao.render()
 
         pixel = np.frombuffer(fbo.read(components=4), dtype=np.uint8)
         pixel = pixel.reshape(groesse[1], groesse[0], 4)

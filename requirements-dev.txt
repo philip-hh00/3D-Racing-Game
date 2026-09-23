@@ -26,3 +26,6 @@ scipy>=1.11.0
 # Die Bauwerkzeuge stehen bewusst NICHT hier, sondern in den Bauskripten
 # (pyinstaller, pillow). Sie gehören zum Packen, nicht zum Entwickeln, und wer
 # nur Tests laufen lassen will, soll sie nicht mitinstallieren müssen.
+
+# Tests bauen Test-GLBs mit trimesh (src/render3d/mesh.py liest selbst).
+trimesh>=4.0.0
