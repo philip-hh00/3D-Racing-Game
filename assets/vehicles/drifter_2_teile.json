@@ -1,0 +1,73 @@
+{
+  "fahrzeug": "drifter_2",
+  "quelle": "tools/blender/fahrzeug_bauen.py",
+  "laenge_m": 4.64,
+  "breite_m": 2.16,
+  "hoehe_m": 1.27,
+  "raddurchmesser_m": 0.65,
+  "radstand_m": 2.924,
+  "achsen": {
+    "vorne": [
+      "rad_vl",
+      "rad_vr"
+    ],
+    "hinten": [
+      "rad_hl",
+      "rad_hr"
+    ]
+  },
+  "gelenkt": [
+    "rad_vl",
+    "rad_vr"
+  ],
+  "raeder": [
+    {
+      "name": "rad_vl",
+      "nabe": [
+        1.6708,
+        0.8827,
+        0.325
+      ],
+      "dreiecke": 5704
+    },
+    {
+      "name": "rad_vr",
+      "nabe": [
+        1.6708,
+        -0.8827,
+        0.325
+      ],
+      "dreiecke": 5704
+    },
+    {
+      "name": "rad_hl",
+      "nabe": [
+        -1.2532,
+        0.8827,
+        0.325
+      ],
+      "dreiecke": 5704
+    },
+    {
+      "name": "rad_hr",
+      "nabe": [
+        -1.2532,
+        -0.8827,
+        0.325
+      ],
+      "dreiecke": 5704
+    }
+  ],
+  "saettel": [
+    "sattel_vl",
+    "sattel_vr",
+    "sattel_hl",
+    "sattel_hr"
+  ],
+  "werkslack": [
+    24,
+    24,
+    27
+  ],
+  "dreiecke_karosserie": 52170
+}

@@ -1,0 +1,73 @@
+{
+  "fahrzeug": "rookie_3",
+  "quelle": "tools/blender/fahrzeug_bauen.py",
+  "laenge_m": 4.4,
+  "breite_m": 2.16,
+  "hoehe_m": 1.47,
+  "raddurchmesser_m": 0.65,
+  "radstand_m": 2.674,
+  "achsen": {
+    "vorne": [
+      "rad_vl",
+      "rad_vr"
+    ],
+    "hinten": [
+      "rad_hl",
+      "rad_hr"
+    ]
+  },
+  "gelenkt": [
+    "rad_vl",
+    "rad_vr"
+  ],
+  "raeder": [
+    {
+      "name": "rad_vl",
+      "nabe": [
+        1.348,
+        0.9239,
+        0.325
+      ],
+      "dreiecke": 5584
+    },
+    {
+      "name": "rad_vr",
+      "nabe": [
+        1.348,
+        -0.9239,
+        0.325
+      ],
+      "dreiecke": 5584
+    },
+    {
+      "name": "rad_hl",
+      "nabe": [
+        -1.326,
+        0.9239,
+        0.325
+      ],
+      "dreiecke": 5584
+    },
+    {
+      "name": "rad_hr",
+      "nabe": [
+        -1.326,
+        -0.9239,
+        0.325
+      ],
+      "dreiecke": 5584
+    }
+  ],
+  "saettel": [
+    "sattel_vl",
+    "sattel_vr",
+    "sattel_hl",
+    "sattel_hr"
+  ],
+  "werkslack": [
+    236,
+    237,
+    239
+  ],
+  "dreiecke_karosserie": 43782
+}

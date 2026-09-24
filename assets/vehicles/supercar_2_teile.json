@@ -1,0 +1,73 @@
+{
+  "fahrzeug": "supercar_2",
+  "quelle": "tools/blender/fahrzeug_bauen.py",
+  "laenge_m": 4.8,
+  "breite_m": 2.32,
+  "hoehe_m": 1.13,
+  "raddurchmesser_m": 0.64,
+  "radstand_m": 2.624,
+  "achsen": {
+    "vorne": [
+      "rad_vl",
+      "rad_vr"
+    ],
+    "hinten": [
+      "rad_hl",
+      "rad_hr"
+    ]
+  },
+  "gelenkt": [
+    "rad_vl",
+    "rad_vr"
+  ],
+  "raeder": [
+    {
+      "name": "rad_vl",
+      "nabe": [
+        1.288,
+        0.8783,
+        0.32
+      ],
+      "dreiecke": 5680
+    },
+    {
+      "name": "rad_vr",
+      "nabe": [
+        1.288,
+        -0.8783,
+        0.32
+      ],
+      "dreiecke": 5680
+    },
+    {
+      "name": "rad_hl",
+      "nabe": [
+        -1.336,
+        0.8783,
+        0.32
+      ],
+      "dreiecke": 5680
+    },
+    {
+      "name": "rad_hr",
+      "nabe": [
+        -1.336,
+        -0.8783,
+        0.32
+      ],
+      "dreiecke": 5680
+    }
+  ],
+  "saettel": [
+    "sattel_vl",
+    "sattel_vr",
+    "sattel_hl",
+    "sattel_hr"
+  ],
+  "werkslack": [
+    195,
+    12,
+    22
+  ],
+  "dreiecke_karosserie": 49206
+}

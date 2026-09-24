@@ -1,0 +1,73 @@
+{
+  "fahrzeug": "electric_2",
+  "quelle": "tools/blender/fahrzeug_bauen.py",
+  "laenge_m": 5.04,
+  "breite_m": 2.16,
+  "hoehe_m": 1.3947,
+  "raddurchmesser_m": 0.73,
+  "radstand_m": 2.992,
+  "achsen": {
+    "vorne": [
+      "rad_vl",
+      "rad_vr"
+    ],
+    "hinten": [
+      "rad_hl",
+      "rad_hr"
+    ]
+  },
+  "gelenkt": [
+    "rad_vl",
+    "rad_vr"
+  ],
+  "raeder": [
+    {
+      "name": "rad_vl",
+      "nabe": [
+        1.496,
+        0.8395,
+        0.365
+      ],
+      "dreiecke": 6756
+    },
+    {
+      "name": "rad_vr",
+      "nabe": [
+        1.496,
+        -0.8395,
+        0.365
+      ],
+      "dreiecke": 6756
+    },
+    {
+      "name": "rad_hl",
+      "nabe": [
+        -1.496,
+        0.8395,
+        0.365
+      ],
+      "dreiecke": 6756
+    },
+    {
+      "name": "rad_hr",
+      "nabe": [
+        -1.496,
+        -0.8395,
+        0.365
+      ],
+      "dreiecke": 6756
+    }
+  ],
+  "saettel": [
+    "sattel_vl",
+    "sattel_vr",
+    "sattel_hl",
+    "sattel_hr"
+  ],
+  "werkslack": [
+    175,
+    180,
+    188
+  ],
+  "dreiecke_karosserie": 42774
+}
