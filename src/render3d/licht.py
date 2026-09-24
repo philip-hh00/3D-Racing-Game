@@ -69,11 +69,13 @@ class Himmel:
         shader.setzen(p, "kamera_position", tuple(float(w) for w in kamera_position))
         shader.setzen(p, "hat_himmel", 1.0 if self.textur is not None else 0.0)
         self.binden(2)
-        self.ctx.disable(moderngl.DEPTH_TEST)
+        # Mit Tiefentest, ohne Tiefe zu schreiben: der Himmel liegt knapp vor
+        # der fernen Ebene und landet nur dort, wo noch nichts gezeichnet ist.
+        self.ctx.enable(moderngl.DEPTH_TEST)
+        self.ctx.disable(moderngl.BLEND)
         self.ctx.depth_mask = False
         self.vao.render()
         self.ctx.depth_mask = True
-        self.ctx.enable(moderngl.DEPTH_TEST)
 
     def freigeben(self) -> None:
         for ding in (self.textur, self.vao, self._puffer, self.programm):

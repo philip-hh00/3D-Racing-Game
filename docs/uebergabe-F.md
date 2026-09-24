@@ -56,9 +56,14 @@ Fremdmaterial ausschließlich CC0 (Poly Haven), aufgelistet in
 
 ## Gemessen
 
-1920×1080, acht Fahrzeuge, echtes `RaceState` mit Physik, KI und HUD
-(`rennen_probe desert`): Median 9,7 ms je Bild, 95. Perzentil 12,6 ms.
-Szene allein (`szene_foto`, GP Arena mit rund 1 100 Objekten): 8–9 ms.
+RTX 5060 Ti, 1920×1080, acht Fahrzeuge, echtes `RaceState` mit Physik, KI
+und HUD (`rennen_probe gp`, GP Arena mit rund 1 100 Umgebungsobjekten):
+Median 15,6 ms je Bild (64 fps), 95. Perzentil 17,9 ms. Die Szene allein
+(`szene_foto`) braucht 7,9 ms; der Rest ist Physik, KI und HUD.
+
+Zwei Dinge haben am meisten gebracht: Fahrzeuge **von nah nach fern**
+zeichnen, Boden und Himmel **zuletzt** (Early-Z, von 20,8 auf 8,4 ms), und
+die Teilmatrizen je Bild nur einmal rechnen statt je Durchgang.
 
 ## Offen / Ideen
 

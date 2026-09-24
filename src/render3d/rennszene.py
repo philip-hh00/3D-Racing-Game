@@ -636,6 +636,7 @@ class Rennszene:
         """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort."""
         staende = list(staende)
         fokus = kamera_position if fokus is None else fokus
+        self._bild_nummer = getattr(self, "_bild_nummer", 0) + 1
 
         licht_mvp = np.eye(4, dtype=np.float32)
         if self.schattenkarte is not None:
@@ -653,19 +654,26 @@ class Rennszene:
         else:
             self._leere_tiefe.use(3)
 
-        self.himmel.zeichnen(mvp, kamera_position)
-        self._strecke_zeichnen()
+        # Deckendes von nah nach fern: was verdeckt ist, verwirft der
+        # Tiefentest, bevor der teure Fragment-Shader läuft. In der
+        # Startaufstellung füllen acht Autos das halbe Bild — in der alten
+        # Reihenfolge (Boden, Umgebung, dann Autos) wurde jedes Pixel dort
+        # drei- bis viermal voll schattiert. Himmel ganz zuletzt, nur wo
+        # noch nichts steht.
+        auge = np.asarray(kamera_position, dtype=np.float64)[:2]
+        nach_abstand = sorted(staende, key=lambda s: float(np.linalg.norm(np.asarray(s.pos_m)[:2] - auge)))
+        for stand in nach_abstand:
+            if not stand.entfaerbt:
+                self._fahrzeug_zeichnen(stand, durchsichtig=False)
         if self.deko is not None:
             self.ctx.enable(moderngl.DEPTH_TEST)
             self.ctx.disable(moderngl.BLEND)
             self.deko.zeichnen(mvp, kamera_position, "farbe")
+        self._strecke_zeichnen()
+        self.himmel.zeichnen(mvp, kamera_position)
         self._schatten_zeichnen(mvp, staende)
-        for stand in staende:
-            if not stand.entfaerbt:
-                self._fahrzeug_zeichnen(stand, durchsichtig=False)
         # Durchscheinendes zuletzt, von hinten nach vorn.
-        auge = np.asarray(kamera_position, dtype=np.float64)[:2]
-        reihe = sorted(staende, key=lambda s: -float(np.linalg.norm(np.asarray(s.pos_m)[:2] - auge)))
+        reihe = list(reversed(nach_abstand))
         for stand in reihe:
             if stand.entfaerbt:
                 self._fahrzeug_zeichnen(stand, durchsichtig=None)
@@ -740,6 +748,20 @@ class Rennszene:
         self.schattenwerfer.beenden()
 
     def _teilmatrizen(self, stand: Fahrzeugstand, fm: Fahrzeugmodell) -> dict:
+        """Matrizen je Teil — einmal je Bild und Fahrzeug gerechnet.
+
+        Gebraucht werden sie dreimal: Schattenkarte, Deckendes, Glas. Jedes
+        Mal neu gerechnet waren das bei acht Autos rund 7 ms je Bild.
+        """
+        schluessel = (stand.kennung, id(stand))
+        vorrat = getattr(self, "_matrizen_vorrat", None)
+        if vorrat is None or vorrat[0] != self._bild_nummer:
+            vorrat = self._matrizen_vorrat = (self._bild_nummer, {})
+        if schluessel not in vorrat[1]:
+            vorrat[1][schluessel] = self._teilmatrizen_rechnen(stand, fm)
+        return vorrat[1][schluessel]
+
+    def _teilmatrizen_rechnen(self, stand: Fahrzeugstand, fm: Fahrzeugmodell) -> dict:
         knoten = self.knotenspeicher.knoten(stand.kennung)
         if knoten is not None:
             return knoten.matrizen(stand.pos_m, stand.gierwinkel_rad)

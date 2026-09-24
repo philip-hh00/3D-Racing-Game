@@ -422,11 +422,28 @@ SONNE_FARBE = (3.0, 2.85, 2.6)
 
 
 def setzen(p, name: str, wert) -> None:
-    """Ein Uniform setzen, wenn der Compiler es nicht wegoptimiert hat."""
+    """Ein Uniform setzen, wenn der Compiler es nicht wegoptimiert hat.
+
+    Unverändertes wird übersprungen: acht Autos mit je fast 40 Stücken und gut
+    zehn Uniforms pro Stück sind einige tausend Aufrufe je Bild, und die
+    meisten setzen, was schon drinsteht (vier gleiche Räder, gleiches Chrom).
+    Gemessen kostete das rund 7 ms je Bild auf der CPU. Der Merkzettel hängt
+    am Programm selbst — ein neues Programm fängt leer an.
+    """
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = {}
+        try:
+            p._zuletzt = stand
+        except AttributeError:                       # pragma: no cover - Attrappen
+            pass
+    if name in stand and stand[name] == wert:
+        return
     try:
         p[name].value = wert
     except KeyError:
         pass
+    stand[name] = wert
 
 
 def matrix_setzen(p, name: str, m: np.ndarray) -> None:
