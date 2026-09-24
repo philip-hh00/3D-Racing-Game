@@ -1,4 +1,4 @@
-; Inno Setup Skript fuer 2D-Rennspiel
+; Inno Setup Skript fuer das 3D-Rennspiel
 ; Version + Quellordner werden von den Bauskripten per /D uebergeben.
 ; Aufruf: ISCC.exe /DMyAppVersion="0.1.0-beta" /DSourceDir="<absoluter Pfad>" installer.iss
 ;
@@ -15,19 +15,21 @@
   #define MyAppVersion "0.0.0"
 #endif
 #ifndef SourceDir
-  #define SourceDir "build_tmp\stage\2D-Rennspiel"
+  #define SourceDir "build_tmp\stage\3D-Racing-Game"
 #endif
 
 ; SourcePath ist das Verzeichnis dieser Datei (mit Backslash am Ende).
 #define Wurzel SourcePath + "..\..\"
 
-#define MyAppName "2D-Racing-Game"
+#define MyAppName "3D-Racing-Game"
 #define MyAppPublisher "Philip Raht"
-#define MyAppExeName "2D-Racing-Game.exe"
+#define MyAppExeName "3D-Racing-Game.exe"
 
 [Setup]
 ; Feste AppId => Inno erkennt bestehende Installation und aktualisiert sie.
-AppId={{A7F3C2E1-9B4D-4E8A-BC12-3F5D6A8E9C01}
+; Eine andere als beim 2D-Spiel: beide koennen nebeneinander installiert
+; sein, und das eine ueberschreibt nicht das andere.
+AppId={{4D25BCA7-C0E9-48BC-B0FB-CECF212D1DA4}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppVerName={#MyAppName} {#MyAppVersion}

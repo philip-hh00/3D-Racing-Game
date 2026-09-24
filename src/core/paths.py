@@ -5,7 +5,7 @@ directory, which ``main._fix_cwd`` points at ``sys._MEIPASS`` in a packaged
 build). User-writable data (profile, keybindings, crash log) must go somewhere
 the user can write even when the app itself is read-only:
 
-* macOS packaged app: ``~/Library/Application Support/2D-Racing-Game`` — the
+* macOS packaged app: ``~/Library/Application Support/3D-Racing-Game`` — the
   ``.app`` in ``/Applications`` is read-only, so writing next to it fails.
 * Windows / running from source: the working directory (the per-user install
   folder is writable; a source checkout writes into the repo as before).
@@ -16,7 +16,7 @@ import os
 import sys
 from pathlib import Path
 
-APP_NAME = "2D-Racing-Game"
+APP_NAME = "3D-Racing-Game"
 
 
 def _frozen() -> bool:

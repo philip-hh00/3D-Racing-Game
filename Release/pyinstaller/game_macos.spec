@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-# macOS build spec — produces "2D-Racing-Game.app". Run on macOS only:
+# macOS build spec — produces "3D-Racing-Game.app". Run on macOS only:
 #   pyinstaller game_macos.spec --noconfirm
 
 # soundfile steht in hiddenimports, damit PyInstaller seinen Hook sicher zieht.
@@ -52,6 +52,13 @@ a = Analysis(
         (_w('data/menu'),     'data/menu'),
         (_w('data/ai_settings'), 'data/ai_settings'),
         (_w('data/i18n'),     'data/i18n'),
+        # Die 3D-Welt (siehe game.spec).
+        (_w('data/themen'),   'data/themen'),
+        (_w('assets/vehicles'), 'assets/vehicles'),
+        (_w('assets/umgebung'), 'assets/umgebung'),
+        (_w('assets/texturen'), 'assets/texturen'),
+        (_w('assets/himmel'),   'assets/himmel'),
+        (_w('assets/LIZENZEN.md'), 'assets'),
         (_w('data/icon.icns'), 'data'),
         # data/icon.png ist das Fenstersymbol zur Laufzeit (siehe game.spec).
         (_w('data/icon.png'), 'data'),
@@ -67,11 +74,13 @@ a = Analysis(
     # PortAudio-Bibliothek aus _sounddevice_data mit — aber nur, wenn das Modul
     # hier steht, denn importiert wird es erst zur Laufzeit.
     hiddenimports=['pygame', 'pymunk', 'numpy', 'cv2', 'soundfile',
-                   'sounddevice', '_sounddevice'],
+                   'sounddevice', '_sounddevice',
+                   # OpenGL: glcontext laedt sein macOS-Backend dynamisch.
+                   'moderngl', 'glcontext', 'glcontext.darwin', 'PIL.Image'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['trimesh', 'scipy', 'pytest', 'matplotlib', 'tkinter'],
     noarchive=False,
 )
 
@@ -82,7 +91,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='2D-Racing-Game',
+    name='3D-Racing-Game',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -97,17 +106,17 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='2D-Racing-Game',
+    name='3D-Racing-Game',
 )
 
 app = BUNDLE(
     coll,
-    name='2D-Racing-Game.app',
+    name='3D-Racing-Game.app',
     icon=_w('data', 'icon.icns'),
     bundle_identifier='de.philipraht.racinggame',
     info_plist={
-        'CFBundleName': '2D-Racing-Game',
-        'CFBundleDisplayName': '2D-Racing-Game',
+        'CFBundleName': '3D-Racing-Game',
+        'CFBundleDisplayName': '3D-Racing-Game',
         # Aus version.py, nicht von Hand: hier stand '0.1.0', waehrend das Spiel
         # selbst 0.6.0-beta meldete. macOS zeigt diesen Wert im Finder und im
         # Ueber-Fenster — zwei verschiedene Versionen sind schlimmer als eine.

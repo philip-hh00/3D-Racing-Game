@@ -6,8 +6,10 @@ setlocal enabledelayedexpansion
 cd /d "%~dp0..\.."
 
 :: === Werkzeug-Pfade =========================================================
-:: Vorgabe ist der Entwicklungsrechner; ueber die Umgebung ueberschreibbar,
-:: damit das Skript auch anderswo laeuft, ohne bearbeitet zu werden.
+:: Vorgabe ist die venv des Projekts: nur dort liegen moderngl und die
+:: uebrigen Laufzeitpakete des 3D-Spiels. Ein anderes Python packt sonst
+:: stillschweigend ein Spiel ohne 3D-Welt. Ueber die Umgebung ueberschreibbar.
+if not defined PY if exist ".venv\Scripts\python.exe" set "PY=%CD%\.venv\Scripts\python.exe"
 if not defined PY   set "PY=C:\Users\phili\AppData\Local\Programs\Python\Python311\python.exe"
 if not defined ISCC set "ISCC=C:\Users\phili\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
 
@@ -33,6 +35,37 @@ if not exist "%ISCC%" (
 )
 echo Python: %PY%
 
+:: === Laufzeitpakete und PyInstaller in genau diesem Python ===================
+"%PY%" -c "import moderngl, glcontext, pygame, pymunk, cv2, soundfile, sounddevice, PIL" 2>nul
+if errorlevel 1 (
+    echo Laufzeitpakete fehlen - installiere requirements.txt ...
+    "%PY%" -m pip install -r requirements.txt
+    if errorlevel 1 ( echo [FEHLER] requirements.txt liess sich nicht installieren. & pause & exit /b 1 )
+)
+"%PY%" -m PyInstaller --version >nul 2>nul
+if errorlevel 1 (
+    echo PyInstaller fehlt - wird installiert ...
+    "%PY%" -m pip install "pyinstaller>=6.10" --quiet
+    if errorlevel 1 ( echo [FEHLER] PyInstaller liess sich nicht installieren. & pause & exit /b 1 )
+)
+
+:: === 3D-Assets vorhanden? ===================================================
+:: Die Modelle, Texturen und Himmel sind nicht versioniert, sondern werden von
+:: tools\blender\bauen.bat erzeugt. Ohne sie baut PyInstaller klaglos ein Spiel
+:: mit unsichtbaren Autos - deshalb hier abbrechen statt spaeter wundern.
+set /a GLB=0
+for %%f in (assets\vehicles\*.glb) do set /a GLB+=1
+set "FEHLT="
+if %GLB% LSS 15 set "FEHLT=Fahrzeuge (assets\vehicles, %GLB% von 15)"
+if not exist "assets\umgebung\katalog.json" set "FEHLT=%FEHLT% Umgebung"
+if not exist "assets\himmel\City.jpg" set "FEHLT=%FEHLT% Himmel"
+if not exist "assets\texturen\asphalt_farbe.jpg" set "FEHLT=%FEHLT% Texturen"
+if defined FEHLT (
+    echo [FEHLER] 3D-Assets fehlen: !FEHLT!
+    echo          Erst bauen:  tools\blender\bauen.bat
+    pause & exit /b 1
+)
+
 :: === Version aus version.py lesen ===========================================
 :: Ohne inneres Anfuehrungszeichen. Die fruehere Zeile begann und endete mit
 :: einem Anfuehrungszeichen; cmd entfernt in dem Fall das aeussere Paar, und als
@@ -55,12 +88,12 @@ for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm
 
 set "STAGE=build_tmp\stage"
 set "AUSGABE=Release\ausgabe"
-set "OUTNAME=2D-Racing-Game_Setup_v%VERSION%_%TS%"
-set "ZIPNAME=2D-Racing-Game_Portable_v%VERSION%_%TS%"
+set "OUTNAME=3D-Racing-Game_Setup_v%VERSION%_%TS%"
+set "ZIPNAME=3D-Racing-Game_Portable_v%VERSION%_%TS%"
 
 echo.
 echo ============================================
-echo  2D-Rennspiel Release-Build
+echo  3D-Rennspiel Release-Build
 echo  Version : %VERSION%
 echo  Zeit    : %TS%
 echo  Setup   : %AUSGABE%\%OUTNAME%.exe
@@ -86,14 +119,14 @@ echo [2/3] Inno Setup...
 if not exist "%AUSGABE%" mkdir "%AUSGABE%"
 :: Absolute Pfade: Inno loest relative gegen das Verzeichnis der .iss-Datei
 :: auf, nicht gegen das Arbeitsverzeichnis (gemeldet 07.08.2026).
-"%ISCC%" /Q "/DMyAppVersion=%VERSION%" "/DSourceDir=%CD%\%STAGE%\2D-Racing-Game" "/O%CD%\%AUSGABE%" "/F%OUTNAME%" Release\installer\installer.iss
+"%ISCC%" /Q "/DMyAppVersion=%VERSION%" "/DSourceDir=%CD%\%STAGE%\3D-Racing-Game" "/O%CD%\%AUSGABE%" "/F%OUTNAME%" Release\installer\installer.iss
 if errorlevel 1 ( echo. & echo [FEHLER] Inno Setup fehlgeschlagen. & pause & exit /b 1 )
 
 :: === 3) Portables ZIP: der entpackte Ordner fuer itch.io und GameJolt =======
 :: Die App-Clients von itch.io und GameJolt entpacken ein Archiv selbst und
 :: starten die .exe direkt; ein Installer passt dort nicht (Adminrechte,
 :: Program Files, kein sauberes Aktualisieren/Entfernen durch den Client). Das
-:: ZIP enthaelt den ganzen Ordner 2D-Racing-Game (exe + _internal), denn die
+:: ZIP enthaelt den ganzen Ordner 3D-Racing-Game (exe + _internal), denn die
 :: blosse .exe laeuft ohne _internal nicht.
 ::
 :: NICHT Compress-Archive: es legt fuer einen Unterordner zusaetzlich einen
@@ -102,7 +135,7 @@ if errorlevel 1 ( echo. & echo [FEHLER] Inno Setup fehlgeschlagen. & pause & exi
 :: tools\portables_zip.py schreibt saubere Eintraege ueber zipfile.
 echo.
 echo [3/3] Portables ZIP...
-"%PY%" tools\portables_zip.py %STAGE%\2D-Racing-Game %AUSGABE%\%ZIPNAME%.zip
+"%PY%" tools\portables_zip.py %STAGE%\3D-Racing-Game %AUSGABE%\%ZIPNAME%.zip
 if errorlevel 1 ( echo. & echo [FEHLER] ZIP konnte nicht erstellt werden. & pause & exit /b 1 )
 
 echo.

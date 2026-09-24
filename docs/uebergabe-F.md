@@ -47,6 +47,12 @@ Blender 4.5 LTS liegt portabel unter `F:\Blender\blender-4.5.14-windows-x64`
 Fremdmaterial ausschließlich CC0 (Poly Haven), aufgelistet in
 `assets/LIZENZEN.md`. Werbebanden tragen erfundene Marken.
 
+## Ausliefern
+
+`Release\skripteuild_windows.bat` baut Installer und portables ZIP nach
+`Release/ausgabe/` (prüft vorher, dass die 3D-Assets gebaut sind). Auf GitHub
+baut `release.yml` die Assets selbst mit Blender (Auftrag `assets`).
+
 ## Prüfen
 
 * `tools/szene_foto.py <strecke>` — Bild der Szene ohne Fenster, mit Zeit je Bild.
@@ -69,5 +75,3 @@ die Teilmatrizen je Bild nur einmal rechnen statt je Durchgang.
 
 * Startampel geht im Countdown an und beim Start aus (alle Lampen gemeinsam, nicht einzeln hochzählend).
 * Innenraum der Fahrzeuge ist nur angedeutet (Wanne, Sitze, Lenkrad).
-* `tools/ComfyUI/` (rund 40 GB, alte Erzeugungsseite) liegt noch lokal und
-  kann von Hand gelöscht werden.

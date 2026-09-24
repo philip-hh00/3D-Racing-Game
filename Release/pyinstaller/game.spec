@@ -54,6 +54,15 @@ a = Analysis(
         (_w('data/menu'),     'data/menu'),
         (_w('data/ai_settings'), 'data/ai_settings'),
         (_w('data/i18n'),     'data/i18n'),
+        # Die 3D-Welt: Themen je Strecke und alles, was die Blender-Skripte
+        # unter assets/ erzeugen (tools/blender/bauen.bat). Die GLB-Dateien
+        # sind nicht versioniert — das Bauskript prueft, dass sie da sind.
+        (_w('data/themen'),   'data/themen'),
+        (_w('assets/vehicles'), 'assets/vehicles'),
+        (_w('assets/umgebung'), 'assets/umgebung'),
+        (_w('assets/texturen'), 'assets/texturen'),
+        (_w('assets/himmel'),   'assets/himmel'),
+        (_w('assets/LIZENZEN.md'), 'assets'),
         (_w('data/icon.ico'), 'data'),
         # data/icon.png ist das Fenstersymbol zur Laufzeit: pygame kann die ICO
         # nicht lesen ("Unsupported ICO bitmap format", 08.08.2026), die ICO
@@ -78,11 +87,21 @@ a = Analysis(
         # greifen, weil das Modul erst zur Laufzeit importiert wird.
         'sounddevice',
         '_sounddevice',
+        # OpenGL ueber moderngl. glcontext waehlt sein Backend erst zur
+        # Laufzeit (wgl unter Windows, cgl unter macOS) und importiert es
+        # dynamisch — ohne diese Eintraege fehlt es im Buendel, und das Spiel
+        # startet ohne 3D-Welt.
+        'moderngl',
+        'glcontext',
+        'glcontext.wgl',
+        'PIL.Image',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    # Nur fuer Werkzeuge und Tests, nicht fuers Spiel — sonst waechst das
+    # Buendel um mehrere hundert Megabyte.
+    excludes=['trimesh', 'scipy', 'pytest', 'matplotlib', 'tkinter'],
     noarchive=False,
 )
 
@@ -93,7 +112,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='2D-Racing-Game',
+    name='3D-Racing-Game',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -110,5 +129,5 @@ coll = COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name='2D-Racing-Game',
+    name='3D-Racing-Game',
 )

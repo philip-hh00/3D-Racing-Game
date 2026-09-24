@@ -107,12 +107,32 @@ allerersten Lauf über genau diese Lücke gestolpert ist.
 
 ---
 
+## Vorher: die 3D-Assets
+
+Fahrzeuge, Umgebung, Texturen und Himmel liegen **nicht** im Repo, sie
+entstehen aus Skripten (`tools/blender/`). Lokal einmal:
+
+```
+toolslenderauen.bat
+```
+
+`build_windows.bat` prüft, dass sie da sind, und bricht sonst mit genau diesem
+Hinweis ab — ohne die Prüfung entstünde klaglos ein Spiel mit unsichtbaren
+Autos. Auf GitHub baut der Auftrag `assets` in `release.yml` sie auf Linux mit
+Blender und reicht sie als Artefakt an Windows und macOS weiter.
+
 ## Der andere Weg: hier bauen
 
 ```
 Release\skripte\build_windows.bat
 ./Release/skripte/build_macos.sh
 ```
+
+`build_windows.bat` nimmt das Python der Projekt-venv (`.venv`) — nur dort
+liegen moderngl und die übrigen Laufzeitpakete des 3D-Spiels — und installiert
+PyInstaller dort nach, falls es fehlt. Ergebnis: `3D-Racing-Game_Setup_v….exe`
+(Installation je Benutzer, ohne Adminrechte, neben einem installierten
+2D-Spiel möglich) und ein portables ZIP.
 
 Beide wechseln zuerst ins Wurzelverzeichnis — sie liegen zwei Ebenen tief,
 arbeiten aber mit Pfaden ab der Wurzel. Das Ergebnis liegt in `Release/ausgabe/`,

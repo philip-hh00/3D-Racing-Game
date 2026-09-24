@@ -162,7 +162,7 @@ class LoadingState(BaseState):
         f_sub   = pygame.font.Font(None, 38)
         f_label = pygame.font.Font(None, 30)
 
-        title_surf = f_title.render("2D-Racing-Game", True, (255, 180, 0))
+        title_surf = f_title.render("3D-Racing-Game", True, (255, 180, 0))
         screen.blit(title_surf, title_surf.get_rect(center=(W // 2, H // 2 - 130)))
 
         sub_surf = f_sub.render(tr("Wird geladen"), True, (180, 183, 195))

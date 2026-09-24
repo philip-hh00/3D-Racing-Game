@@ -22,7 +22,7 @@ _CATEGORIES = ["Allgemein", "Steuerung", "Video", "Audio", "Dev-Mode", "Info"]
 _SOON_ROWS = {
     "Audio": ["Gesamtlautstärke", "Effekte"],
 }
-_ISSUES_URL = "https://github.com/philip-hh00/2D-Racing-Game/issues"
+_ISSUES_URL = "https://github.com/philip-hh00/3D-Racing-Game/issues"
 
 # The game drives at most two local players, so the Steuerung page shows two
 # controller slots (pad0 / pad1) even when only one pad is plugged in.
@@ -511,7 +511,7 @@ class SettingsPage(Page):
         # dann bleibt es beim Datum allein.
         bau = ver.BUILD_DATE + (f"  {ver.BUILD_TIME} UTC" if ver.BUILD_TIME else "")
         rows = [
-            ("Spiel",       "2D-Racing-Game"),
+            ("Spiel",       "3D-Racing-Game"),
             ("Version",     f"v{ver.VERSION}"),
             ("Build-Datum", bau),
             ("Engine",      "pygame-ce · pymunk"),

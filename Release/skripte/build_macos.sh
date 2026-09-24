@@ -1,5 +1,5 @@
 #!/bin/bash
-# macOS release build for 2D-Racing-Game.
+# macOS release build for 3D-Racing-Game.
 # Produces a .app bundle, a .dmg and a portable .zip in ./Release/ausgabe/.
 # Run on macOS with Python 3.11 available (python3.11 or python3).
 #
@@ -87,7 +87,7 @@ VERSION="$("$VPY" -c 'from src.core import version; print(version.VERSION)')"
 # Tagesdatum als Build-Datum, weil version.py sonst date.today() nimmt.
 "$VPY" tools/baustempel.py
 TS="$(date +%Y-%m-%d_%H%M)"
-APPNAME="2D-Racing-Game"
+APPNAME="3D-Racing-Game"
 OUT="Release/ausgabe"
 mkdir -p "$OUT"
 
@@ -125,7 +125,7 @@ hdiutil create -volname "$APPNAME" -srcfolder "$STAGE_DMG" -ov -format UDZO "$DM
 # starten die .app direkt; ein .dmg passt dort schlechter (der Client kann es
 # nicht sauber verwalten). ditto statt zip, weil es die Bundle-Struktur und die
 # Ressourcen des .app bewahrt; --keepParent legt die .app als oberste Ebene ins
-# Archiv, sodass beim Entpacken wieder genau 2D-Racing-Game.app entsteht.
+# Archiv, sodass beim Entpacken wieder genau 3D-Racing-Game.app entsteht.
 ZIP="$OUT/${APPNAME}_v${VERSION}_${TS}.zip"
 ditto -c -k --sequesterRsrc --keepParent "$APP" "$ZIP"
 

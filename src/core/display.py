@@ -271,7 +271,7 @@ def apply_settings(*, resolution: str = "1920x1080",
         _current_fullscreen, _current_vsync = fullscreen, vsync
         return pygame.display.get_surface()
 
-    pygame.display.set_caption("2D-Racing-Game")
+    pygame.display.set_caption("3D-Racing-Game")
     flags = pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE
     schirm = _versuche_modus((w, h), flags, vsync)
     _opengl_fenster = schirm is not None
