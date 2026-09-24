@@ -113,7 +113,7 @@ app = BUNDLE(
     coll,
     name='3D-Racing-Game.app',
     icon=_w('data', 'icon.icns'),
-    bundle_identifier='de.philipraht.racinggame',
+    bundle_identifier='de.racinggame3d.game',
     info_plist={
         'CFBundleName': '3D-Racing-Game',
         'CFBundleDisplayName': '3D-Racing-Game',

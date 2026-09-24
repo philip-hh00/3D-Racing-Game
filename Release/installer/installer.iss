@@ -22,7 +22,7 @@
 #define Wurzel SourcePath + "..\..\"
 
 #define MyAppName "3D-Racing-Game"
-#define MyAppPublisher "Philip Raht"
+#define MyAppPublisher "3D-Racing-Game"
 #define MyAppExeName "3D-Racing-Game.exe"
 
 [Setup]
