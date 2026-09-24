@@ -95,22 +95,47 @@ def ortho(halbe_breite: float, nah: float, fern: float) -> np.ndarray:
     return m
 
 
+def schattenkarte_groesse(schatten_px: int) -> int:
+    """Kantenlänge für ``grafik.schatten_px``: Zweierpotenz, 512 … 8192.
+
+    0 (ohne Schattenwurf) ergibt die kleinste Karte — die Programme werden
+    trotzdem gebraucht, und wer im Menü wieder einschaltet, soll nicht auf ein
+    neues Rennen warten müssen.
+    """
+    n = int(schatten_px) if schatten_px and schatten_px > 0 else 512
+    n = max(512, min(8192, n))
+    return 1 << int(round(np.log2(n)))
+
+
 class Schattenkarte:
     """Tiefenkarte der Sonne rund um den Blickpunkt der Kamera."""
 
     def __init__(self, ctx, groesse: int = 4096, halbe_breite_m: float = 75.0) -> None:
         self.ctx = ctx
-        self.groesse = groesse
         self.halbe_breite = halbe_breite_m
-        self.textur = ctx.depth_texture((groesse, groesse))
+        self.groesse = 0
+        self.textur = self.fbo = None
+        self.groesse_setzen(groesse)
+        self.programm = shader.schattenprogramm(ctx, instanz=False)
+        self.programm_instanz = shader.schattenprogramm(ctx, instanz=True)
+        self.licht_mvp = np.eye(4, dtype=np.float32)
+
+    def groesse_setzen(self, schatten_px: int) -> None:
+        """Karte in neuer Größe anlegen; die Programme (und damit alle VAOs,
+        die an ihnen hängen) bleiben."""
+        groesse = schattenkarte_groesse(schatten_px)
+        if groesse == self.groesse:
+            return
+        for ding in (self.fbo, self.textur):
+            if ding is not None:
+                ding.release()
+        self.groesse = groesse
+        self.textur = self.ctx.depth_texture((groesse, groesse))
         self.textur.compare_func = "<="
         self.textur.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self.textur.repeat_x = False
         self.textur.repeat_y = False
-        self.fbo = ctx.framebuffer(depth_attachment=self.textur)
-        self.programm = shader.schattenprogramm(ctx, instanz=False)
-        self.programm_instanz = shader.schattenprogramm(ctx, instanz=True)
-        self.licht_mvp = np.eye(4, dtype=np.float32)
+        self.fbo = self.ctx.framebuffer(depth_attachment=self.textur)
 
     def matrix(self, fokus, sonne) -> np.ndarray:
         """Licht-MVP für einen Blickpunkt, auf das Texelraster eingerastet."""

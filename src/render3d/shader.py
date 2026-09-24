@@ -1,5 +1,12 @@
 """PBR-Beleuchtung: Lack sieht aus wie Lack, Reifen wie Gummi.
 
+**Alle Programme liefern lineares HDR, Tonemapping in nachbearbeitung.py.**
+Kein ``aces``, kein Gamma, keine Belichtung in einem Fragment-Shader hier —
+wer ein neues Programm schreibt, gibt Licht in linearen Einheiten aus
+(Werte über 1 sind erlaubt und erwünscht: daraus wird Bloom). Die Welt
+wird in einen RGBA16F-Zwischenpuffer gezeichnet; Belichtung, ACES, Gamma,
+Farbkorrektur und Glättung macht :mod:`src.render3d.nachbearbeitung`.
+
 Gerechnet wird Cook-Torrance mit GGX-Verteilung, Smith-Geometrie und
 Schlick-Fresnel. Dazu kommt, was ein Bild erst glaubwürdig macht:
 
@@ -114,7 +121,6 @@ uniform float himmel_helligkeit;
 uniform vec3  nebel_farbe;
 uniform float nebel_dichte;
 uniform float nebel_faktor;      // Kulisse: weniger Dunst, sonst verschwinden die Berge
-uniform float belichtung;
 
 /* Fuer den Ghost: entfaerben und durchscheinend zeichnen. */
 uniform float entfaerbung;
@@ -221,15 +227,6 @@ float rauschen(vec2 p) {
                mix(rauschen_hash(i + vec2(0, 1)), rauschen_hash(i + vec2(1, 1)), u.x), u.y);
 }
 
-vec3 aces(vec3 x) {
-    const float a = 2.51;
-    const float b = 0.03;
-    const float c = 2.43;
-    const float d = 0.59;
-    const float e = 0.14;
-    return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-}
-
 void main() {
     vec2 tuv = uv * uv_skala;
     vec4 textur = texture(basisfarbe, tuv);
@@ -300,9 +297,7 @@ void main() {
     vec3 dunst = mix(nebel_farbe, himmel(normalize(welt_position - kamera_position) * vec3(1.0, 1.0, 0.1), 0.6), 0.5);
     farbe = mix(farbe, dunst, clamp(nebel, 0.0, 1.0));
 
-    farbe = aces(farbe * belichtung);
-    farbe = pow(farbe, vec3(1.0 / 2.2));
-
+    // Lineares HDR: Abbildung und Gamma macht die Nachbearbeitung.
     float grau = dot(farbe, vec3(0.2126, 0.7152, 0.0722));
     ausgabe = vec4(mix(farbe, vec3(grau), entfaerbung), deckkraft * alpha);
 }
@@ -379,14 +374,10 @@ uniform vec3 boden_farbe;
 uniform vec3 sonne_richtung;
 uniform vec3 nebel_farbe;
 uniform float himmel_helligkeit;
-uniform float belichtung;
 in vec2 ndc;
 out vec4 ausgabe;
 
 vec3 nach_linear(vec3 srgb) { return pow(max(srgb, vec3(0.0)), vec3(2.2)); }
-vec3 aces(vec3 x) {
-    return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
-}
 
 void main() {
     vec4 fern = inverse_vp * vec4(ndc, 1.0, 1.0);
@@ -408,8 +399,7 @@ void main() {
     // Die Sonne selbst: im LDR-Bild abgeschnitten, hier zurueckgegeben.
     float s = max(dot(d, normalize(sonne_richtung)), 0.0);
     farbe += vec3(1.0, 0.95, 0.85) * (pow(s, 2000.0) * 40.0 + pow(s, 60.0) * 0.4);
-    farbe = aces(farbe * belichtung);
-    ausgabe = vec4(pow(farbe, vec3(1.0 / 2.2)), 1.0);
+    ausgabe = vec4(farbe, 1.0);
 }
 """
 
@@ -469,7 +459,7 @@ def _vorgaben(p) -> None:
         ("sonne_richtung", tuple(np.asarray(SONNE_RICHTUNG) / np.linalg.norm(SONNE_RICHTUNG))),
         ("sonne_farbe", SONNE_FARBE), ("himmel_mips", 8.0),
         ("himmel_helligkeit", 1.0), ("nebel_farbe", HIMMEL_HORIZONT),
-        ("nebel_dichte", 0.0), ("nebel_faktor", 1.0), ("belichtung", 1.0),
+        ("nebel_dichte", 0.0), ("nebel_faktor", 1.0),
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

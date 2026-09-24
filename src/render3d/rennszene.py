@@ -38,7 +38,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import begrenzung, matrix, mesh, schatten, shader, vehicle_node
+from . import begrenzung, grafik, matrix, mesh, schatten, shader, vehicle_node
+from .nachbearbeitung import Nachbearbeitung
 from .deko import Dekozeichner, material_setzen
 
 try:                                             # pragma: no cover - Importpfad
@@ -423,6 +424,9 @@ class Rennszene:
         self.deko: Dekozeichner | None = None
         self.himmel = None
         self.schattenkarte = None
+        self.nachbearbeitung: Nachbearbeitung | None = None
+        #: Belichtung des Themas; angewendet in der Nachbearbeitung.
+        self.belichtung = 1.0
         self._texturen: dict = {}
         self._eigene_texturen: list = []
         self.fertig = False
@@ -439,9 +443,11 @@ class Rennszene:
         self.programm_instanz = shader.programm_instanz(ctx)
         self.schattenwerfer = schatten.Schattenwerfer(ctx)
         from . import licht
+        self.nachbearbeitung = Nachbearbeitung(ctx)
         if self.schattenwurf_an:
             try:
-                self.schattenkarte = licht.Schattenkarte(ctx)
+                self.schattenkarte = licht.Schattenkarte(
+                    ctx, licht.schattenkarte_groesse(grafik.aktuell().schatten_px))
             except Exception as fehler:              # pragma: no cover - Treiber
                 print(f"[rennszene] Keine Schattenkarte: {fehler}")
                 self.schattenkarte = None
@@ -493,7 +499,7 @@ class Rennszene:
                 shader.setzen(p, "boden_farbe", tuple(t.boden_farbe))
                 shader.setzen(p, "sonne_farbe", tuple(t.sonne_farbe))
                 shader.setzen(p, "himmel_helligkeit", float(t.himmel_helligkeit))
-                shader.setzen(p, "belichtung", float(t.belichtung))
+                self.belichtung = float(t.belichtung)
                 shader.setzen(p, "nebel_farbe", tuple(t.nebel_farbe))
                 shader.setzen(p, "nebel_dichte", float(t.nebel_dichte))
 
@@ -633,24 +639,36 @@ class Rennszene:
         self.knotenspeicher.fortschreiben(staende)
 
     def zeichnen(self, mvp: np.ndarray, kamera_position, staende, fokus=None) -> None:
-        """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort."""
+        """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort.
+
+        Ziel ist, was gerade gebunden ist, im gesetzten Ausschnitt: die Welt
+        entsteht als lineares HDR im Zwischenpuffer der Nachbearbeitung und
+        wird erst am Ende abgebildet und dorthin geschrieben.
+        """
         staende = list(staende)
         fokus = kamera_position if fokus is None else fokus
         self._bild_nummer = getattr(self, "_bild_nummer", 0) + 1
+        einstellung = grafik.aktuell()
 
+        # Schattenkarte: Größe nach der Grafikstufe, 0 heißt ohne.
+        karte = self.schattenkarte if einstellung.schatten_px > 0 else None
+        if karte is not None:
+            karte.groesse_setzen(einstellung.schatten_px)
         licht_mvp = np.eye(4, dtype=np.float32)
-        if self.schattenkarte is not None:
-            licht_mvp = self.schattenkarte.matrix(fokus, self.himmel.sonne)
+        if karte is not None:
+            licht_mvp = karte.matrix(fokus, self.himmel.sonne)
             self._schattenkarte_zeichnen(staende, fokus)
+
+        self.nachbearbeitung.beginnen(mvp, kamera_position, einstellung)
 
         for p in (self.programm, self.programm_instanz):
             shader.matrix_setzen(p, "mvp", mvp)
             shader.matrix_setzen(p, "licht_mvp", licht_mvp)
             shader.setzen(p, "kamera_position", tuple(float(w) for w in kamera_position))
-            shader.setzen(p, "hat_schatten", 1.0 if self.schattenkarte is not None else 0.0)
+            shader.setzen(p, "hat_schatten", 1.0 if karte is not None else 0.0)
         self.himmel.binden(2)
-        if self.schattenkarte is not None:
-            self.schattenkarte.binden(3)
+        if karte is not None:
+            karte.binden(3)
         else:
             self._leere_tiefe.use(3)
 
@@ -681,6 +699,7 @@ class Rennszene:
                 self._fahrzeug_zeichnen(stand, durchsichtig=True)
         self.ctx.disable(moderngl.BLEND)
         self.ctx.depth_mask = True
+        self.nachbearbeitung.abschliessen(self.belichtung)
 
     def _schattenkarte_zeichnen(self, staende, fokus) -> None:
         karte = self.schattenkarte
@@ -831,6 +850,9 @@ class Rennszene:
                 ding.freigeben()
         if getattr(self, "schattenwerfer", None) is not None:
             self.schattenwerfer.freigeben()
+        if getattr(self, "nachbearbeitung", None) is not None:
+            self.nachbearbeitung.freigeben()
+            self.nachbearbeitung = None
         for ding in (getattr(self, "programm", None), getattr(self, "programm_instanz", None),
                      getattr(self, "_leere_tiefe", None)):
             if ding is not None:
