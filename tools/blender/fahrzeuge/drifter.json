@@ -612,14 +612,21 @@
  "spoiler": [
   {
    "art": "fluegel",
-   "u": 0.02,
+   "u": 0.009,
    "v": 0.9,
-   "tiefe_m": 0.34,
+   "tiefe_m": 0.4,
    "hoehe_m": 1.2,
    "mat": "carbon",
-   "fuss_m": 0.14,
+   "fuss_m": 0.2,
    "stuetzen_v": 0.31,
-   "anstellung_grad": 6
+   "anstellung_grad": 6,
+   "profil": "naca",
+   "stuetzen": "schwanenhals",
+   "platten_mat": "carbon",
+   "endplatte_m": [
+    0.1,
+    0.05
+   ]
   }
  ],
  "zonen": [
@@ -2413,78 +2420,26 @@
     0.47,
     0.95
    ],
-   "mat": "scheinwerferglas",
-   "stufen": [
-    {
-     "dicke": 0.005,
-     "tiefe": -0.014,
-     "rand": "kunststoff"
+   "mat": "kunststoff",
+   "leuchte": {
+    "tiefe_m": 0.03,
+    "rand_m": 0.004,
+    "abdeckung": "klarglas",
+    "led": [
+     {
+      "verlauf": "hinten",
+      "abstand_m": 0.005,
+      "breite_m": 0.008,
+      "schwelle": 0.75
+     }
+    ],
+    "projektoren": {
+     "anzahl": 1,
+     "radius_m": 0.03,
+     "lage": 0.5,
+     "rand_anteil": 0.0
     }
-   ]
-  },
-  {
-   "ansicht": "oben",
-   "punkte": [
-    [
-     0.969,
-     0.31
-    ],
-    [
-     0.963,
-     0.4
-    ],
-    [
-     0.955,
-     0.5
-    ],
-    [
-     0.945,
-     0.62
-    ],
-    [
-     0.934,
-     0.72
-    ],
-    [
-     0.924,
-     0.765
-    ],
-    [
-     0.916,
-     0.765
-    ],
-    [
-     0.926,
-     0.72
-    ],
-    [
-     0.937,
-     0.62
-    ],
-    [
-     0.947,
-     0.5
-    ],
-    [
-     0.955,
-     0.4
-    ],
-    [
-     0.961,
-     0.31
-    ]
-   ],
-   "spiegeln": true,
-   "n_min": -0.4,
-   "z": [
-    0.47,
-    0.95
-   ],
-   "mat": "licht_vorn",
-   "auf": [
-    "scheinwerferglas",
-    "kunststoff"
-   ]
+   }
   },
   {
    "ansicht": "hinten",
@@ -2508,14 +2463,7 @@
    ],
    "spiegeln": true,
    "n_min": -0.6,
-   "mat": "licht_hinten",
-   "stufen": [
-    {
-     "dicke": 0.005,
-     "tiefe": -0.01,
-     "rand": "kunststoff"
-    }
-   ],
+   "mat": "kunststoff",
    "und": [
     {
      "ansicht": "oben",
@@ -2538,7 +2486,28 @@
       ]
      ]
     }
-   ]
+   ],
+   "leuchte": {
+    "tiefe_m": 0.025,
+    "rand_m": 0.005,
+    "rand_mat": "zierteil",
+    "abdeckung": "streuscheibe",
+    "led": [
+     {
+      "verlauf": "rand",
+      "abstand_m": 0.01,
+      "mat": "licht_hinten",
+      "breite_m": 0.008
+     },
+     {
+      "quer": [
+       0.5
+      ],
+      "mat": "licht_hinten",
+      "breite_m": 0.007
+     }
+    ]
+   }
   },
   {
    "ansicht": "vorn",
@@ -2568,12 +2537,12 @@
      "rand": "zierteil"
     }
    ],
-   "lamellen": {
-    "anzahl": 2,
-    "richtung": "a",
-    "dicke": 0.01,
-    "hoehe": 0.03,
-    "mat": "zierteil"
+   "gitter": {
+    "art": "raute",
+    "masche_m": 0.034,
+    "steg_m": 0.006,
+    "hoehe_m": 0.016,
+    "rand_m": 0.012
    }
   },
   {
@@ -2584,11 +2553,11 @@
      0.28
     ],
     [
-     0.87,
+     0.845,
      0.29
     ],
     [
-     0.85,
+     0.83,
      0.41
     ],
     [
@@ -2604,7 +2573,14 @@
      "tiefe": -0.04,
      "rand": "zierteil"
     }
-   ]
+   ],
+   "gitter": {
+    "art": "raute",
+    "masche_m": 0.028,
+    "steg_m": 0.005,
+    "hoehe_m": 0.014,
+    "rand_m": 0.01
+   }
   },
   {
    "ansicht": "hinten",
@@ -2662,71 +2638,16 @@
      "rand": "zierteil"
     }
    ],
-   "lamellen": {
-    "anzahl": 2,
+   "gitter": {
+    "art": "lamellen",
     "richtung": "b",
-    "dicke": 0.01,
-    "hoehe": 0.03,
-    "mat": "zierteil"
+    "masche_m": 0.034,
+    "steg_m": 0.008,
+    "hoehe_m": 0.022,
+    "winkel_grad": 30,
+    "mat": "carbon",
+    "rand_m": 0.008
    }
-  },
-  {
-   "ansicht": "seite",
-   "linie": 0.006,
-   "punkte": [
-    [
-     0.706,
-     0.2
-    ],
-    [
-     0.7,
-     0.86
-    ]
-   ],
-   "mat": "kunststoff",
-   "auf": [
-    "lack",
-    "lack2",
-    "dekor_weiss"
-   ],
-   "stufen": [
-    {
-     "dicke": 0.001,
-     "tiefe": -0.006,
-     "rand": "kunststoff"
-    }
-   ]
-  },
-  {
-   "ansicht": "seite",
-   "linie": 0.006,
-   "punkte": [
-    [
-     0.445,
-     0.2
-    ],
-    [
-     0.435,
-     0.5
-    ],
-    [
-     0.43,
-     0.88
-    ]
-   ],
-   "mat": "kunststoff",
-   "auf": [
-    "lack",
-    "lack2",
-    "dekor_weiss"
-   ],
-   "stufen": [
-    {
-     "dicke": 0.001,
-     "tiefe": -0.006,
-     "rand": "kunststoff"
-    }
-   ]
   },
   {
    "ansicht": "seite",
@@ -2885,6 +2806,747 @@
      "rand": "kunststoff"
     }
    ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.21219,
+     0.8539
+    ],
+    [
+     0.21091,
+     0.85941
+    ],
+    [
+     0.20909,
+     0.85941
+    ],
+    [
+     0.20781,
+     0.8539
+    ],
+    [
+     0.20781,
+     0.8461
+    ],
+    [
+     0.20909,
+     0.84059
+    ],
+    [
+     0.21091,
+     0.84059
+    ],
+    [
+     0.21219,
+     0.8461
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.25219,
+     0.8489
+    ],
+    [
+     0.25091,
+     0.85441
+    ],
+    [
+     0.24909,
+     0.85441
+    ],
+    [
+     0.24781,
+     0.8489
+    ],
+    [
+     0.24781,
+     0.8411
+    ],
+    [
+     0.24909,
+     0.83559
+    ],
+    [
+     0.25091,
+     0.83559
+    ],
+    [
+     0.25219,
+     0.8411
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.29219,
+     0.8489
+    ],
+    [
+     0.29091,
+     0.85441
+    ],
+    [
+     0.28909,
+     0.85441
+    ],
+    [
+     0.28781,
+     0.8489
+    ],
+    [
+     0.28781,
+     0.8411
+    ],
+    [
+     0.28909,
+     0.83559
+    ],
+    [
+     0.29091,
+     0.83559
+    ],
+    [
+     0.29219,
+     0.8411
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.33219,
+     0.8539
+    ],
+    [
+     0.33091,
+     0.85941
+    ],
+    [
+     0.32909,
+     0.85941
+    ],
+    [
+     0.32781,
+     0.8539
+    ],
+    [
+     0.32781,
+     0.8461
+    ],
+    [
+     0.32909,
+     0.84059
+    ],
+    [
+     0.33091,
+     0.84059
+    ],
+    [
+     0.33219,
+     0.8461
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.36719,
+     0.8639
+    ],
+    [
+     0.36591,
+     0.86941
+    ],
+    [
+     0.36409,
+     0.86941
+    ],
+    [
+     0.36281,
+     0.8639
+    ],
+    [
+     0.36281,
+     0.8561
+    ],
+    [
+     0.36409,
+     0.85059
+    ],
+    [
+     0.36591,
+     0.85059
+    ],
+    [
+     0.36719,
+     0.8561
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.72719,
+     0.8589
+    ],
+    [
+     0.72591,
+     0.86441
+    ],
+    [
+     0.72409,
+     0.86441
+    ],
+    [
+     0.72281,
+     0.8589
+    ],
+    [
+     0.72281,
+     0.8511
+    ],
+    [
+     0.72409,
+     0.84559
+    ],
+    [
+     0.72591,
+     0.84559
+    ],
+    [
+     0.72719,
+     0.8511
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.76719,
+     0.8389
+    ],
+    [
+     0.76591,
+     0.84441
+    ],
+    [
+     0.76409,
+     0.84441
+    ],
+    [
+     0.76281,
+     0.8389
+    ],
+    [
+     0.76281,
+     0.8311
+    ],
+    [
+     0.76409,
+     0.82559
+    ],
+    [
+     0.76591,
+     0.82559
+    ],
+    [
+     0.76719,
+     0.8311
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.81219,
+     0.8239
+    ],
+    [
+     0.81091,
+     0.82941
+    ],
+    [
+     0.80909,
+     0.82941
+    ],
+    [
+     0.80781,
+     0.8239
+    ],
+    [
+     0.80781,
+     0.8161
+    ],
+    [
+     0.80909,
+     0.81059
+    ],
+    [
+     0.81091,
+     0.81059
+    ],
+    [
+     0.81219,
+     0.8161
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.85719,
+     0.8239
+    ],
+    [
+     0.85591,
+     0.82941
+    ],
+    [
+     0.85409,
+     0.82941
+    ],
+    [
+     0.85281,
+     0.8239
+    ],
+    [
+     0.85281,
+     0.8161
+    ],
+    [
+     0.85409,
+     0.81059
+    ],
+    [
+     0.85591,
+     0.81059
+    ],
+    [
+     0.85719,
+     0.8161
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.89719,
+     0.8339
+    ],
+    [
+     0.89591,
+     0.83941
+    ],
+    [
+     0.89409,
+     0.83941
+    ],
+    [
+     0.89281,
+     0.8339
+    ],
+    [
+     0.89281,
+     0.8261
+    ],
+    [
+     0.89409,
+     0.82059
+    ],
+    [
+     0.89591,
+     0.82059
+    ],
+    [
+     0.89719,
+     0.8261
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.05,
+   "mat": "zierteil",
+   "auf": [
+    "lack",
+    "lack2",
+    "dekor_weiss"
+   ],
+   "niete": true,
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": 0.004,
+     "rand": "zierteil"
+    }
+   ]
   }
- ]
+ ],
+ "teile": {
+  "reifen": {
+   "profil": "sport",
+   "bloecke": 24
+  },
+  "felge": {
+   "radmuttern": 5,
+   "nabenkappe": "emblem"
+  },
+  "bremse": {
+   "art": "geschlitzt"
+  },
+  "spiegel": {
+   "art": "stiel",
+   "kappe_mat": "lack",
+   "fuss_mat": "carbon"
+  },
+  "tuergriff": {
+   "art": "buendig",
+   "laenge_m": 0.14
+  },
+  "wischer": {
+   "anzahl": 1
+  },
+  "diffusor": {
+   "finnen": 5,
+   "laenge_m": 0.5,
+   "breite_v": 0.72,
+   "mat": "carbon"
+  },
+  "auspuff": {
+   "art": "rund",
+   "blende": false,
+   "laenge_m": 0.18
+  },
+  "innenraum": {
+   "sitz": "schale",
+   "akzent_mat": "carbon"
+  },
+  "kennzeichen": {
+   "text": "AF 72"
+  },
+  "emblem": {
+   "groesse_m": 0.07
+  },
+  "fugen": [
+   {
+    "ansicht": "seite",
+    "punkte": [
+     [
+      0.706,
+      0.2
+     ],
+     [
+      0.7,
+      0.86
+     ]
+    ],
+    "tiefe_m": 0.006,
+    "breite_m": 0.006,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   },
+   {
+    "ansicht": "seite",
+    "punkte": [
+     [
+      0.445,
+      0.2
+     ],
+     [
+      0.435,
+      0.5
+     ],
+     [
+      0.43,
+      0.88
+     ]
+    ],
+    "tiefe_m": 0.006,
+    "breite_m": 0.006,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.748,
+      0.69
+     ],
+     [
+      0.8,
+      0.705
+     ],
+     [
+      0.87,
+      0.715
+     ],
+     [
+      0.918,
+      0.72
+     ]
+    ],
+    "spiegeln": true,
+    "n_min": 0.3,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.957,
+      0.31
+     ],
+     [
+      0.962,
+      0.16
+     ],
+     [
+      0.964,
+      0.0
+     ]
+    ],
+    "symmetrisch": true,
+    "n_min": 0.2,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.098,
+      0.46
+     ],
+     [
+      0.108,
+      0.57
+     ],
+     [
+      0.15,
+      0.615
+     ],
+     [
+      0.2,
+      0.628
+     ],
+     [
+      0.214,
+      0.6
+     ]
+    ],
+    "spiegeln": true,
+    "n_min": 0.3,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   },
+   {
+    "ansicht": "hinten",
+    "punkte": [
+     [
+      0.46,
+      0.95
+     ],
+     [
+      0.43,
+      0.62
+     ],
+     [
+      0.41,
+      0.6
+     ],
+     [
+      -0.41,
+      0.6
+     ],
+     [
+      -0.43,
+      0.62
+     ],
+     [
+      -0.46,
+      0.95
+     ]
+    ],
+    "n_min": 0.3,
+    "auf": [
+     "lack",
+     "lack2",
+     "dekor_weiss"
+    ]
+   }
+  ]
+ }
 }
