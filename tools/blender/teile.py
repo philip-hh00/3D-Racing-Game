@@ -26,7 +26,9 @@ Parameter (alle optional, Maße in Metern, Winkel in Grad)::
                    (Scheibe bis Felgenbett), "topf_mat": "kunststoff"},
       "sattel":   {"winkel_grad": 140, "spanne_grad": 56},
                    Farbe weiter über "sattelfarbe"; Knoten sattel_* lenkt mit.
-      "spiegel":  {"art": "stiel"|"fuss", "kappe_mat": "lack", "fuss_mat": "zierteil"},
+      "spiegel":  {"art": "stiel"|"fuss", "kappe_mat": "lack", "fuss_mat": "zierteil",
+                   "schlank": 0.62, "flach": 0.8 (Tiefe/Höhe gegenüber spiegel.groesse),
+                   "pfeilung_m": 0.035 (Außenende nach hinten)},
       "tuergriff":{"art": "buegel"|"buendig", "laenge_m": 0.15},
       "wischer":  {"anzahl": 2, "laenge_m": [0.62, 0.5], "lagen_m": [0.06, -0.5]
                    (Drehpunkte quer), "heck": false, "heck_laenge_m": 0.36},
@@ -36,7 +38,8 @@ Parameter (alle optional, Maße in Metern, Winkel in Grad)::
       "innenraum":{"sitz": "schale"|"komfort", "akzent_mat": "zierteil"},
       "kennzeichen": {"text": "AC 14"} (Ziffern und A C E F H L P U; Höhe
                    weiter über kennzeichen.vorn_m/hinten_m, dort auch
-                   "vorn_vorsprung_m" für ein Schild vor dem Grill),
+                   "vorn_vorsprung_m" für ein Schild vor dem Grill;
+                   "neigung_grad": 0 = senkrecht, positiv oben nach hinten),
       "antenne":  {"u": 0.2, "laenge_m": 0.16, "hoehe_m": 0.06, "mat": "lack"}
                    (nur wenn angegeben),
       "emblem":   {"form": "sechseck"|"oval"|"delta"|"spuren"|"ein"
@@ -56,18 +59,30 @@ In **Zonen** (``zonen``-Liste der Fahrzeugdatei)::
                 (``mat`` der Zone ist der Gehäuseboden, dunkel: "kunststoff"),
                 "rand_mat": "zierteil",
                 "abdeckung": "klarglas"|"streuscheibe"|null,
-                "led": {"verlauf": "rand"|"oben"|"unten"|"vorn"|"hinten"|"aussen"|"innen",
+                "led": {"verlauf": "rand"|"oben"|"unten"|"vorn"|"hinten"|"aussen"|"innen"
+                        (folgt dem 3D-Rand der ganzen Leuchte, auch über ``oder``),
                         "abstand_m": 0.008, "breite_m": 0.007, "hoehe_m": 0.004,
                         "ringe": [0.8, 0.45] (statt verlauf: verkleinerte Umrisse),
                         "quer": [0.35, 0.7] (statt verlauf: Streifen quer),
                         "mat": "licht_vorn"} — auch als Liste mehrerer Leisten,
                 "projektoren": {"anzahl": 2, "radius_m": 0.028, "lage": 0.5,
                                 "rand_anteil": 0.22, "art": "projektor"|"reflektor",
-                                "vorhalt": 0.7 (Neigung zur Fahrtrichtung)}}
+                                "vorhalt": 0.7 (Neigung zur Fahrtrichtung),
+                                "ansicht": Umriss welcher Teilfläche (Standard: der Zone)}}
+    "oder":    [{"ansicht": "vorn", "punkte": [[v, z], ...], "u": [0.9, 1.2],
+                 "n_min": 0.1, ...}] — weitere Umrisse derselben Zone (eigene
+                Ansicht, ``n_min``, ``u``, ``z``, ``und``). So läuft eine
+                Leuchte vom Kotflügel (Umriss aus dem Sprite, Ansicht ``oben``)
+                über die Kante in die Front: oben bleibt es wie im Sprite, von
+                vorn ist es kein Schlitz mehr. Beispiel: supercar.
     "gitter":  {"art": "waben"|"raute"|"lamellen", "masche_m": 0.032,
                 "steg_m": 0.006, "hoehe_m": 0.012, "rand_m": 0.01,
                 "winkel_grad": 0 (Lamellen: Neigung), "richtung": "a"|"b"
                 (Lamellen entlang der ersten/zweiten Bildachse), "mat": "zierteil"}
+
+**LOD1** (``<key>_lod1.glb``) baut ``fahrzeug_bauen.lod1_parameter`` aus
+denselben Parametern: keine Gitter, Projektoren, Fugen, Wischer, Embleme,
+Schrift; glatte Reifen. Neue Schlüssel sollten dort mitgedacht werden.
 
 Die Zone gibt Umriss und Lage (wie im Sprite), die Bibliothek setzt Gehäuse,
 Einsätze und Abdeckung hinein. Ohne ``stufen`` bekommt eine Leuchte eine
@@ -575,6 +590,164 @@ def deckel(name, flaechen, mat, abstand: float = 0.0015):
     return ob
 
 
+def randschleifen(flaechen) -> list:
+    """Randschleifen einer Flächenmenge (BMesh-Flächen) in 3D.
+
+    Je Schleife eine Liste ``(Ort, Normale, nach_innen)``: ``nach_innen``
+    liegt in der Fläche, senkrecht zum Rand, und zeigt in die Menge hinein.
+    """
+    for f in flaechen:
+        f.normal_update()
+    kanten = [e for f in flaechen for e in f.edges
+              if sum(1 for lf in e.link_faces if lf in flaechen) == 1]
+    nachbarn = {}
+    for e in kanten:
+        a, b = e.verts
+        nachbarn.setdefault(a, []).append((b, e))
+        nachbarn.setdefault(b, []).append((a, e))
+    benutzt = set()
+    ketten = []
+    for e0 in kanten:
+        if e0 in benutzt:
+            continue
+        benutzt.add(e0)
+        kette = list(e0.verts)
+        while True:
+            weiter = next(((v, e) for v, e in nachbarn.get(kette[-1], []) if e not in benutzt), None)
+            if weiter is None:
+                break
+            benutzt.add(weiter[1])
+            if weiter[0] is kette[0]:
+                break
+            kette.append(weiter[0])
+        if len(kette) >= 3:
+            ketten.append(kette)
+    ergebnis = []
+    for kette in ketten:
+        n = len(kette)
+        schleife = []
+        for i, v in enumerate(kette):
+            fl = [f for f in v.link_faces if f in flaechen]
+            if not fl:
+                continue
+            nn = sum((f.normal for f in fl), Vector())
+            if nn.length < 1e-9:
+                continue
+            nn.normalize()
+            mitte = sum((f.calc_center_median() for f in fl), Vector()) / len(fl)
+            tg = kette[(i + 1) % n].co - kette[i - 1].co
+            tg = tg - nn * tg.dot(nn)
+            if tg.length < 1e-9:
+                continue
+            tg.normalize()
+            innen = nn.cross(tg).normalized()
+            if innen.dot(mitte - v.co) < 0:
+                innen = -innen
+            schleife.append((v.co.copy(), nn, innen))
+        if len(schleife) >= 3:
+            ergebnis.append(_schleife_glaetten(schleife))
+    return ergebnis
+
+
+def _schleife_glaetten(schleife, schritt: float = 0.012, runden: int = 4):
+    """Randschleife gleichmäßig neu abtasten und glätten.
+
+    Der Rand einer geschnittenen Zone folgt der Dreiecksteilung der Haut und
+    springt im Millimeterbereich hin und her; eine Leiste darauf zackt.
+    """
+    orte = [o for o, _n, _i in schleife]
+    n = len(orte)
+    laengen = [0.0]
+    for i in range(n):
+        laengen.append(laengen[-1] + (orte[(i + 1) % n] - orte[i]).length)
+    gesamt = laengen[-1]
+    m = max(8, int(gesamt / schritt))
+    neu = []
+    j = 0
+    for k in range(m):
+        s = gesamt * k / m
+        while laengen[j + 1] < s:
+            j += 1
+        t = (s - laengen[j]) / max(laengen[j + 1] - laengen[j], 1e-9)
+        a, b = schleife[j], schleife[(j + 1) % n]
+        neu.append([a[0].lerp(b[0], t), a[1].lerp(b[1], t).normalized(), a[2]])
+    for _r in range(runden):
+        orte = [neu[i - 1][0] * 0.25 + neu[i][0] * 0.5 + neu[(i + 1) % m][0] * 0.25 for i in range(m)]
+        for i in range(m):
+            neu[i][0] = orte[i]
+    ergebnis = []
+    for i in range(m):
+        ort, nn, innen_alt = neu[i]
+        tg = neu[(i + 1) % m][0] - neu[i - 1][0]
+        tg = tg - nn * tg.dot(nn)
+        if tg.length < 1e-9:
+            continue
+        innen = nn.cross(tg.normalized()).normalized()
+        if innen.dot(innen_alt) < 0:
+            innen = -innen
+        ergebnis.append((ort, nn, innen))
+    return ergebnis
+
+
+#: Weltrichtungen für ``led.verlauf``.
+VERLAUF = {"oben": (0, 0, 1), "unten": (0, 0, -1), "vorn": (1, 0, 0), "hinten": (-1, 0, 0)}
+
+
+def led_am_rand(schleife, led, treffer, boden, mats):
+    """LED-Leiste entlang einer Randschleife der Leuchte (abgenommen vor dem
+    Vertiefen), um ``abstand_m`` nach innen versetzt und auf den
+    Gehäuseboden gesenkt. ``verlauf``: ``rand`` (ganz herum) oder
+    eine Richtung — dann nur der längste Teil des Rands, dessen Außenseite
+    dorthin zeigt (``aussen``/``innen``: weg von der bzw. zur Wagenmitte)."""
+    mat = mats[led.get("mat", "licht_vorn")]
+    abstand = led.get("abstand_m", 0.008)
+    verlauf = led.get("verlauf", "rand")
+    pkt, nrm = [], []
+    for ort, nn, innen in schleife:
+        p = ort + innen * abstand
+        h = treffer.strahl(p + nn * 0.01, -nn)
+        if h is not None and h[2] in boden and (h[0] - p).length < 0.08:
+            p = h[0]
+        pkt.append(p)
+        nrm.append(nn)
+    n = len(pkt)
+    if verlauf == "rand":
+        wege = [(pkt, nrm, True)]
+    else:
+        if verlauf in ("aussen", "innen"):
+            y = sum(o.y for o, _n, _i in schleife) / n
+            s = (1.0 if y >= 0 else -1.0) * (1.0 if verlauf == "aussen" else -1.0)
+            d3 = Vector((0.0, s, 0.0))
+        else:
+            d3 = Vector(VERLAUF[verlauf])
+        gut = [(-innen).dot(d3) > led.get("schwelle", 0.3) for _o, _n, innen in schleife]
+        if all(gut):
+            wege = [(pkt, nrm, True)]
+        elif not any(gut):
+            wege = []
+        else:
+            start = next(i for i in range(n) if not gut[i])
+            best, lauf = [], []
+            for k in range(1, n + 1):
+                i = (start + k) % n
+                if gut[i]:
+                    lauf.append(i)
+                else:
+                    if len(lauf) > len(best):
+                        best = lauf
+                    lauf = []
+            if len(lauf) > len(best):
+                best = lauf
+            wege = [([pkt[i] for i in best], [nrm[i] for i in best], False)] if len(best) >= 2 else []
+    teile = []
+    for pp, nn, geschlossen in wege:
+        ob = band("led", pp, nn, led.get("breite_m", 0.007), led.get("hoehe_m", 0.004), mat,
+                  geschlossen=geschlossen)
+        if ob is not None:
+            teile.append(ob)
+    return teile
+
+
 def projektor(name, r: float, mats, art: str = "projektor"):
     """Scheinwerfereinsatz mit Öffnung nach +X, Boden bei x = 0.
 
@@ -951,57 +1124,73 @@ def auspuffblende(name, r, laenge, mats, art="rund"):
 # ---------------------------------------------------------------------------
 
 def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
-    """Außenspiegel: gewölbtes Gehäuse, eingefasstes Glas, Blinkerleiste und
-    ein Stiel (``stiel``) oder ein Fuß am Fensterdreieck (``fuss``)."""
+    """Außenspiegel: schlankes, nach hinten gepfeiltes Tropfengehäuse,
+    eingefasstes Glas, Blinkerleiste und ein Stiel (``stiel``) oder ein Fuß am
+    Fensterdreieck (``fuss``). ``schlank`` (0.62) und ``flach`` (0.8)
+    verkleinern Tiefe und Höhe gegenüber ``spiegel.groesse``."""
     lang, tief, hoch = groesse
+    lang *= td.get("schlank", 0.62)
+    hoch *= td.get("flach", 0.8)
+    pfeil = td.get("pfeilung_m", 0.035)
     art = td.get("art", "fuss")
     kappe = mats[td.get("kappe_mat", d.get("mat", "lack"))]
     fussmat = mats[td.get("fuss_mat", d.get("arm_mat", "zierteil"))]
     yc = spitze - tief / 2
     teile = []
+
+    def skala(s):
+        """(Tiefe, Höhe) des Querschnitts bei s (0 innen, 1 außen)."""
+        if s < 0.25:
+            t_ = s / 0.25
+            glatt = t_ * t_ * (3 - 2 * t_)
+            return 0.7 + 0.3 * glatt, 0.55 + 0.45 * glatt
+        if s > 0.78:
+            f = math.sqrt(max(0.0, 1 - ((s - 0.78) / 0.22) ** 2))
+            return 0.25 + 0.75 * f, 0.3 + 0.7 * f
+        return 1.0, 1.0
+
     ringe = []
-    m = 12
+    m = 14
     for i in range(m + 1):
         s = i / m
-        # Querschnitt wächst nach außen, außen gerundet
-        b = 0.72 + 0.28 * math.sin(min(1.0, s * 1.6) * math.pi / 2)
-        if s > 0.8:
-            b *= math.sqrt(max(0.0, 1 - ((s - 0.8) / 0.2) ** 2)) * 0.6 + 0.4
+        bx, bz = skala(s)
         ring = []
         for j in range(20):
             w = 2 * math.pi * j / 20
             cx, cz = math.cos(w), math.sin(w)
-            ex = sp(cx, 0.55) * lang / 2
-            if ex < 0:
-                ex *= 0.35                       # flache Glasseite hinten
-            ring.append((x + ex * b - 0.04 * s, seite * (yc - tief / 2 + tief * s),
-                         z + sp(cz, 0.5) * hoch / 2 * b))
+            if cx >= 0:
+                ex = sp(cx, 0.8) * lang / 2          # runde Front
+            else:
+                ex = -lang * 0.18 * abs(cx) ** 0.25  # flache Glasseite, Ecken gerundet
+            ez = sp(cz, 0.6) * hoch / 2
+            if cz > 0:
+                ez *= 1.08                           # oben etwas voller als unten
+            ring.append((x + ex * bx - pfeil * s, seite * (yc - tief / 2 + tief * s),
+                         z + ez * bz + 0.008 * s))
         ringe.append(ring)
-    geh = netz_aus_ringen("spiegel", ringe, kappe, kappen=True)
-    teile.append(geh)
+    teile.append(netz_aus_ringen("spiegel", ringe, kappe, kappen=True))
     # Glas mit schwarzem Rahmen, auf der flachen Rückseite
-    x_glas = x - lang / 2 * 0.35 - 0.045 - 0.003
-    rahmen = platte("spiegelrahmen", tief * 0.86, hoch * 0.8, 0.008,
-                    (mats["kunststoff"], mats["kunststoff"]), rundung=3.2)
-    glas = platte("spiegelglas", tief * 0.78, hoch * 0.68, 0.004, (mats["chrom"], mats["kunststoff"]),
-                  rundung=3.2)
-    glas.location = (-0.004, 0, 0)
+    x_glas = x - lang * 0.18 - pfeil * 0.5 - 0.004
+    rahmen = platte("spiegelrahmen", tief * 0.8, hoch * 0.78, 0.006,
+                    (mats["kunststoff"], mats["kunststoff"]), rundung=3.0)
+    glas = platte("spiegelglas", tief * 0.72, hoch * 0.66, 0.003, (mats["chrom"], mats["kunststoff"]),
+                  rundung=3.0)
+    glas.location = (-0.003, 0, 0)
     g.transform_anwenden(glas)
     einheit = g.verbinden([rahmen, glas], "spiegelglas")
-    einheit.rotation_euler = (0, 0, math.radians(180 - 10 * seite))
-    einheit.location = (x_glas, seite * (yc + 0.005), z)
+    einheit.rotation_euler = (0, 0, math.radians(180 - 9 * seite))
+    einheit.location = (x_glas, seite * (yc + 0.01), z + 0.004)
     g.transform_anwenden(einheit)
     teile.append(einheit)
-    # Blinker: Leiste an der Vorderkante außen
-    pk = []
-    nk = []
+    # Blinker: schmale Leiste an der Vorderkante außen unten
+    pk, nk = [], []
     for i in range(7):
-        t = 0.45 + 0.5 * i / 6
-        w = -0.5 + 0.9 * (i / 6)
-        yy = seite * (yc - tief / 2 + tief * t)
-        pk.append(Vector((x + lang / 2 * 0.86 - 0.04 * t, yy, z - hoch * 0.18 + 0.03 * w)))
-        nk.append(Vector((1, 0, -0.3)))
-    bl = band("blinker", pk, nk, 0.012, 0.004, mats["blinker"])
+        s = 0.5 + 0.42 * i / 6
+        bx, bz = skala(s)
+        pk.append(Vector((x + lang / 2 * bx * 0.8 - pfeil * s, seite * (yc - tief / 2 + tief * s),
+                          z - hoch * 0.28 * bz + 0.008 * s)))
+        nk.append(Vector((1, 0, -0.5)))
+    bl = band("blinker", pk, nk, 0.008, 0.003, mats["blinker"])
     if bl:
         teile.append(bl)
     # Befestigung
@@ -1020,11 +1209,11 @@ def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
     else:
         # Fuß: flache Platte an der Tür, Arm zum Gehäuse
         fuss = kasten("spiegelfuss", (x - 0.04, seite * (y_wand + 0.004), z - hoch * 0.25),
-                      (0.16, 0.02, 0.07), fussmat, fase=0.008)
+                      (0.13, 0.018, 0.06), fussmat, fase=0.008)
         teile.append(fuss)
         if innen > y_wand:
             teile.append(kasten("spiegelarm", (x - 0.01, seite * (y_wand + innen) / 2, z - hoch * 0.22),
-                                (0.07, innen - y_wand + 0.02, 0.035), fussmat, fase=0.01))
+                                (0.05, innen - y_wand + 0.02, 0.026), fussmat, fase=0.009))
     return teile
 
 

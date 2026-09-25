@@ -4,7 +4,7 @@ Aufruf (siehe ``tools/blender/bauen.bat``)::
 
     blender.exe -b -P tools/blender/fahrzeug_bauen.py -- --fahrzeug alle
     blender.exe -b -P tools/blender/fahrzeug_bauen.py -- --fahrzeug rookie \
-        --ausgabe ordner --vorschau ordner --draufsicht ordner
+        --ausgabe ordner --vorschau ordner --draufsicht ordner [--lod1 | --ohne-lod1]
 
 Ergebnis je Fahrzeug:
 
@@ -13,6 +13,9 @@ Ergebnis je Fahrzeug:
   Rad hat seinen Ursprung in der Nabenmitte und steht schon an seinem Platz.
 * ``assets/vehicles/<key>_teile.json`` im Format, das
   ``src/render3d/vehicle_node.teile_lesen`` liest.
+* ``assets/vehicles/<key>_lod1.glb``: dieselben Knoten und Materialnamen mit
+  weniger Dreiecken (``lod1_parameter``). Automatisch für Fahrzeuge mit
+  ``teile``-Block, sonst mit ``--lod1``; ``--ohne-lod1`` schaltet es ab.
 
 Maße kommen aus ``data/vehicles/<key>.json`` (Länge und Breite aus den
 Sprite-Pixeln mal ``M_PER_PX``, Radstand und Raddurchmesser aus ``physics``),
@@ -602,17 +605,39 @@ def im_polygon(pt, poly) -> bool:
     return drin
 
 
+#: Schlüssel, die eine ``oder``-Teilfläche einer Zone selbst festlegt.
+ODER_EIGEN = ("ansicht", "punkte", "n_min", "u", "z", "und", "spiegeln", "symmetrisch", "linie")
+
+
+def zonen_teilflaechen(z: dict) -> list:
+    """Eine Zone und ihre ``oder``-Teilflächen als eigene Zonenbeschreibungen.
+
+    ``oder``: weitere Umrisse (eigene Ansicht, eigenes ``n_min``/``u``/``z``),
+    deren Flächen zur selben Zone gehören — so läuft eine Leuchte von der
+    Haube (Umriss aus dem Sprite) über die Kante nach vorn.
+    """
+    teile = [z]
+    for o in z.get("oder", []):
+        oz = {k: v for k, v in z.items() if k not in ODER_EIGEN and k != "oder"}
+        oz["spiegeln"] = z.get("spiegeln", False)
+        oz.update(o)
+        teile.append(oz)
+    return teile
+
+
 def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
     """Alle Zonen schneiden und einfärben, danach Stufen und Lamellen.
 
-    Liefert je Leuchtenzone (Nummer ab 1) die Haut vor dem Vertiefen, aus der
-    ``leuchten_bauen`` die Abdeckscheibe macht.
+    Liefert für die Leuchtenzonen (Nummer ab 1) ``{"deckel": ..., "raender":
+    ...}``: die Haut vor dem Vertiefen (daraus wird die Abdeckscheibe) und die
+    Randschleifen des vertieften Gehäusebodens (daran laufen die LED-Leisten).
     """
     ms = fo.ms
     seg = bm.faces.layers.int["seg"]
     zl = bm.faces.layers.int["zone"]
     idx = {n: i for i, n in enumerate(KAROSSERIE_MATS)}
-    for nr, z in enumerate(zonen, start=1):
+    durchgaenge = [(nr, zt) for nr, z in enumerate(zonen, start=1) for zt in zonen_teilflaechen(z)]
+    for nr, z in durchgaenge:
         ansicht = z["ansicht"]
         ia, ib, ic = ACHSEN[ansicht]
         n_min = z.get("n_min", {"oben": -0.2, "seite": 0.3, "vorn": 0.15, "hinten": 0.15}[ansicht])
@@ -727,11 +752,17 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
 
     # Leuchten der Teile-Bibliothek: die Haut der Zone vor dem Vertiefen
     # abnehmen — daraus wird die bündige Abdeckscheibe.
-    deckel = {}
+    deckel, raender = {}, {}
     for nr, z in enumerate(zonen, start=1):
         le = z.get("leuchte")
-        if le and le.get("abdeckung", "klarglas") and le.get("abdeckung") is not False:
-            deckel[nr] = [[tuple(v.co) for v in f.verts] for f in bm.faces if f[zl] == nr]
+        if not le:
+            continue
+        flaechen = {f for f in bm.faces if f[zl] == nr}
+        # Rand vor dem Vertiefen: sauber geschnitten; der eingerückte Boden
+        # zackt an den vielen kurzen Kanten.
+        raender[nr] = tb.randschleifen(flaechen)
+        if le.get("abdeckung", "klarglas"):
+            deckel[nr] = [[tuple(v.co) for v in f.verts] for f in flaechen]
 
     # Stufen: Rahmen, Vertiefungen, Erhöhungen.
     for nr, z in enumerate(zonen, start=1):
@@ -754,7 +785,7 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
             for f in erg["faces"]:
                 f.material_index = idx[st.get("rand", "kunststoff")]
                 f[zl] = 0
-    return deckel
+    return {"deckel": deckel, "raender": raender}
 
 
 def zone_mat(z) -> int:
@@ -835,31 +866,47 @@ def _zonenseiten(ansicht: str):
     return (True, False) if ansicht == "seite" else (True,)
 
 
-def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, deckel: dict):
+def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: dict):
     """Leuchteneinheiten in Zonen mit ``leuchte``: Abdeckscheibe bündig auf der
-    alten Haut, darunter im vertieften Gehäuse LED-Leisten und Projektoren."""
+    alten Haut, darunter im vertieften Gehäuse LED-Leisten und Projektoren.
+
+    LED-Leisten mit ``verlauf`` folgen dem echten Rand des Gehäusebodens (in
+    3D, unabhängig von der Ansicht); ``ringe`` und ``quer`` werden aus dem
+    Umriss der Ansicht abgeleitet. Projektoren sitzen im Umriss der Ansicht
+    ``projektoren.ansicht`` (Standard: die der Zone, sonst eine ``oder``-Fläche).
+    """
     ms = fo.ms
+    deckel, raender = leuchtdaten["deckel"], leuchtdaten["raender"]
     teile = []
     for nr, z in enumerate(zonen, start=1):
         le = z.get("leuchte")
         if not le:
             continue
-        ansicht = z["ansicht"]
         boden = {KAROSSERIE_MATS.index(z["mat"])}
         abdeckung = le.get("abdeckung", "klarglas")
         if abdeckung and deckel.get(nr):
             ob = tb.deckel("leuchtenglas", deckel[nr], mats[abdeckung])
             if ob is not None:
                 teile.append(ob)
-        for poly in zone_polygone(z, ms):
-            for links in _zonenseiten(ansicht):
-                def proj(a, b, _l=links):
-                    return treffer.ansicht(ansicht, a, b, boden, _l)
-                leds = le.get("led") or []
-                for led in (leds if isinstance(leds, list) else [leds]):
-                    teile += _led_bauen(poly, led, proj, ansicht, mats)
-                if le.get("projektoren"):
-                    teile += _projektoren_bauen(poly, le["projektoren"], proj, mats)
+        leds = le.get("led") or []
+        leds = leds if isinstance(leds, list) else [leds]
+        for led in leds:
+            if "ringe" not in led and "quer" not in led:
+                for schleife in raender.get(nr, []):
+                    teile += tb.led_am_rand(schleife, led, treffer, boden, mats)
+        pj = le.get("projektoren")
+        for zt in zonen_teilflaechen(z):
+            ansicht = zt["ansicht"]
+            for poly in zone_polygone(zt, ms):
+                for links in _zonenseiten(ansicht):
+                    def proj(a, b, _l=links, _a=ansicht):
+                        return treffer.ansicht(_a, a, b, boden, _l)
+                    if zt is z:
+                        for led in leds:
+                            if "ringe" in led or "quer" in led:
+                                teile += _led_bauen(poly, led, proj, ansicht, mats)
+                    if pj and pj.get("ansicht", z["ansicht"]) == ansicht:
+                        teile += _projektoren_bauen(poly, pj, proj, mats)
     return teile
 
 
@@ -1100,10 +1147,22 @@ def anbauteile(karosserie, fo: Form, p, mats):
             schild = platte("kennzeichen", 0.52, 0.115, 0.012,
                             (mats["kennzeichen"], mats["kunststoff"]), rundung=10)
         vor = -kz.get("vorn_vorsprung_m" if vorn else "hinten_vorsprung_m", 0.0)
-        if vorn:
-            teile.append(setzen(schild, (x_vorn + 1, 0, z), (-1, 0, 0), vor))
-        else:
-            teile.append(setzen(schild, (x_hinten - 1, 0, z), (1, 0, 0), vor))
+        start = (x_vorn + 1, 0, z) if vorn else (x_hinten - 1, 0, z)
+        richtung = (-1, 0, 0) if vorn else (1, 0, 0)
+        # Mit Bibliothek steht das Schild senkrecht (oder um ``neigung_grad``
+        # nach hinten gekippt) statt der Wölbung des Stoßfängers zu folgen.
+        tk = (tp.get("kennzeichen") or {}) if tp is not None else {}
+        neigung = tk.get("neigung_grad", kz.get("neigung_grad", 0.0 if tp is not None else None))
+        if neigung is None:
+            teile.append(setzen(schild, start, richtung, vor))
+            continue
+        hit = strahl(karosserie, start, richtung)
+        if hit is None:
+            bpy.data.objects.remove(schild, do_unlink=True)
+            continue
+        w = math.radians(neigung)
+        normale = Vector(((1 if vorn else -1) * math.cos(w), 0.0, math.sin(w)))
+        teile.append(auf_flaeche(schild, hit[0], normale, vor))
 
     # --- Spiegel ------------------------------------------------------------
     sp_def = p.get("spiegel", {})
@@ -1947,10 +2006,10 @@ def karosserie_bauen(fo: Form, p, mats):
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     zonen = glaszonen(p) + p.get("zonen", [])
-    deckel = zonen_anwenden(bm, fo, zonen, mats)
+    leuchtdaten = zonen_anwenden(bm, fo, zonen, mats)
     bm.to_mesh(ob.data)
     bm.free()
-    return ob, zonen, radhaeuser, deckel
+    return ob, zonen, radhaeuser, leuchtdaten
 
 
 def linsen_bauen(ob_haut, fo: Form, zonen: list, mats):
@@ -1997,18 +2056,56 @@ def linsen_bauen(ob_haut, fo: Form, zonen: list, mats):
     return teile
 
 
-def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | None,
-                   draufsicht_ordner: Path | None = None):
+def lod1_parameter(p: dict) -> dict:
+    """Parameter für die LOD1-Stufe: gleiche Form, Knoten und Materialnamen,
+    aber ohne Kleinteile, die aus 25 m Abstand niemand sieht.
+
+    Halb so viele Querschnitte, keine Gitter, Lamellen, Projektoren,
+    Fugenrillen, Wischer, Griffe, Embleme, Antenne und Schrift; einfacher
+    Innenraum, glatte Reifen mit 32 Segmenten, Bremse ohne Bohrungen.
+    """
+    q = json.loads(json.dumps(p))
+    q["_lod"] = 1
+    q["stationen"] = max(48, p.get("stationen", 120) // 2)
+    q["reifen_segmente"] = 32
+    zonen = []
+    for z in q.get("zonen", []):
+        if z.get("_fuge"):
+            continue
+        for k in ("gitter", "lamellen", "linsen"):
+            z.pop(k, None)
+        le = z.get("leuchte")
+        if le:
+            le.pop("projektoren", None)
+            leds = le.get("led") or []
+            le["led"] = (leds if isinstance(leds, list) else [leds])[:1]
+        zonen.append(z)
+    q["zonen"] = zonen
+    tp = q.get("teile")
+    if tp is not None:
+        tp.update({"reifen": {"profil": "slick", "bloecke": 32,
+                              "wulst_m": (tp.get("reifen") or {}).get("wulst_m", 0.007)},
+                   "felge": dict(tp.get("felge") or {}, radmuttern=0, nabenkappe="glatt"),
+                   "bremse": dict(tp.get("bremse") or {}, art="glatt"),
+                   "innenraum": False, "wischer": False, "tuergriff": False, "emblem": False,
+                   "kennzeichen": False, "antenne": None, "fugen": []})
+        if tp.get("auspuff") is not False:
+            tp["auspuff"] = dict(tp.get("auspuff") or {}, blende=False)
+    return q
+
+
+def modell_bauen(key: str, p: dict):
+    """Karosserie, Räder und Sättel in eine leere Szene bauen."""
     g.szene_leeren()
     ms = Masse(key, p)
     fo = Form(p, ms)
     mats = materialien(p)
 
-    karosserie, zonen, radhaeuser, deckel = karosserie_bauen(fo, p, mats)
+    karosserie, zonen, radhaeuser, leuchtdaten = karosserie_bauen(fo, p, mats)
     lamellen = lamellen_bauen(karosserie, fo, zonen, mats) + linsen_bauen(karosserie, fo, zonen, mats)
     if any(z.get("leuchte") or z.get("gitter") for z in zonen):
         treffer = tb.Treffer(karosserie)
-        lamellen += leuchten_bauen(karosserie, treffer, fo, zonen, mats, deckel)
+        lamellen += leuchten_bauen(karosserie, treffer, fo, zonen, mats, leuchtdaten)
         lamellen += gitter_bauen(treffer, fo, zonen, mats)
     for pol in karosserie.data.polygons:
         pol.use_smooth = True
@@ -2029,7 +2126,15 @@ def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | Non
         raeder.append(ob)
         naben[f"rad_{kurz}"] = [round(c, 5) for c in nabe]
         saettel.append(sattel_bauen(ms, p, mats, f"sattel_{kurz}", vorn, seite, rr))
+    return ms, karo, raeder, saettel, naben
 
+
+def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | None,
+                   draufsicht_ordner: Path | None = None, lod1: bool | None = None):
+    """Ein Fahrzeug bauen: ``<key>.glb``, ``<key>_teile.json`` und — mit
+    ``lod1`` (Standard: wenn das Fahrzeug einen ``teile``-Block hat) —
+    ``<key>_lod1.glb`` mit denselben Knoten und Materialnamen."""
+    ms, karo, raeder, saettel, naben = modell_bauen(key, p)
     dreiecke = {o.name: g.dreiecke(o) for o in [karo] + raeder + saettel}
     g.glb_schreiben(ausgabe / f"{key}.glb")
 
@@ -2064,6 +2169,14 @@ def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | Non
         vorschau_fahrzeug(vorschau_ordner / f"{key}_seite.png", ziel=(0, 0, 0.7), abstand=12,
                           azimut_grad=90, hoehe_grad=2)
 
+    if lod1 is None:
+        lod1 = p.get("teile") is not None
+    if lod1:
+        _ms1, karo1, raeder1, saettel1, _n1 = modell_bauen(key, lod1_parameter(p))
+        summe = sum(g.dreiecke(o) for o in [karo1] + raeder1 + saettel1)
+        g.glb_schreiben(ausgabe / f"{key}_lod1.glb")
+        print(f"[fahrzeug] {key}_lod1: {summe} Dreiecke (Karosserie {g.dreiecke(karo1)})")
+
 
 def fugen_zonen(p) -> list:
     """Fugen der Stoßfänger als schmale Rillen rund um Front und Heck.
@@ -2086,7 +2199,7 @@ def fugen_zonen(p) -> list:
         if fu.get("geschlossen"):
             punkte.append(list(punkte[0]))
         z = {"ansicht": fu["ansicht"], "linie": fu.get("breite_m", 0.005), "punkte": punkte,
-             "mat": "kunststoff",
+             "mat": "kunststoff", "_fuge": True,
              "stufen": [{"dicke": 0.0008, "tiefe": -fu.get("tiefe_m", 0.005), "rand": "kunststoff"}]}
         for k in ("n_min", "auf", "spiegeln", "symmetrisch", "und", "u", "z", "segmente"):
             if k in fu:
@@ -2175,6 +2288,7 @@ def main() -> None:
     vorschau_ordner = None
     draufsicht_ordner = None
     ausgabe = ZIEL
+    lod1 = None                     # None: automatisch (Fahrzeuge mit "teile"-Block)
     i = 0
     while i < len(args):
         if args[i] == "--fahrzeug":
@@ -2189,12 +2303,18 @@ def main() -> None:
         elif args[i] == "--draufsicht":
             draufsicht_ordner = Path(args[i + 1])
             i += 2
+        elif args[i] == "--lod1":
+            lod1 = True
+            i += 1
+        elif args[i] == "--ohne-lod1":
+            lod1 = False
+            i += 1
         else:
             i += 1
     alle = parameter_laden()
     schluessel = list(alle) if wahl == "alle" else wahl.split(",")
     for key in schluessel:
-        fahrzeug_bauen(key, alle[key], ausgabe, vorschau_ordner, draufsicht_ordner)
+        fahrzeug_bauen(key, alle[key], ausgabe, vorschau_ordner, draufsicht_ordner, lod1)
 
 
 if __name__ == "__main__":

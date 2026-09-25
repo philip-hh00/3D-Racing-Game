@@ -37,16 +37,18 @@ def reifen(R: float, b: float, rr: float, tp: dict, mats, name: str = "reifen"):
 
     Umfangsrillen (``rillen``) laufen durch; Querrillen entstehen je Block
     (``bloecke`` je Umfang) aus vier Ringen, pfeilförmig versetzt (die Ecken
-    eines Rings liegen nicht auf einem Winkel). ``sport``: durchgehende
-    Mittelrippe, Querrillen nur an den Schultern; ``strasse``: Querrillen
-    über die ganze Lauffläche; ``slick``: glatt.
+    eines Rings liegen nicht auf einem Winkel). Querrillen gibt es nur an den
+    Schultern, außerhalb der äußeren Umfangsrille — über die ganze Breite
+    sähe es nach Geländereifen aus. ``sport``: zwei Rillen, breite
+    Mittelrippe, tiefe Schulterblöcke; ``strasse``: vier schmale Rillen,
+    viele flache Schulterblöcke; ``slick``: glatt (``bloecke`` = Segmente).
     """
     art = tp.get("profil", "sport")
     halb = b / 2
-    tiefe = tp.get("tiefe_m", 0.007)
+    tiefe = tp.get("tiefe_m", {"strasse": 0.0045}.get(art, 0.007))
     wulst = tp.get("wulst_m", 0.007)
-    rb = tp.get("rille_m", 0.012)
-    rillen = tp.get("rillen", {"sport": [-0.2, 0.2], "strasse": [-0.26, 0.0, 0.26]}.get(art, []))
+    rb = tp.get("rille_m", {"strasse": 0.009}.get(art, 0.012))
+    rillen = tp.get("rillen", {"sport": [-0.2, 0.2], "strasse": [-0.3, -0.1, 0.1, 0.3]}.get(art, []))
     h = R - rr
     # (r, y, Art): f Flanke, sr Schulterrand, s Schulter, m Mitte, r Rillengrund
     flanke = [
@@ -80,9 +82,12 @@ def reifen(R: float, b: float, rr: float, tp: dict, mats, name: str = "reifen"):
         else:
             lauf.append((rc, y, "s" if abs(y) >= grenze else "m"))
     profil = flanke + lauf + [(r_, -y, k) for r_, y, k in reversed(flanke)]
-    bloecke = tp.get("bloecke", 22)
-    anteile = [(0.0, False), (0.7, False), (0.74, True), (0.96, True)]
-    pfeil = tp.get("pfeil", 0.35)            # Versatz der Querrillen, Anteil eines Blocks
+    bloecke = tp.get("bloecke", {"strasse": 26, "slick": 64}.get(art, 22))
+    anteile = {"slick": [(0.0, False)],
+               "strasse": [(0.0, False), (0.8, False), (0.83, True), (0.97, True)]}.get(
+        art, [(0.0, False), (0.7, False), (0.74, True), (0.96, True)])
+    # Versatz der Querrillen zur Schulter hin, Anteil eines Blocks
+    pfeil = tp.get("pfeil", {"strasse": 0.15}.get(art, 0.35))
     teilung = 2 * math.pi / bloecke
     punkte = []
     for k in range(bloecke):
@@ -90,7 +95,7 @@ def reifen(R: float, b: float, rr: float, tp: dict, mats, name: str = "reifen"):
             for r_, y, art_p in profil:
                 rad = r_
                 if rille and art != "slick":
-                    if art_p == "s" or (art_p == "m" and art == "strasse"):
+                    if art_p == "s":
                         rad -= tiefe
                     elif art_p == "sr":
                         rad -= tiefe * 0.6

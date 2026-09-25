@@ -116,6 +116,12 @@ sonst eiert es. Die Materialnamen sind Vertrag mit dem Renderer:
 * `glas` — `alphaMode BLEND`, wird nach allem Deckenden gezeichnet.
 * Übrige (`chrom`, `felge`, `gummi`, `licht_vorn` …) bleiben, wie sie sind.
 
+**Fahrzeug-LOD1** (`assets/vehicles/<key>_lod1.glb`, neben `<key>.glb`):
+dieselben Knoten mit denselben Ursprüngen und dieselben Materialnamen
+(`lack`, `lack2`, `glas` …), nur mit weniger Dreiecken und ohne Kleinteile.
+Es gibt keine eigene Teileliste; `<key>_teile.json` gilt für beide Stufen.
+Fehlt die Datei, zeichnet man `<key>.glb`.
+
 **Umgebung** (`assets/umgebung/<gruppe>/<name>.glb`, dazu `_lod1.glb`):
 Ursprung mittig am Boden. Objekte, die zur Strecke ausgerichtet werden, zeigen
 mit ihrer Vorderseite nach **+Y**. Laub-Materialien enden auf `_maske` und

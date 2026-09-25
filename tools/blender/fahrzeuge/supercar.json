@@ -881,18 +881,61 @@
     "led": [
      {
       "verlauf": "aussen",
-      "abstand_m": 0.006,
-      "breite_m": 0.012,
+      "abstand_m": 0.008,
+      "breite_m": 0.01,
       "hoehe_m": 0.005
+     },
+     {
+      "verlauf": "unten",
+      "abstand_m": 0.008,
+      "breite_m": 0.006,
+      "hoehe_m": 0.004
      }
     ],
     "projektoren": {
+     "ansicht": "vorn",
      "anzahl": 2,
-     "radius_m": 0.022,
-     "lage": 0.5,
-     "rand_anteil": 0.25
+     "radius_m": 0.02,
+     "lage": 0.55,
+     "rand_anteil": 0.2
     }
-   }
+   },
+   "oder": [
+    {
+     "ansicht": "vorn",
+     "n_min": 0.1,
+     "u": [
+      0.9,
+      1.2
+     ],
+     "punkte": [
+      [
+       0.585,
+       0.565
+      ],
+      [
+       0.7,
+       0.565
+      ],
+      [
+       0.785,
+       0.525
+      ],
+      [
+       0.77,
+       0.475
+      ],
+      [
+       0.64,
+       0.465
+      ],
+      [
+       0.575,
+       0.5
+      ]
+     ]
+    }
+   ]
   },
   {
    "ansicht": "vorn",

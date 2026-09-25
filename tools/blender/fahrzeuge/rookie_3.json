@@ -771,9 +771,7 @@
  "splitter_ueberstand_m": 0.0,
  "teile": {
   "reifen": {
-   "profil": "strasse",
-   "bloecke": 28,
-   "tiefe_m": 0.0045
+   "profil": "strasse"
   },
   "felge": {
    "radmuttern": 5,
