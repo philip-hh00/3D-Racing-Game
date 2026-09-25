@@ -4,14 +4,13 @@
   "felge": "turbine",
   "felgenfarbe": [118, 121, 126],
   "breite": [
-    [0, 0.2], [0.006, 0.354], [0.015, 0.55], [0.03, 0.7], [0.05, 0.788], [0.075, 0.845],
-    [0.1, 0.876], [0.15, 0.9], [0.2, 0.915], [0.25, 0.915], [0.3, 0.894], [0.35, 0.894],
-    [0.4, 0.894], [0.45, 0.899], [0.5, 0.896], [0.55, 0.89], [0.6, 0.894], [0.65, 0.895], [0.7, 0.9],
-    [0.75, 0.915], [0.8, 0.915], [0.85, 0.905], [0.9, 0.876], [0.925, 0.829], [0.95, 0.736],
-    [0.97, 0.588], [0.985, 0.457], [0.994, 0.34], [1.0, 0.16]
+    [0, 0.2], [0.006, 0.354], [0.015, 0.55], [0.03, 0.7], [0.05, 0.788], [0.075, 0.845], [0.1, 0.88], [0.15, 0.912],
+    [0.2, 0.927], [0.25, 0.927], [0.3, 0.906], [0.35, 0.906], [0.4, 0.906], [0.45, 0.911], [0.5, 0.908], [0.55, 0.902],
+    [0.6, 0.906], [0.65, 0.907], [0.7, 0.912], [0.75, 0.927], [0.8, 0.927], [0.85, 0.917], [0.9, 0.88], [0.925, 0.829],
+    [0.95, 0.736], [0.97, 0.588], [0.985, 0.457], [0.994, 0.34], [1, 0.16]
   ],
   "achsmitte_u": 0.505,
-  "reifen_v": 0.955,
+  "reifen_v": 0.968,
   "deck": [
     [0, 0.74], [0.015, 0.845], [0.04, 0.905], [0.1, 0.945], [0.2, 0.96], [0.3, 0.95], [0.45, 0.925],
     [0.6, 0.895], [0.7, 0.865], [0.8, 0.82], [0.88, 0.765], [0.94, 0.69], [0.98, 0.585], [1.0, 0.47]
@@ -23,9 +22,10 @@
   "seiten_radius": 0.28,
   "schulter_radius": 0.09,
   "front_buckel_m": 0.12,
-  "kennzeichen": {"vorn_m": null, "hinten_m": 0.5},
+  "kennzeichen": {"vorn_m": null, "hinten_m": 0.5, "hinten_vorsprung_m": 0.002},
   "stossfaenger": {"vorn": [0.44, 0.9], "hinten": [0.5, 0.12]},
-  "spiegel": {"u": 0.625, "v": 0.995},
+  "spiegel": {"u": 0.63, "v": 0.995, "groesse": [0.15, 0.22, 0.13]},
+  "tuergriffe_u": [0.355, 0.565],
   "kabine": {
     "dach": [
       [0.07, 0.88], [0.1, 0.98], [0.15, 1.11], [0.22, 1.23], [0.28, 1.29], [0.36, 1.33],
@@ -46,14 +46,17 @@
       "ansicht": "vorn",
       "punkte": [[-0.5, 0.2], [0.5, 0.2], [0.54, 0.29], [-0.54, 0.29]],
       "mat": "kunststoff",
-      "stufen": [{"dicke": 0.006, "tiefe": -0.04, "rand": "zierteil"}]
+      "stufen": [{"dicke": 0.006, "tiefe": -0.04, "rand": "zierteil"}],
+      "gitter": {"art": "waben", "masche_m": 0.026, "steg_m": 0.005, "hoehe_m": 0.014, "rand_m": 0.01}
     },
     {
       "ansicht": "vorn",
       "punkte": [[0.66, 0.24], [0.74, 0.24], [0.77, 0.44], [0.7, 0.44]],
       "spiegeln": true,
       "mat": "kunststoff",
-      "stufen": [{"dicke": 0.005, "tiefe": -0.04, "rand": "zierteil"}]
+      "stufen": [{"dicke": 0.005, "tiefe": -0.04, "rand": "zierteil"}],
+      "gitter": {"art": "lamellen", "masche_m": 0.034, "steg_m": 0.007, "hoehe_m": 0.02,
+                 "winkel_grad": -25, "mat": "zierteil", "rand_m": 0.008}
     },
     {
       "ansicht": "hinten",
@@ -62,11 +65,13 @@
     },
     {
       "ansicht": "hinten",
-      "punkte": [[-0.84, 0.74], [0.84, 0.74], [0.86, 0.77], [-0.86, 0.77]],
+      "punkte": [[-0.84, 0.728], [0.84, 0.728], [0.86, 0.782], [-0.86, 0.782]],
       "n_min": -0.7,
-      "mat": "licht_hinten",
-      "stufen": [{"dicke": 0.004, "tiefe": -0.008, "rand": "zierteil"}],
-      "und": [{"ansicht": "oben", "punkte": [[-0.2, -1.3], [0.1, -1.3], [0.1, 1.3], [-0.2, 1.3]]}]
+      "mat": "zierteil",
+      "und": [{"ansicht": "oben", "punkte": [[-0.2, -1.3], [0.13, -1.3], [0.13, 1.3], [-0.2, 1.3]]}],
+      "leuchte": {"tiefe_m": 0.012, "rand_m": 0.004, "abdeckung": "streuscheibe",
+                  "led": {"quer": [0.5], "abstand_m": 0.004, "mat": "licht_hinten", "breite_m": 0.012,
+                          "hoehe_m": 0.005}}
     },
     {
       "ansicht": "oben",
@@ -74,30 +79,10 @@
       "spiegeln": true,
       "n_min": -0.3,
       "z": [0.63, 1.0],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.004, "tiefe": -0.012, "rand": "kunststoff"}]
-    },
-    {
-      "ansicht": "oben",
-      "punkte": [[0.888, 0.745], [0.903, 0.768], [0.923, 0.72], [0.908, 0.697]],
-      "spiegeln": true,
-      "n_min": -0.3,
-      "z": [0.63, 1.0],
-      "auf": ["zierteil"],
-      "mat": "licht_vorn",
-      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}],
-      "linsen": {"anzahl": 2, "radius": 0.013, "lage": 0.5, "rand_anteil": 0.25}
-    },
-    {
-      "ansicht": "oben",
-      "punkte": [[0.93, 0.64], [0.946, 0.655], [0.958, 0.6], [0.944, 0.578]],
-      "spiegeln": true,
-      "n_min": -0.3,
-      "z": [0.63, 1.0],
-      "auf": ["zierteil"],
-      "mat": "licht_vorn",
-      "stufen": [{"dicke": 0.003, "tiefe": 0.004, "rand": "scheinwerferglas"}],
-      "linsen": {"anzahl": 2, "radius": 0.013, "lage": 0.5, "rand_anteil": 0.25}
+      "mat": "kunststoff",
+      "leuchte": {"tiefe_m": 0.008, "rand_m": 0.004, "rand_mat": "zierteil", "abdeckung": "klarglas",
+                  "led": {"verlauf": "rand", "abstand_m": 0.007, "breite_m": 0.006},
+                  "projektoren": {"anzahl": 2, "radius_m": 0.024, "lage": 0.636, "rand_anteil": 0.25}}
     },
     {
       "ansicht": "seite",
@@ -119,18 +104,6 @@
       "punkte": [[0.29, 0.3], [0.3, 0.6], [0.31, 1.0]],
       "mat": "kunststoff",
       "stufen": [{"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}]
-    },
-    {
-      "ansicht": "seite",
-      "punkte": [[0.335, 0.855], [0.375, 0.855], [0.375, 0.872], [0.335, 0.872]],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}]
-    },
-    {
-      "ansicht": "seite",
-      "punkte": [[0.545, 0.84], [0.585, 0.84], [0.585, 0.857], [0.545, 0.857]],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}]
     }
   ],
   "sicken": [
@@ -148,5 +121,27 @@
     }
   ],
   "diffusor": false,
+  "teile": {
+    "reifen": {"profil": "sport", "bloecke": 26},
+    "felge": {"radmuttern": 5, "nabenkappe": "emblem"},
+    "bremse": {"art": "gelocht"},
+    "spiegel": {"art": "stiel", "kappe_mat": "lack", "fuss_mat": "zierteil", "schlank": 1.0, "pfeilung_m": 0.1},
+    "tuergriff": {"art": "buendig", "laenge_m": 0.16},
+    "wischer": {"anzahl": 2},
+    "auspuff": false,
+    "innenraum": {"sitz": "schale", "akzent_mat": "zierteil"},
+    "kennzeichen": {"text": "EL 42"},
+    "emblem": {"groesse_m": 0.07, "orte": [{"ansicht": "oben", "u": 0.948}, {"ansicht": "hinten", "z_m": 0.64}]},
+    "fugen": [
+      {"ansicht": "oben", "punkte": [[0.695, 0.72], [0.75, 0.68], [0.8, 0.635], [0.85, 0.585], [0.9, 0.52],
+                                     [0.93, 0.47], [0.945, 0.41], [0.955, 0.3], [0.963, 0.15], [0.966, 0.0]],
+       "symmetrisch": true, "n_min": 0.3},
+      {"ansicht": "oben", "punkte": [[0.112, 0.478], [0.058, 0.464]], "spiegeln": true, "n_min": 0.3},
+      {"ansicht": "seite", "punkte": [[0.3, 0.31], [0.66, 0.31]]},
+      {"ansicht": "seite", "punkte": [[0.672, 0.64], [0.708, 0.64], [0.708, 0.73], [0.672, 0.73]],
+       "geschlossen": true,
+       "und": [{"ansicht": "oben", "punkte": [[-0.2, 0.0], [1.2, 0.0], [1.2, 1.3], [-0.2, 1.3]]}]}
+    ]
+  },
   "profil_punkte": [2, 1, 6, 10, 4, 3, 6]
 }

@@ -7,11 +7,10 @@
   "felgen_bogen_grad": 18,
   "felgen_schaufel_breite_m": 0.05,
   "breite": [
-    [0, 0.211], [0.006, 0.381], [0.015, 0.564], [0.03, 0.686], [0.05, 0.779], [0.075, 0.832],
-    [0.1, 0.854], [0.15, 0.866], [0.2, 0.88], [0.25, 0.88], [0.3, 0.856], [0.35, 0.842],
-    [0.4, 0.839], [0.45, 0.842], [0.5, 0.842], [0.55, 0.844], [0.6, 0.844], [0.65, 0.845],
-    [0.7, 0.851], [0.75, 0.86], [0.8, 0.87], [0.85, 0.86], [0.9, 0.851], [0.925, 0.823],
-    [0.95, 0.741], [0.97, 0.621], [0.985, 0.501], [0.994, 0.3], [1.0, 0.12]
+    [0, 0.211], [0.006, 0.381], [0.015, 0.564], [0.03, 0.686], [0.05, 0.779], [0.075, 0.832], [0.1, 0.857], [0.15, 0.876],
+    [0.2, 0.89], [0.25, 0.89], [0.3, 0.866], [0.35, 0.852], [0.4, 0.849], [0.45, 0.852], [0.5, 0.852], [0.55, 0.854],
+    [0.6, 0.854], [0.65, 0.855], [0.7, 0.861], [0.75, 0.87], [0.8, 0.88], [0.85, 0.87], [0.9, 0.854], [0.925, 0.823],
+    [0.95, 0.741], [0.97, 0.621], [0.985, 0.501], [0.994, 0.3], [1, 0.12]
   ],
   "achsmitte_u": 0.5,
   "reifen_v": 0.9,
@@ -42,7 +41,8 @@
       "oben_anteil": 0.3
     }
   ],
-  "spiegel": {"u": 0.665, "v": 0.995},
+  "spiegel": {"u": 0.668, "v": 0.995, "groesse": [0.16, 0.22, 0.13]},
+  "tuergriffe_u": [0.365, 0.585],
   "kabine": {
     "dach": [
       [0.07, 0.9], [0.09, 0.98], [0.13, 1.14], [0.19, 1.29], [0.24, 1.355], [0.3, 1.385],
@@ -67,14 +67,17 @@
       "ansicht": "vorn",
       "punkte": [[-0.5, 0.2], [0.5, 0.2], [0.54, 0.29], [-0.54, 0.29]],
       "mat": "kunststoff",
-      "stufen": [{"dicke": 0.006, "tiefe": -0.04, "rand": "zierteil"}]
+      "stufen": [{"dicke": 0.006, "tiefe": -0.04, "rand": "zierteil"}],
+      "gitter": {"art": "waben", "masche_m": 0.026, "steg_m": 0.005, "hoehe_m": 0.014, "rand_m": 0.01}
     },
     {
       "ansicht": "vorn",
       "punkte": [[0.66, 0.24], [0.74, 0.24], [0.77, 0.44], [0.7, 0.44]],
       "spiegeln": true,
       "mat": "kunststoff",
-      "stufen": [{"dicke": 0.005, "tiefe": -0.04, "rand": "zierteil"}]
+      "stufen": [{"dicke": 0.005, "tiefe": -0.04, "rand": "zierteil"}],
+      "gitter": {"art": "lamellen", "masche_m": 0.034, "steg_m": 0.007, "hoehe_m": 0.02,
+                 "winkel_grad": -25, "mat": "zierteil", "rand_m": 0.008}
     },
     {
       "ansicht": "hinten",
@@ -83,11 +86,13 @@
     },
     {
       "ansicht": "hinten",
-      "punkte": [[-0.84, 0.725], [0.84, 0.725], [0.86, 0.75], [-0.86, 0.75]],
+      "punkte": [[-0.84, 0.712], [0.84, 0.712], [0.86, 0.764], [-0.86, 0.764]],
       "n_min": -0.7,
-      "mat": "licht_hinten",
-      "stufen": [{"dicke": 0.004, "tiefe": -0.008, "rand": "zierteil"}],
-      "und": [{"ansicht": "oben", "punkte": [[-0.2, -1.3], [0.1, -1.3], [0.1, 1.3], [-0.2, 1.3]]}]
+      "mat": "zierteil",
+      "und": [{"ansicht": "oben", "punkte": [[-0.2, -1.3], [0.12, -1.3], [0.12, 1.3], [-0.2, 1.3]]}],
+      "leuchte": {"tiefe_m": 0.012, "rand_m": 0.004, "abdeckung": "streuscheibe",
+                  "led": {"quer": [0.5], "abstand_m": 0.004, "mat": "licht_hinten", "breite_m": 0.012,
+                          "hoehe_m": 0.005}}
     },
     {
       "ansicht": "oben",
@@ -95,26 +100,18 @@
       "spiegeln": true,
       "n_min": -0.3,
       "z": [0.63, 1.0],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.004, "tiefe": -0.012, "rand": "kunststoff"}]
+      "mat": "kunststoff",
+      "leuchte": {"tiefe_m": 0.008, "rand_m": 0.004, "rand_mat": "zierteil", "abdeckung": "klarglas",
+                  "led": {"verlauf": "rand", "abstand_m": 0.008, "breite_m": 0.008}}
     },
     {
       "ansicht": "oben",
-      "punkte": [[0.902, 0.774], [0.911, 0.779], [0.963, 0.595], [0.955, 0.588]],
-      "spiegeln": true,
-      "n_min": -0.3,
-      "z": [0.63, 1.0],
-      "auf": ["zierteil"],
-      "mat": "licht_vorn",
-      "stufen": [{"dicke": 0.002, "tiefe": 0.003, "rand": "scheinwerferglas"}]
-    },
-    {
-      "ansicht": "oben",
-      "punkte": [[0.262, 0.06], [0.292, 0.06], [0.292, -0.06], [0.262, -0.06]],
+      "punkte": [[0.26, 0.11], [0.292, 0.11], [0.292, -0.11], [0.26, -0.11]],
       "spiegeln": false,
       "mat": "kunststoff",
       "stufen": [{"dicke": 0.006, "tiefe": -0.015, "rand": "zierteil"}],
-      "lamellen": {"anzahl": 4, "richtung": "b", "dicke": 0.01, "hoehe": 0.03, "mat": "zierteil"}
+      "gitter": {"art": "lamellen", "richtung": "b", "masche_m": 0.02, "steg_m": 0.006, "hoehe_m": 0.012,
+                 "mat": "zierteil", "rand_m": 0.006}
     },
     {
       "ansicht": "seite",
@@ -136,20 +133,31 @@
       "punkte": [[0.29, 0.28], [0.3, 1.0]],
       "mat": "kunststoff",
       "stufen": [{"dicke": 0.001, "tiefe": -0.006, "rand": "kunststoff"}]
-    },
-    {
-      "ansicht": "seite",
-      "punkte": [[0.345, 0.875], [0.38499999999999995, 0.875], [0.38499999999999995, 0.892], [0.345, 0.892]],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}]
-    },
-    {
-      "ansicht": "seite",
-      "punkte": [[0.565, 0.86], [0.605, 0.86], [0.605, 0.877], [0.565, 0.877]],
-      "mat": "zierteil",
-      "stufen": [{"dicke": 0.003, "tiefe": -0.004, "rand": "kunststoff"}]
     }
   ],
   "diffusor": false,
+  "teile": {
+    "reifen": {"profil": "strasse", "bloecke": 26},
+    "felge": {"radmuttern": 5, "nabenkappe": "emblem"},
+    "bremse": {"art": "glatt"},
+    "spiegel": {"art": "stiel", "kappe_mat": "lack", "fuss_mat": "zierteil", "schlank": 1.0, "pfeilung_m": 0.08},
+    "tuergriff": {"art": "buendig", "laenge_m": 0.16},
+    "wischer": {"anzahl": 2},
+    "auspuff": false,
+    "innenraum": {"sitz": "komfort", "akzent_mat": "zierteil"},
+    "kennzeichen": {"text": "FE 205"},
+    "emblem": {"groesse_m": 0.07, "orte": [{"ansicht": "oben", "u": 0.93}, {"ansicht": "hinten", "z_m": 0.64}]},
+    "fugen": [
+      {"ansicht": "oben", "punkte": [[0.72, 0.73], [0.76, 0.69], [0.8, 0.672], [0.85, 0.64], [0.89, 0.6],
+                                     [0.915, 0.53], [0.935, 0.46], [0.95, 0.36], [0.957, 0.2], [0.96, 0.0]],
+       "symmetrisch": true, "n_min": 0.3},
+      {"ansicht": "oben", "punkte": [[0.135, 0.565], [0.05, 0.55]], "spiegeln": true, "n_min": 0.3},
+      {"ansicht": "seite", "punkte": [[0.215, 0.845], [0.218, 0.832], [0.225, 0.828], [0.248, 0.828], [0.255, 0.832],
+                                      [0.258, 0.845], [0.258, 0.895], [0.255, 0.908], [0.248, 0.912], [0.225, 0.912],
+                                      [0.218, 0.908], [0.215, 0.895]],
+       "geschlossen": true},
+      {"ansicht": "seite", "punkte": [[0.3, 0.3], [0.69, 0.3]]}
+    ]
+  },
   "profil_punkte": [2, 1, 6, 10, 4, 3, 6]
 }

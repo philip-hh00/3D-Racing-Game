@@ -25,37 +25,37 @@
       "name": "rad_vl",
       "nabe": [
         1.4958,
-        0.8989,
+        0.91294,
         0.365
       ],
-      "dreiecke": 7096
+      "dreiecke": 8456
     },
     {
       "name": "rad_vr",
       "nabe": [
         1.4958,
-        -0.8989,
+        -0.91294,
         0.365
       ],
-      "dreiecke": 7096
+      "dreiecke": 8456
     },
     {
       "name": "rad_hl",
       "nabe": [
         -1.4462,
-        0.8989,
+        0.91294,
         0.365
       ],
-      "dreiecke": 7096
+      "dreiecke": 8456
     },
     {
       "name": "rad_hr",
       "nabe": [
         -1.4462,
-        -0.8989,
+        -0.91294,
         0.365
       ],
-      "dreiecke": 7096
+      "dreiecke": 8456
     }
   ],
   "saettel": [
@@ -69,5 +69,5 @@
     110,
     12
   ],
-  "dreiecke_karosserie": 42964
+  "dreiecke_karosserie": 55398
 }
