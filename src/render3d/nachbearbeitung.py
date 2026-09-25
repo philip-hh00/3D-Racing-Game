@@ -63,6 +63,12 @@ VIGNETTE = 0.22
 #: die ältesten gehen dann zurück.
 PUFFERSAETZE = 3
 
+#: Texturplätze der Nachbearbeitung. Bewusst weit hinter denen der Welt
+#: (0–5: Farbe, Rauheit, Himmel, Schatten, Gelände, Gummimaske): eine Textur,
+#: die hier gebunden bleibt, darf im nächsten Bild keinem Weltshader
+#: unterkommen, der einen Platz ohne eigene Textur trotzdem liest.
+E0 = 8
+
 _VERTEX = """
 #version 330
 in vec2 in_ecke;
@@ -520,6 +526,11 @@ class Nachbearbeitung:
         """Auflösung, in der die Welt gerade gerechnet wird."""
         return self._lauf["satz"].groesse if self._lauf else None
 
+    @property
+    def vp_relativ(self) -> np.ndarray | None:
+        """Die Matrix dieses Bildes für Punkte relativ zur Kamera."""
+        return self._lauf["vp"] if self._lauf else None
+
     def aufloesen(self):
         """Mehrfachproben zusammenfassen; ``(farbtextur, tiefentextur)``.
 
@@ -560,26 +571,26 @@ class Nachbearbeitung:
             p = self.p_ssao
             matrix_setzen(p, "vp", vp)
             matrix_setzen(p, "inv_vp", inv_vp)
-            setzen(p, "tiefe", 0)
+            setzen(p, "tiefe", E0)
             setzen(p, "radius", SSAO_RADIUS_M)
             setzen(p, "staerke", SSAO_STAERKE)
-            satz.tiefe.use(0)
+            satz.tiefe.use(E0)
             f0.use()
             ctx.viewport = (0, 0, *ao0.size)
             self._voll(p)
             p = self.p_weich
-            setzen(p, "quelle", 0)
+            setzen(p, "quelle", E0)
             for quelle, ziel, schritt in ((ao0, f1, (1.0 / ao0.size[0], 0.0)),
                                           (ao1, f0, (0.0, 1.0 / ao0.size[1]))):
                 ziel.use()
-                quelle.use(0)
+                quelle.use(E0)
                 setzen(p, "schritt", schritt)
                 self._voll(p)
 
         # --- Bloom -------------------------------------------------------------
         if satz.bloom_kette:
             p = self.p_ab
-            setzen(p, "quelle", 0)
+            setzen(p, "quelle", E0)
             setzen(p, "belichtung", float(belichtung))
             setzen(p, "schwelle", BLOOM_SCHWELLE)
             setzen(p, "knie", BLOOM_KNIE)
@@ -587,13 +598,13 @@ class Nachbearbeitung:
             for i, (t, f) in enumerate(satz.bloom_kette):
                 f.use()
                 ctx.viewport = (0, 0, *t.size)
-                quelle.use(0)
+                quelle.use(E0)
                 setzen(p, "texel", (1.0 / quelle.size[0], 1.0 / quelle.size[1]))
                 setzen(p, "erste", 1.0 if i == 0 else 0.0)
                 self._voll(p)
                 quelle = t
             p = self.p_auf
-            setzen(p, "quelle", 0)
+            setzen(p, "quelle", E0)
             setzen(p, "gewicht", 1.0)
             ctx.enable(moderngl.BLEND)
             ctx.blend_func = moderngl.ONE, moderngl.ONE
@@ -602,25 +613,25 @@ class Nachbearbeitung:
                 gross, f = satz.bloom_kette[i - 1]
                 f.use()
                 ctx.viewport = (0, 0, *gross.size)
-                klein.use(0)
+                klein.use(E0)
                 setzen(p, "texel", (1.0 / klein.size[0], 1.0 / klein.size[1]))
                 self._voll(p)
             ctx.disable(moderngl.BLEND)
 
         # --- Abbildung, Farbe, Glättung ----------------------------------------
         p = self.p_ende
-        for name, einheit in (("hdr", 0), ("ao", 1), ("bloom", 2), ("tiefe", 3)):
+        for name, einheit in (("hdr", E0), ("ao", E0 + 1), ("bloom", E0 + 2), ("tiefe", E0 + 3)):
             setzen(p, name, einheit)
-        satz.farbe.use(0)
-        satz.tiefe.use(3)
+        satz.farbe.use(E0)
+        satz.tiefe.use(E0 + 3)
         setzen(p, "hat_ao", 1.0 if satz.ao else 0.0)
         setzen(p, "ao_halb", 1.0 if satz.ssao == 1 else 0.0)
         if satz.ao:
-            satz.ao[0][0].use(1)
+            satz.ao[0][0].use(E0 + 1)
             matrix_setzen(p, "inv_vp", inv_vp)
         setzen(p, "hat_bloom", 1.0 if satz.bloom_kette else 0.0)
         if satz.bloom_kette:
-            satz.bloom_kette[0][0].use(2)
+            satz.bloom_kette[0][0].use(E0 + 2)
             setzen(p, "bloom_staerke", BLOOM_STAERKE / len(satz.bloom_kette))
         setzen(p, "belichtung", float(belichtung))
         setzen(p, "kontrast", KONTRAST)
@@ -639,9 +650,9 @@ class Nachbearbeitung:
             ctx.viewport = ausschnitt
             ctx.scissor = schere
             q = self.p_fxaa
-            setzen(q, "ldr", 0)
+            setzen(q, "ldr", E0)
             setzen(q, "texel", (1.0 / satz.groesse[0], 1.0 / satz.groesse[1]))
-            satz.ldr.use(0)
+            satz.ldr.use(E0)
             self._voll(q)
         else:
             ziel.use()

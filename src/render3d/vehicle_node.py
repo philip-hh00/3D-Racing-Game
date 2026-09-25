@@ -154,9 +154,13 @@ class Fahrzeugknoten:
         if karosserie is None:
             karosserie = self.aufbau_matrix()
         ergebnis = {KAROSSERIE: basis if karosserie is None else basis @ karosserie}
+        # Rollen ist für alle Räder gleich, und die Lenkmatrix braucht Rad und
+        # Sattel: je einmal rechnen. Acht Autos, drei Durchgänge — das zählt.
+        rollen = matrix.drehung_y(self.rollwinkel_rad)
         for rad in self.raeder:
-            ergebnis[rad.name] = basis @ self.rad_matrix(rad)
-            ergebnis[rad.sattel] = basis @ self.lenk_matrix(rad)
+            lenk = basis @ self.lenk_matrix(rad)
+            ergebnis[rad.name] = lenk @ rollen
+            ergebnis[rad.sattel] = lenk
         return ergebnis
 
 

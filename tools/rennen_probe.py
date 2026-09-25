@@ -25,6 +25,10 @@ def main() -> int:
     ap.add_argument("--bilder", default="")
     ap.add_argument("--feld", type=int, default=8)
     ap.add_argument("--aufloesung", default="1920x1080")
+    ap.add_argument("--stufe", default="",
+                    help="Grafikstufe erzwingen (niedrig, mittel, hoch, ultra); sonst die aus dem Profil")
+    ap.add_argument("--setzen", action="append", default=[],
+                    help="Einzelwert nach der Stufe, z. B. --setzen ssao=0 (mehrfach)")
     args = ap.parse_args()
 
     import numpy as np
@@ -33,6 +37,22 @@ def main() -> int:
     sfx.mixer_vorbereiten()
     pygame.init()
     display.apply_settings(resolution=args.aufloesung, fullscreen=False)
+    if args.stufe:
+        from src.render3d import grafik
+        display.kontext()            # wendet erst das Profil an ...
+        grafik.stufe_setzen(args.stufe)  # ... dann gilt, was hier verlangt ist
+    if args.setzen:
+        import json as _json
+        from src.render3d import grafik
+        display.kontext()
+        werte = {}
+        for eintrag in args.setzen:
+            feld, _, roh = eintrag.partition("=")
+            try:
+                werte[feld] = _json.loads(roh)
+            except ValueError:
+                werte[feld] = roh
+        grafik.setzen(**werte)
 
     import spielhilfe
     t0 = time.perf_counter()
@@ -69,7 +89,8 @@ def main() -> int:
                     ordner / f"{args.strecke}_{name}.png")
                 del fotos[zeitpunkt]
     z = np.array(zeiten[30:]) * 1000
-    print(f"{args.strecke}: {len(zeiten)} Bilder, Median {np.median(z):.1f} ms, "
+    from src.render3d import grafik
+    print(f"{args.strecke} ({grafik.aktuell().stufe}): {len(zeiten)} Bilder, Median {np.median(z):.1f} ms, "
           f"95. Perzentil {np.percentile(z, 95):.1f} ms, Zustand {rennen.race_manager.state}")
     spielhilfe.alles_schliessen()
     pygame.quit()

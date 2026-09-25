@@ -44,7 +44,8 @@ class Profile:
                  seen_announcements: list | None = None,
                  paints: dict | None = None,
                  statistik: dict | None = None,
-                 announcements_seeded: bool = False) -> None:
+                 announcements_seeded: bool = False,
+                 grafik: dict | None = None) -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -83,6 +84,10 @@ class Profile:
         #: fehlender Schluessel ist kein Fehler, sondern eine Null — dieselbe
         #: Regel wie bei paints.
         self.statistik: dict = dict(statistik) if isinstance(statistik, dict) else {}
+        #: Grafikeinstellungen der 3D-Welt (``src/render3d/grafik.py``,
+        #: ``als_dict``). ``None`` heißt: noch nie gewählt — beim ersten Start
+        #: sucht ``display`` eine Stufe nach der Grafikkarte aus und legt sie hier ab.
+        self.grafik: dict | None = dict(grafik) if isinstance(grafik, dict) else None
 
     # -- persistence -----------------------------------------------------
     @classmethod
@@ -118,6 +123,7 @@ class Profile:
                 # als versorgt behandeln, sonst wuerde einem bestehenden Spieler
                 # die ganze Sammlung nachtraeglich verschluckt (08.08.2026).
                 data.get("announcements_seeded", True),
+                data.get("grafik"),
             )
         except Exception:
             return cls()
@@ -148,6 +154,7 @@ class Profile:
                 "paints": self.paints,
                 "statistik": self.statistik,
                 "announcements_seeded": self.announcements_seeded,
+                "grafik": self.grafik,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass

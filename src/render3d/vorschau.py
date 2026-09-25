@@ -9,6 +9,10 @@ die später auf der Strecke fährt.
 Gerendert wird nur, wenn sich etwas ändert — Fahrzeug, Lackierung, Winkel
 oder Größe. Die Werkstatt dreht das Auto auf Knopfdruck, nicht fortlaufend;
 ein Bild je Klick genügt.
+
+Das Bild läuft durch **dieselbe Nachbearbeitung** wie das Rennen (lineares
+HDR, Verdeckung, Bloom, ACES, Farbkorrektur), nur mit Durchsicht und ohne
+Vignette — so sieht das Auto im Menü aus wie auf der Strecke.
 """
 from __future__ import annotations
 
@@ -16,7 +20,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import camera, matrix, schatten, shader
+from . import camera, grafik, matrix, schatten, shader
+from .nachbearbeitung import Nachbearbeitung
 from .rennszene import Lackwerte, Modellspeicher, fahrzeugteile_zeichnen
 
 try:                                             # pragma: no cover - Importpfad
@@ -24,9 +29,11 @@ try:                                             # pragma: no cover - Importpfad
 except ImportError:                              # pragma: no cover
     moderngl = None
 
-#: Kantenglättung der Vorschau. Das Menü zeigt das Auto groß und still — da
-#: fallen Treppen an der Silhouette sofort auf.
-PROBEN = 4
+#: Einstellung der Vorschau, unabhängig von der Grafikstufe: ein Bild je
+#: Klick kostet nichts, und das Menü zeigt das Auto groß und still — da fallen
+#: Treppen an der Silhouette sofort auf.
+VORSCHAU_GRAFIK = grafik.Grafik(stufe="vorschau", aufloesung_skala=1.0, ssao=2,
+                                bloom=True, kantenglaettung="msaa4")
 
 
 class Fahrzeugvorschau:
@@ -47,23 +54,19 @@ class Fahrzeugvorschau:
         shader.setzen(p, "himmel_mips", max(1.0, self.himmel.mips - 1.0))
         shader.setzen(p, "nebel_dichte", 0.0)
         shader.setzen(p, "boden_farbe", (0.08, 0.09, 0.11))
+        self.nachbearbeitung = Nachbearbeitung(ctx)
         self._groesse = None
-        self._fbo = self._fbo_aufloesen = None
+        self._fbo = None
         self._letzter = None
         self._pixel = None
 
     def _puffer(self, groesse) -> None:
         if self._groesse == groesse:
             return
-        for ding in (self._fbo, self._fbo_aufloesen):
-            if ding is not None:
-                ding.release()
-        b, h = groesse
+        if self._fbo is not None:
+            self._fbo.release()
         self._fbo = self.ctx.framebuffer(
-            color_attachments=[self.ctx.renderbuffer((b, h), 4, samples=PROBEN)],
-            depth_attachment=self.ctx.depth_renderbuffer((b, h), samples=PROBEN))
-        self._fbo_aufloesen = self.ctx.framebuffer(
-            color_attachments=[self.ctx.renderbuffer((b, h), 4)])
+            color_attachments=[self.ctx.renderbuffer(groesse, 4)])
         self._groesse = groesse
 
     def bild(self, schluessel: str, lack: Lackwerte | None, gier_grad: float,
@@ -84,7 +87,6 @@ class Fahrzeugvorschau:
             self._fbo.use()
             ctx.scissor = None
             ctx.viewport = (0, 0, *groesse)
-            ctx.clear(0.0, 0.0, 0.0, 0.0, depth=1.0)
 
             laenge = fm.teile.laenge_m if fm.teile else 4.5
             ziel = np.array([0.0, 0.0, 0.55])
@@ -96,6 +98,8 @@ class Fahrzeugvorschau:
             mvp = camera.perspektive(30.0, groesse[0] / groesse[1], 0.1, 100.0) \
                 @ camera.blick(auge, ziel)
 
+            self.nachbearbeitung.beginnen(mvp, auge, VORSCHAU_GRAFIK,
+                                          mit_alpha=True, vignette=0.0)
             p = self.programm
             shader.matrix_setzen(p, "mvp", mvp)
             shader.setzen(p, "kamera_position", tuple(float(w) for w in auge))
@@ -135,8 +139,8 @@ class Fahrzeugvorschau:
             ctx.depth_mask = True
             ctx.disable(moderngl.BLEND)
 
-            ctx.copy_framebuffer(self._fbo_aufloesen, self._fbo)
-            roh = self._fbo_aufloesen.read(components=4, alignment=1)
+            self.nachbearbeitung.abschliessen(1.0)
+            roh = self._fbo.read(components=4, alignment=1)
         finally:
             fbo, viewport, scissor = vorher
             if fbo is not None:
@@ -151,7 +155,8 @@ class Fahrzeugvorschau:
 
     def freigeben(self) -> None:
         self.speicher.freigeben()
-        for ding in (self._fbo, self._fbo_aufloesen, self._leere_tiefe, self.programm):
+        self.nachbearbeitung.freigeben()
+        for ding in (self._fbo, self._leere_tiefe, self.programm):
             if ding is not None:
                 try:
                     ding.release()

@@ -14,6 +14,15 @@ den Punkt herum, auf den die Kamera schaut. 4096² über 150 m ergeben knapp
 4 cm je Texel — genug für scharfe Radschatten unter dem eigenen Auto. Der
 Mittelpunkt wird auf das Texelraster eingerastet; sonst flimmern die
 Schattenkanten, sobald sich die Kamera bewegt.
+
+**Was steht, wird nicht jedes Bild gezeichnet.** Bäume, Felsen, Häuser und
+Gelände bewegen sich nicht; ihr Teil der Karte liegt in einer zweiten,
+ruhenden Karte. Die folgt dem Blickpunkt nur in Sprüngen (``NACHFUEHREN_M``)
+und wird nur dann neu gezeichnet. In jedem Bild wird sie in die eigentliche
+Karte kopiert, und nur die Autos kommen neu dazu. Das spart den größten Teil
+der Schattenkarte — sie war mit hunderten Deko-Objekten ein Viertel der
+Bildzeit, und fast alles davon ist Python, also auf jedem Rechner gleich
+teuer.
 """
 from __future__ import annotations
 
@@ -107,6 +116,26 @@ def schattenkarte_groesse(schatten_px: int) -> int:
     return 1 << int(round(np.log2(n)))
 
 
+#: So weit darf der Blickpunkt wandern, bevor die ruhende Karte neu
+#: gezeichnet wird. Die Karte reicht 75 m um ihre Mitte; hinkt die Mitte 15 m
+#: hinterher, bleiben vorn noch 60 m Schatten.
+NACHFUEHREN_M = 15.0
+
+_KOPIE_VERTEX = """
+#version 330
+in vec2 in_ecke;
+out vec2 uv;
+void main() { uv = in_ecke * 0.5 + 0.5; gl_Position = vec4(in_ecke, 0.0, 1.0); }
+"""
+
+_KOPIE_FRAGMENT = """
+#version 330
+uniform sampler2D quelle;
+in vec2 uv;
+void main() { gl_FragDepth = texture(quelle, uv).r; }
+"""
+
+
 class Schattenkarte:
     """Tiefenkarte der Sonne rund um den Blickpunkt der Kamera."""
 
@@ -115,9 +144,18 @@ class Schattenkarte:
         self.halbe_breite = halbe_breite_m
         self.groesse = 0
         self.textur = self.fbo = None
+        self.statisch_textur = self.statisch_fbo = None
+        #: Ob die ruhende Karte in diesem Bild neu gezeichnet werden muss.
+        self.statisch_neu = True
+        self._mitte = None
+        self._sonne = None
         self.groesse_setzen(groesse)
         self.programm = shader.schattenprogramm(ctx, instanz=False)
         self.programm_instanz = shader.schattenprogramm(ctx, instanz=True)
+        self._kopie = ctx.program(vertex_shader=_KOPIE_VERTEX, fragment_shader=_KOPIE_FRAGMENT)
+        ecken = np.array([[-1, -1], [3, -1], [-1, 3]], dtype="f4")
+        self._kopie_puffer = ctx.buffer(ecken.tobytes())
+        self._kopie_vao = ctx.vertex_array(self._kopie, [(self._kopie_puffer, "2f", "in_ecke")])
         self.licht_mvp = np.eye(4, dtype=np.float32)
 
     def groesse_setzen(self, schatten_px: int) -> None:
@@ -126,7 +164,7 @@ class Schattenkarte:
         groesse = schattenkarte_groesse(schatten_px)
         if groesse == self.groesse:
             return
-        for ding in (self.fbo, self.textur):
+        for ding in (self.fbo, self.textur, self.statisch_fbo, self.statisch_textur):
             if ding is not None:
                 ding.release()
         self.groesse = groesse
@@ -136,12 +174,31 @@ class Schattenkarte:
         self.textur.repeat_x = False
         self.textur.repeat_y = False
         self.fbo = self.ctx.framebuffer(depth_attachment=self.textur)
+        self.statisch_textur = self.ctx.depth_texture((groesse, groesse))
+        self.statisch_textur.compare_func = ""
+        self.statisch_textur.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        self.statisch_fbo = self.ctx.framebuffer(depth_attachment=self.statisch_textur)
+        self._mitte = None
+        self.statisch_neu = True
 
-    def matrix(self, fokus, sonne) -> np.ndarray:
-        """Licht-MVP für einen Blickpunkt, auf das Texelraster eingerastet."""
+    def matrix(self, fokus, sonne, nachfuehren_m: float = NACHFUEHREN_M) -> np.ndarray:
+        """Licht-MVP für einen Blickpunkt, auf das Texelraster eingerastet.
+
+        Solange der Blickpunkt weniger als ``nachfuehren_m`` von der Mitte der
+        ruhenden Karte entfernt ist, bleibt die Matrix, und ``statisch_neu``
+        ist falsch. ``nachfuehren_m=0`` erzwingt eine neue Mitte.
+        """
         sonne = np.asarray(sonne, dtype=np.float64)
-        sonne /= np.linalg.norm(sonne)
+        sonne = sonne / np.linalg.norm(sonne)
         fokus = np.asarray(fokus, dtype=np.float64)
+        if (self._mitte is not None and nachfuehren_m > 0.0
+                and np.allclose(sonne, self._sonne)
+                and float(np.hypot(*(fokus[:2] - self._mitte[:2]))) < nachfuehren_m):
+            self.statisch_neu = False
+            return self.licht_mvp
+        self._mitte = fokus.copy()
+        self._sonne = sonne.copy()
+        self.statisch_neu = True
         oben = (0.0, 0.0, 1.0) if abs(sonne[2]) < 0.99 else (0.0, 1.0, 0.0)
         # Erst die Blickmatrix im Ursprung, dann den Fokus darin einrasten.
         blick0 = camera.blick(sonne * 400.0, (0.0, 0.0, 0.0), oben).astype(np.float64)
@@ -157,14 +214,34 @@ class Schattenkarte:
         self.licht_mvp = (proj @ blick).astype(np.float32)
         return self.licht_mvp
 
+    def statisch_beginnen(self) -> tuple:
+        """Die ruhende Karte zum Zeichnen binden (Deko, Gelände)."""
+        return self._binden(self.statisch_fbo)
+
     def beginnen(self) -> tuple:
+        """Die eigentliche Karte binden, mit dem Inhalt der ruhenden darin.
+
+        Kopiert wird mit einem Durchgang, der die Tiefe schreibt — das
+        Blitten eines reinen Tiefenpuffers tut in moderngl nichts.
+        """
+        vorher = self._binden(self.fbo)
+        ctx = self.ctx
+        ctx.depth_func = "1"
+        self.statisch_textur.use(0)
+        self._kopie["quelle"].value = 0
+        self._kopie_vao.render(moderngl.TRIANGLES)
+        ctx.depth_func = "<"
+        return vorher
+
+    def _binden(self, fbo) -> tuple:
         vorher = (self.ctx.fbo, self.ctx.viewport, self.ctx.scissor)
-        self.fbo.use()
+        fbo.use()
         self.ctx.scissor = None
         self.ctx.viewport = (0, 0, self.groesse, self.groesse)
-        self.fbo.clear(depth=1.0)
+        fbo.clear(depth=1.0)
         self.ctx.enable(moderngl.DEPTH_TEST)
         self.ctx.disable(moderngl.BLEND)
+        self.ctx.depth_mask = True
         for p in (self.programm, self.programm_instanz):
             shader.matrix_setzen(p, "licht_mvp", self.licht_mvp)
         return vorher
@@ -180,7 +257,9 @@ class Schattenkarte:
         self.textur.use(einheit)
 
     def freigeben(self) -> None:
-        for ding in (self.fbo, self.textur, self.programm, self.programm_instanz):
+        for ding in (self.fbo, self.textur, self.statisch_fbo, self.statisch_textur,
+                     self._kopie_vao, self._kopie_puffer, self._kopie,
+                     self.programm, self.programm_instanz):
             try:
                 ding.release()
             except Exception:                        # pragma: no cover - Treiber

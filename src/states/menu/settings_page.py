@@ -30,6 +30,69 @@ PAD_SLOTS = 2
 _INFO_SCROLL_STEP = 60
 
 
+def _grafik_regler() -> list[tuple[str, str, list[tuple[object, str]]]]:
+    """Die Einzelregler der Grafik: ``(feld, beschriftung, [(wert, anzeige), …])``.
+
+    Je Feld aus ``src/render3d/grafik.py`` ein Stepper. Die Werte sind die
+    Rohwerte des Feldes, die Anzeigen übersetzt — zurückgerechnet wird nie
+    aus dem Text (siehe ``_werte``).
+    """
+    aus, an = tr("Aus"), tr("An")
+    return [
+        ("aufloesung_skala", tr("3D-Auflösung"),
+         [(0.5, "50 %"), (0.67, "67 %"), (0.75, "75 %"), (0.85, "85 %"), (1.0, "100 %")]),
+        ("schatten_px", tr("Schatten"),
+         [(0, aus), (1024, "1024"), (2048, "2048"), (4096, "4096"), (8192, "8192")]),
+        ("ssao", tr("Verdeckung (SSAO)"), [(0, aus), (1, tr("Halb")), (2, tr("Voll"))]),
+        ("bloom", tr("Bloom"), [(False, aus), (True, an)]),
+        ("kantenglaettung", tr("Kantenglättung"),
+         [("aus", aus), ("fxaa", "FXAA"), ("msaa4", "MSAA 4×")]),
+        ("deko_dichte", tr("Deko-Dichte"),
+         [(0.3, "30 %"), (0.4, "40 %"), (0.55, "55 %"), (0.7, "70 %"), (0.85, "85 %"), (1.0, "100 %")]),
+        ("sichtweite_m", tr("Sichtweite"),
+         [(v, f"{int(v)} m") for v in (500.0, 700.0, 900.0, 1100.0, 1600.0, 2000.0, 2400.0)]),
+        ("gras", tr("Gras"), [(0, aus), (1, tr("Dünn")), (2, tr("Dicht"))]),
+        ("gelaende_detail", tr("Geländedetail"), [(0, tr("Grob")), (1, tr("Mittel")), (2, tr("Fein"))]),
+        ("strecken_details", tr("Streckendetails"), [(0, aus), (1, tr("Einige")), (2, tr("Alle"))]),
+        ("reifenspuren", tr("Reifenspuren"), [(False, aus), (True, an)]),
+    ]
+
+
+#: Die Stufen in der Reihenfolge des Steppers; "eigen" steht, sobald ein
+#: Einzelwert von der gewählten Stufe abweicht.
+_GRAFIK_STUFEN = ("niedrig", "mittel", "hoch", "ultra", "eigen")
+
+
+def _umbrechen(text: str, groesse: int, breite: int) -> list[str]:
+    """Einen Hinweis in Zeilen, die in *breite* Pixel passen."""
+    schrift = theme.font(groesse)
+    zeilen, zeile = [], ""
+    for wort in text.split(" "):
+        probe = (zeile + " " + wort).strip()
+        if zeile and schrift.size(probe)[0] > breite:
+            zeilen.append(zeile)
+            zeile = wort
+        else:
+            zeile = probe
+    if zeile:
+        zeilen.append(zeile)
+    return zeilen
+
+
+def _grafik_stufen_namen() -> list[str]:
+    return [tr("Niedrig"), tr("Mittel"), tr("Hoch"), tr("Ultra"), tr("Eigen")]
+
+
+def _grafik_stufe_erkennen(werte: dict) -> str:
+    """Welche Stufe genau diese Werte hat, sonst "eigen"."""
+    from src.render3d import grafik
+    for name in grafik.STUFEN_NAMEN:
+        vorgabe = grafik.als_dict(grafik.STUFEN[name])
+        if all(werte.get(k) == v for k, v in vorgabe.items() if k != "stufe"):
+            return name
+    return "eigen"
+
+
 class SettingsPage(Page):
     #: Der Zurück-Knopf steht mit dem Inhalt auf einer Kante (x + 80); der Titel
     #: rückt dafür nach rechts und liest sich als Fortsetzung: „‹ Zurück  TITEL".
@@ -184,7 +247,7 @@ class SettingsPage(Page):
             col.add(s3)
             col.add(s4)
             col.add(s5)
-            self._content_group = FocusGroup([s1, s2, s3, s4, s5])
+            self._content_group = FocusGroup([s1, s2, s3, s4, s5] + self._grafik_bauen())
         elif name == "Audio":
             menu_pct = int(round(self._eff("menu_volume", profile.current().menu_volume) * 10.0))
             menu_pct = max(0, min(10, menu_pct))
@@ -218,6 +281,74 @@ class SettingsPage(Page):
                 col.add(w)
             self._content_group = FocusGroup([s1, s2, s3, s4])
 
+
+    # -- Grafik ------------------------------------------------------------
+    #: Zweite Spalte der Video-Seite: Stufe und je Feld ein Regler.
+    GRAFIK_X, GRAFIK_Y, GRAFIK_ZEILE, GRAFIK_ABSTAND = 1120, 250, 50, 6
+
+    def _grafik_werte(self) -> dict:
+        """Die Grafikwerte, wie sie gerade gelten würden (mit Ungespeichertem)."""
+        from src.render3d import grafik
+        return dict(self._pending.get("grafik") or grafik.als_dict())
+
+    def _grafik_bauen(self) -> list:
+        werte = self._grafik_werte()
+        col = theme.Column(self.GRAFIK_X, self.GRAFIK_Y, gap=self.GRAFIK_ABSTAND)
+        stufe = werte.get("stufe", "hoch")
+        if stufe not in _GRAFIK_STUFEN:
+            stufe = _grafik_stufe_erkennen(werte)
+        self._werte["grafik_stufe"] = list(_GRAFIK_STUFEN)
+        widgets = [Stepper(pygame.Rect(0, 0, 500, self.GRAFIK_ZEILE), tr("Grafikstufe"),
+                           _grafik_stufen_namen(), _GRAFIK_STUFEN.index(stufe),
+                           action="grafik_stufe")]
+        for feld, beschriftung, optionen in _grafik_regler():
+            wert = werte.get(feld)
+            if wert is not None and all(w != wert for w, _a in optionen):
+                # Ein Wert aus einem älteren Profil oder einer Stufe, den der
+                # Regler nicht kennt: einreihen statt verlieren.
+                optionen = sorted(optionen + [(wert, str(wert))],
+                                  key=lambda o: (isinstance(o[0], str), o[0]))
+            self._werte["grafik_" + feld] = [w for w, _a in optionen]
+            index = next((i for i, (w, _a) in enumerate(optionen) if w == wert), 0)
+            widgets.append(Stepper(pygame.Rect(0, 0, 500, self.GRAFIK_ZEILE), beschriftung,
+                                   [a for _w, a in optionen], index, action="grafik_" + feld))
+        for w in widgets:
+            col.add(w)
+        return widgets
+
+    def _stepper(self, aktion: str):
+        widgets = self._content_group.widgets if self._content_group else []
+        return next((w for w in widgets if getattr(w, "action", None) == aktion), None)
+
+    def _grafik_aendern(self, aktion: str) -> None:
+        """Ein Grafikregler wurde bewegt: Werte puffern, Stufe nachziehen."""
+        from src.render3d import grafik
+        w = self._stepper(aktion)
+        roh = self._werte.get(aktion) or []
+        if w is None or not roh:
+            return
+        wert = roh[max(0, min(w.index, len(roh) - 1))]
+        werte = self._grafik_werte()
+        if aktion == "grafik_stufe":
+            if wert == "eigen":
+                werte["stufe"] = "eigen"
+            else:
+                werte = grafik.als_dict(grafik.STUFEN[wert])
+            # Alle Einzelregler auf die Werte der Stufe stellen, ohne die
+            # Seite neu zu bauen — sonst springt der Fokus an den Anfang.
+            for feld, _b, _o in _grafik_regler():
+                r = self._stepper("grafik_" + feld)
+                liste = self._werte.get("grafik_" + feld) or []
+                if r is not None and werte.get(feld) in liste:
+                    r.index = liste.index(werte[feld])
+        else:
+            werte[aktion.removeprefix("grafik_")] = wert
+            werte["stufe"] = _grafik_stufe_erkennen(werte)
+            r = self._stepper("grafik_stufe")
+            if r is not None:
+                r.index = _GRAFIK_STUFEN.index(werte["stufe"])
+        self._pending["grafik"] = werte
+        self.msg = ""
 
     def _rohwert(self, aktion: str, widget_index: int):
         """Der Wert hinter der Stellung eines Steppers — nie sein Anzeigetext.
@@ -752,6 +883,8 @@ class SettingsPage(Page):
         elif action == "toggle_vsync":
             self._pending["vsync"] = self._rohwert(action, 3)
             self.msg = ""
+        elif isinstance(action, str) and action.startswith("grafik_"):
+            self._grafik_aendern(action)
 
     def _apply_pending(self) -> bool:
         """Persist and apply all buffered changes. Returns True on success."""
@@ -779,6 +912,12 @@ class SettingsPage(Page):
         if "resolution" in p: cur.resolution = p["resolution"]
         if "fullscreen" in p: cur.fullscreen = p["fullscreen"]
         if "vsync" in p: cur.vsync = p["vsync"]
+        if "grafik" in p:
+            # Wirkt sofort: Schatten, Nachbearbeitung und Reifenspuren lesen
+            # die Werte in jedem Bild; was beim Laden einer Strecke entsteht
+            # (Gelände, Gras, Deko), ab dem nächsten Rennen.
+            from src.render3d import grafik
+            cur.grafik = grafik.als_dict(grafik.aus_dict(p["grafik"]))
         cur.save()
         if video_changed:
             from src.core import display
@@ -860,10 +999,15 @@ class SettingsPage(Page):
             theme.text(screen, tr("Video-Einstellungen"), theme.BODY, theme.TEXT_DIM, (560, 190))
             if self._content_group:
                 self._content_group.draw(screen, focused=self._focus_content)
-            theme.text(screen, tr("Änderungen werden erst mit SPEICHERN übernommen."),
-                       theme.HINT, theme.TEXT_FAINT, (560, 620))
-            theme.text(screen, tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
-                       theme.HINT, theme.TEXT_FAINT, (560, 650))
+            theme.text(screen, tr("Grafik"), theme.BODY, theme.TEXT_DIM, (self.GRAFIK_X, 190))
+            y = 630
+            for hinweis in (tr("Änderungen werden erst mit SPEICHERN übernommen."),
+                            tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
+                            tr("Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.")):
+                for zeile in _umbrechen(hinweis, theme.HINT, 500):
+                    theme.text(screen, zeile, theme.HINT, theme.TEXT_FAINT, (560, y))
+                    y += 28
+                y += 8
         elif name == "Audio":
             theme.text(screen, tr("Audio-Einstellungen"), theme.BODY, theme.TEXT_DIM, (560, 190))
             self._content_group.draw(screen, focused=self._focus_content)

@@ -46,7 +46,12 @@ def main() -> int:
                     help="Meter entlang der Strecke vor dem Startpunkt")
     ap.add_argument("--drehen", type=float, default=0.0,
                     help="Kamera um das Auto drehen, Grad")
+    ap.add_argument("--stufe", default="hoch",
+                    help="Grafikstufe: niedrig, mittel, hoch, ultra")
     args = ap.parse_args()
+
+    from src.render3d import grafik
+    grafik.stufe_setzen(args.stufe)
 
     import moderngl
     ctx = moderngl.create_standalone_context()
@@ -91,7 +96,7 @@ def main() -> int:
     from PIL import Image
     roh = fbo.read(components=3)
     Image.frombytes("RGB", (args.breite, args.hoehe), roh).transpose(Image.FLIP_TOP_BOTTOM).save(args.ziel)
-    print(f"{args.strecke}: {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
+    print(f"{args.strecke} ({args.stufe}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
           f"Bild {np.median(zeiten[1:]) * 1000:.1f} ms (Median)")
     szene.freigeben()
     return 0

@@ -143,7 +143,35 @@ def kontext():
     except Exception as fehler:                      # pragma: no cover - Treiber
         print(f"[display] Kein OpenGL-Kontext: {fehler}")
         _kontext = None
+    if _kontext is not None:
+        grafik_einrichten(_kontext)
     return _kontext
+
+
+def grafik_einrichten(ctx) -> str:
+    """Die Grafikeinstellungen aus dem Profil anwenden; liefert die Stufe.
+
+    Beim **ersten Start** steht im Profil noch nichts. Dann entscheidet der
+    Name der Grafikkarte (``GL_RENDERER``): eingebaute Grafik und
+    Einsteigerkarten bekommen Niedrig, bekannte Mittelklasse Mittel, alles
+    andere Hoch. Die Wahl wird gespeichert, damit sie im Menü steht und beim
+    nächsten Start nicht neu geraten wird.
+    """
+    from src.core import profile
+    from src.render3d import grafik
+    p = profile.current()
+    if isinstance(p.grafik, dict) and p.grafik:
+        return grafik.aus_dict(p.grafik).stufe
+    try:
+        name = str(ctx.info.get("GL_RENDERER", ""))
+    except Exception:                                # pragma: no cover - Treiber
+        name = ""
+    stufe = grafik.stufe_fuer_grafikkarte(name)
+    grafik.stufe_setzen(stufe)
+    print(f"[display] Grafikkarte '{name}' - Grafikstufe {stufe}")
+    p.grafik = grafik.als_dict()
+    p.save()
+    return stufe
 
 
 def _ueberlagerung():
