@@ -33,12 +33,12 @@
   20
  ],
  "koerper_u": [
-  0.01,
+  0.004,
   1.0
  ],
  "breite": [
   [
-   0.01,
+   0.004,
    0.35
   ],
   [
@@ -154,7 +154,7 @@
  "reifen_v": 0.88,
  "deck": [
   [
-   0.01,
+   0.004,
    0.84
   ],
   [
@@ -224,7 +224,7 @@
  ],
  "unten": [
   [
-   0.01,
+   0.004,
    0.36
   ],
   [
@@ -254,7 +254,7 @@
  ],
  "haube": [
   [
-   0.01,
+   0.004,
    0.0
   ],
   [
@@ -535,51 +535,152 @@
    "n_min": 0.3,
    "punkte": [
     [
-     0.07,
-     0.34
-    ],
-    [
-     0.085,
+     0.072,
      0.37
     ],
     [
+     0.085,
+     0.39
+    ],
+    [
      0.315,
+     0.4
+    ],
+    [
+     0.331,
      0.37
     ],
     [
-     0.335,
-     0.33
-    ],
-    [
-     0.335,
-     -0.33
+     0.331,
+     -0.37
     ],
     [
      0.315,
-     -0.37
+     -0.4
     ],
     [
      0.085,
-     -0.37
+     -0.39
     ],
     [
-     0.07,
-     -0.34
+     0.072,
+     -0.37
     ]
    ],
    "stufen": [
     {
      "dicke": 0.008,
-     "tiefe": -0.03,
+     "tiefe": -0.02,
+     "rand": "kunststoff"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "mat": "glas",
+   "n_min": 0.3,
+   "auf": [
+    "carbon"
+   ],
+   "punkte": [
+    [
+     0.212,
+     0.24
+    ],
+    [
+     0.222,
+     0.27
+    ],
+    [
+     0.31,
+     0.27
+    ],
+    [
+     0.321,
+     0.24
+    ],
+    [
+     0.321,
+     -0.24
+    ],
+    [
+     0.31,
+     -0.27
+    ],
+    [
+     0.222,
+     -0.27
+    ],
+    [
+     0.212,
+     -0.24
+    ]
+   ],
+   "stufen": [
+    {
+     "dicke": 0.01,
+     "tiefe": -0.012,
+     "rand": "kunststoff"
+    }
+   ]
+  },
+  {
+   "ansicht": "oben",
+   "mat": "carbon",
+   "n_min": 0.3,
+   "auf": [
+    "carbon"
+   ],
+   "punkte": [
+    [
+     0.09,
+     0.3
+    ],
+    [
+     0.1,
+     0.33
+    ],
+    [
+     0.19,
+     0.345
+    ],
+    [
+     0.2,
+     0.31
+    ],
+    [
+     0.2,
+     -0.31
+    ],
+    [
+     0.19,
+     -0.345
+    ],
+    [
+     0.1,
+     -0.33
+    ],
+    [
+     0.09,
+     -0.3
+    ]
+   ],
+   "stufen": [
+    {
+     "dicke": 0.006,
+     "tiefe": -0.035,
      "rand": "kunststoff"
     }
    ],
-   "lamellen": {
-    "anzahl": 6,
+   "gitter": {
+    "art": "lamellen",
     "richtung": "b",
-    "dicke": 0.012,
-    "hoehe": 0.035,
-    "mat": "carbon"
+    "masche_m": 0.04,
+    "steg_m": 0.008,
+    "hoehe_m": 0.024,
+    "winkel_grad": 30,
+    "mat": "carbon",
+    "rand_m": 0.01
    }
   },
   {
@@ -622,7 +723,17 @@
      "tiefe": -0.05,
      "rand": "zierteil"
     }
-   ]
+   ],
+   "gitter": {
+    "art": "lamellen",
+    "richtung": "b",
+    "masche_m": 0.03,
+    "steg_m": 0.007,
+    "hoehe_m": 0.028,
+    "winkel_grad": 35,
+    "mat": "carbon",
+    "rand_m": 0.006
+   }
   },
   {
    "ansicht": "seite",
@@ -652,7 +763,14 @@
      "tiefe": -0.05,
      "rand": "zierteil"
     }
-   ]
+   ],
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.032,
+    "steg_m": 0.005,
+    "hoehe_m": 0.014,
+    "rand_m": 0.012
+   }
   },
   {
    "ansicht": "oben",
@@ -694,7 +812,17 @@
      "tiefe": -0.04,
      "rand": "kunststoff"
     }
-   ]
+   ],
+   "gitter": {
+    "art": "lamellen",
+    "richtung": "b",
+    "masche_m": 0.022,
+    "steg_m": 0.005,
+    "hoehe_m": 0.018,
+    "winkel_grad": 25,
+    "mat": "carbon",
+    "rand_m": 0.006
+   }
   },
   {
    "ansicht": "oben",
@@ -739,45 +867,30 @@
      0.59
     ]
    ],
-   "stufen": [
-    {
-     "dicke": 0.005,
-     "tiefe": -0.015,
-     "rand": "zierteil"
+   "leuchte": {
+    "tiefe_m": 0.022,
+    "rand_m": 0.004,
+    "abdeckung": "klarglas",
+    "led": [
+     {
+      "verlauf": "aussen",
+      "abstand_m": 0.005,
+      "breite_m": 0.01,
+      "hoehe_m": 0.005
+     },
+     {
+      "verlauf": "vorn",
+      "abstand_m": 0.005,
+      "breite_m": 0.006
+     }
+    ],
+    "projektoren": {
+     "anzahl": 2,
+     "radius_m": 0.02,
+     "lage": 0.5,
+     "rand_anteil": 0.3
     }
-   ]
-  },
-  {
-   "ansicht": "oben",
-   "linie": 0.014,
-   "mat": "licht_vorn",
-   "spiegeln": true,
-   "z": [
-    0.3,
-    1.0
-   ],
-   "n_min": -0.6,
-   "auf": [
-    "kunststoff"
-   ],
-   "punkte": [
-    [
-     0.852,
-     0.772
-    ],
-    [
-     0.905,
-     0.638
-    ],
-    [
-     0.936,
-     0.505
-    ],
-    [
-     0.957,
-     0.35
-    ]
-   ]
+   }
   },
   {
    "ansicht": "vorn",
@@ -807,24 +920,17 @@
      "rand": "zierteil"
     }
    ],
-   "lamellen": {
-    "anzahl": 1,
-    "richtung": "a",
-    "dicke": 0.01,
-    "hoehe": 0.03,
-    "mat": "zierteil"
-   },
    "und": [
     {
      "ansicht": "oben",
      "punkte": [
       [
        0.9,
-       0.0
+       -1.3
       ],
       [
        1.2,
-       0.0
+       -1.3
       ],
       [
        1.2,
@@ -836,7 +942,14 @@
       ]
      ]
     }
-   ]
+   ],
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.03,
+    "steg_m": 0.006,
+    "hoehe_m": 0.016,
+    "rand_m": 0.01
+   }
   },
   {
    "ansicht": "vorn",
@@ -889,7 +1002,14 @@
       ]
      ]
     }
-   ]
+   ],
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.03,
+    "steg_m": 0.006,
+    "hoehe_m": 0.016,
+    "rand_m": 0.01
+   }
   },
   {
    "ansicht": "oben",
@@ -924,7 +1044,7 @@
   },
   {
    "ansicht": "hinten",
-   "mat": "licht_hinten",
+   "mat": "zierteil",
    "spiegeln": true,
    "n_min": -0.7,
    "punkte": [
@@ -944,13 +1064,6 @@
      0.52,
      0.81
     ]
-   ],
-   "stufen": [
-    {
-     "dicke": 0.005,
-     "tiefe": -0.012,
-     "rand": "kunststoff"
-    }
    ],
    "und": [
     {
@@ -974,7 +1087,28 @@
       ]
      ]
     }
-   ]
+   ],
+   "leuchte": {
+    "tiefe_m": 0.02,
+    "rand_m": 0.005,
+    "rand_mat": "kunststoff",
+    "abdeckung": "streuscheibe",
+    "led": [
+     {
+      "verlauf": "rand",
+      "abstand_m": 0.008,
+      "mat": "licht_hinten",
+      "breite_m": 0.008
+     },
+     {
+      "quer": [
+       0.5
+      ],
+      "mat": "licht_hinten",
+      "breite_m": 0.006
+     }
+    ]
+   }
   },
   {
    "ansicht": "hinten",
@@ -1006,13 +1140,6 @@
      "rand": "zierteil"
     }
    ],
-   "lamellen": {
-    "anzahl": 2,
-    "richtung": "a",
-    "dicke": 0.01,
-    "hoehe": 0.03,
-    "mat": "zierteil"
-   },
    "und": [
     {
      "ansicht": "oben",
@@ -1035,7 +1162,16 @@
       ]
      ]
     }
-   ]
+   ],
+   "gitter": {
+    "art": "lamellen",
+    "masche_m": 0.045,
+    "steg_m": 0.008,
+    "hoehe_m": 0.022,
+    "winkel_grad": -20,
+    "mat": "zierteil",
+    "rand_m": 0.01
+   }
   },
   {
    "ansicht": "hinten",
@@ -1064,11 +1200,11 @@
      "punkte": [
       [
        -0.2,
-       0.0
+       -1.3
       ],
       [
        0.08,
-       0.0
+       -1.3
       ],
       [
        0.08,
@@ -1111,24 +1247,17 @@
      "rand": "zierteil"
     }
    ],
-   "lamellen": {
-    "anzahl": 2,
-    "richtung": "a",
-    "dicke": 0.01,
-    "hoehe": 0.03,
-    "mat": "zierteil"
-   },
    "und": [
     {
      "ansicht": "oben",
      "punkte": [
       [
        -0.2,
-       0.0
+       -1.3
       ],
       [
        0.06,
-       0.0
+       -1.3
       ],
       [
        0.06,
@@ -1140,7 +1269,14 @@
       ]
      ]
     }
-   ]
+   ],
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.028,
+    "steg_m": 0.005,
+    "hoehe_m": 0.012,
+    "rand_m": 0.008
+   }
   },
   {
    "ansicht": "seite",
@@ -1195,5 +1331,139 @@
     }
    ]
   }
- ]
+ ],
+ "teile": {
+  "reifen": {
+   "profil": "sport",
+   "bloecke": 22
+  },
+  "felge": {
+   "radmuttern": 5,
+   "nabenkappe": "emblem"
+  },
+  "bremse": {
+   "art": "geschlitzt"
+  },
+  "spiegel": {
+   "art": "stiel",
+   "kappe_mat": "lack",
+   "fuss_mat": "carbon",
+   "schlank": 0.95
+  },
+  "diffusor": {
+   "finnen": 6,
+   "laenge_m": 0.5,
+   "breite_v": 0.7,
+   "mat": "carbon"
+  },
+  "auspuff": {
+   "art": "rund",
+   "blende": true
+  },
+  "innenraum": {
+   "sitz": "schale",
+   "akzent_mat": "carbon"
+  },
+  "kennzeichen": {
+   "text": "CP 208"
+  },
+  "emblem": {
+   "groesse_m": 0.06,
+   "orte": [
+    {
+     "ansicht": "oben",
+     "u": 0.975
+    },
+    {
+     "ansicht": "oben",
+     "u": 0.728,
+     "v": 0.8
+    },
+    {
+     "ansicht": "oben",
+     "u": 0.728,
+     "v": -0.8
+    }
+   ]
+  },
+  "fugen": [
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.392,
+      0.5
+     ],
+     [
+      0.386,
+      0.25
+     ],
+     [
+      0.385,
+      0.0
+     ],
+     [
+      0.386,
+      -0.25
+     ],
+     [
+      0.392,
+      -0.5
+     ]
+    ],
+    "n_min": 0.3
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.7375,
+      0.679
+     ],
+     [
+      0.84,
+      0.635
+     ],
+     [
+      0.892,
+      0.6
+     ]
+    ],
+    "spiegeln": true,
+    "n_min": 0.3
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.912,
+      0.4
+     ],
+     [
+      0.927,
+      0.19
+     ],
+     [
+      0.937,
+      0.0
+     ]
+    ],
+    "symmetrisch": true,
+    "n_min": 0.3
+   },
+   {
+    "ansicht": "seite",
+    "punkte": [
+     [
+      0.455,
+      0.37
+     ],
+     [
+      0.44,
+      0.84
+     ]
+    ]
+   }
+  ]
+ }
 }
