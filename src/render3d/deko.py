@@ -72,7 +72,12 @@ class _Stufe:
     materialien: list = field(default_factory=list)
     puffer: list = field(default_factory=list)
     instanzen: object = None
+    #: Eigener Instanzpuffer für die Schattenkarte: so bleibt die Auswahl
+    #: beider Durchgänge stehen, und unverändert wird nichts neu geschrieben.
+    instanzen_schatten: object = None
     kapazitaet: int = 0
+    #: Zuletzt geschriebene Auswahl je Durchgang (Maske) und ihre Anzahl.
+    zuletzt: dict = field(default_factory=dict)
 
     def freigeben(self) -> None:
         for vao, vao_s, _m in self.stuecke:
@@ -84,16 +89,19 @@ class _Stufe:
                     t.release()
         for p in self.puffer:
             p.release()
-        if self.instanzen is not None:
-            self.instanzen.release()
+        for b in (self.instanzen, self.instanzen_schatten):
+            if b is not None:
+                b.release()
 
 
 def _stufe_hochladen(ctx, programm, programm_schatten, daten: mesh.Modelldaten,
                      kapazitaet: int) -> _Stufe:
     stufe = _Stufe(kapazitaet=max(1, kapazitaet))
     stufe.instanzen = ctx.buffer(reserve=stufe.kapazitaet * 64, dynamic=True)
+    stufe.instanzen_schatten = ctx.buffer(reserve=stufe.kapazitaet * 64, dynamic=True)
     stufe.materialien = mesh.materialien_hochladen(ctx, daten.materialien)
     inst = (stufe.instanzen, "4f 4f 4f 4f/i", "in_inst0", "in_inst1", "in_inst2", "in_inst3")
+    inst_s = (stufe.instanzen_schatten, "4f 4f 4f 4f/i", "in_inst0", "in_inst1", "in_inst2", "in_inst3")
     for teil in daten.teile:
         for s in teil.stuecke:
             # Teile mit Versatz in die Punkte einrechnen: Instanzen kennen
@@ -107,7 +115,7 @@ def _stufe_hochladen(ctx, programm, programm_schatten, daten: mesh.Modelldaten,
             vao = ctx.vertex_array(programm, [(vp, "3f", "in_position"), (vn, "3f", "in_normale"),
                                               (vu, "2f", "in_uv"), inst], ib)
             vao_s = ctx.vertex_array(programm_schatten, [(vp, "3f", "in_position"),
-                                                         (vu, "2f", "in_uv"), inst], ib)
+                                                         (vu, "2f", "in_uv"), inst_s], ib)
             stufe.stuecke.append((vao, vao_s, s.material))
     return stufe
 
@@ -124,6 +132,8 @@ class _Dekomodell:
     pos: np.ndarray
     matrizen: np.ndarray
     radius: np.ndarray
+    #: Vorab gerechnet: (k, 4) mit w = 1 für den Sichttest.
+    pos4: np.ndarray = None
 
 
 def material_setzen(p, hm: mesh.HochgeladenesMaterial) -> None:
@@ -192,7 +202,8 @@ class Dekozeichner:
             max_abstand=float(eintrag.get("max_abstand_m", 1e9)),
             schatten=bool(eintrag.get("schatten", True)),
             kulisse=name in self._kulisse or not eintrag.get("schatten", True),
-            pos=pos, matrizen=instanzmatrizen(pos, gier, skala), radius=radius))
+            pos=pos, matrizen=instanzmatrizen(pos, gier, skala), radius=radius,
+            pos4=np.hstack([pos, np.ones((len(pos), 1), np.float32)])))
 
     def alles_laden(self) -> None:
         for _ in self.schritte():
@@ -200,48 +211,109 @@ class Dekozeichner:
 
     # -- Auswahl --------------------------------------------------------
     @staticmethod
-    def _sichtbar(mvp: np.ndarray, pos: np.ndarray, radius: np.ndarray) -> np.ndarray:
-        h = np.hstack([pos, np.ones((len(pos), 1), np.float32)]) @ np.asarray(mvp, np.float32).T
+    def _sichtbar(mvp: np.ndarray, pos: np.ndarray, radius: np.ndarray,
+                  pos4: np.ndarray | None = None) -> np.ndarray:
+        if pos4 is None:
+            pos4 = np.hstack([pos, np.ones((len(pos), 1), np.float32)])
+        h = pos4 @ np.asarray(mvp, np.float32).T
         # Grob, aber sicher: die Kugel um das Objekt, im Clipraum großzügig.
         r = radius * 2.0
         return (h[:, 3] > -r) & (np.abs(h[:, 0]) < h[:, 3] + r) & (np.abs(h[:, 1]) < h[:, 3] + r)
 
-    def _schreiben(self, stufe: _Stufe, matrizen: np.ndarray) -> int:
+    def _schreiben(self, stufe: _Stufe, matrizen: np.ndarray, durchgang: str = "farbe",
+                   maske: np.ndarray | None = None) -> int:
+        """Instanzen hochladen — nur, wenn sich die Auswahl geändert hat.
+
+        Mit ``maske`` sind ``matrizen`` alle Exemplare; ausgewählt wird erst,
+        wenn sich die Maske gegenüber dem letzten Bild geändert hat.
+
+        Die Kamera wandert, aber welche Bäume sichtbar sind, ändert sich nur
+        alle paar Bilder. Unverändert bleibt der Puffer stehen.
+        """
+        puffer = stufe.instanzen_schatten if durchgang == "schatten" else stufe.instanzen
+        if maske is not None:
+            vorher = stufe.zuletzt.get(durchgang)
+            if vorher is not None and vorher[0].shape == maske.shape and np.array_equal(vorher[0], maske):
+                return vorher[1]
+            matrizen = matrizen[maske]
         k = len(matrizen)
         if k == 0:
             return 0
-        stufe.instanzen.orphan(stufe.kapazitaet * 64)
-        stufe.instanzen.write(matrizen[: stufe.kapazitaet].tobytes())
-        return min(k, stufe.kapazitaet)
+        puffer.orphan(stufe.kapazitaet * 64)
+        puffer.write(matrizen[: stufe.kapazitaet].tobytes())
+        anzahl = min(k, stufe.kapazitaet)
+        if maske is not None:
+            stufe.zuletzt[durchgang] = (maske.copy(), anzahl)
+        return anzahl
+
+    def _buendeln(self) -> None:
+        """Alle Exemplare aller Modelle in einem Feld — einmal nach dem Laden.
+
+        Je Bild wird dann **einmal** für alle Exemplare gerechnet (Abstand,
+        Sichtkegel) statt je Modell ein halbes Dutzend numpy-Aufrufe; bei
+        zwanzig Modellen war das mehr als eine Millisekunde CPU je Bild.
+        """
+        if getattr(self, "_buendel_n", -1) == len(self.modelle):
+            return
+        self._buendel_n = len(self.modelle)
+        if not self.modelle:
+            self._b_pos4 = np.zeros((0, 4), np.float32)
+            return
+        self._b_pos4 = np.vstack([m.pos4 for m in self.modelle]).astype(np.float32)
+        self._b_xy = np.ascontiguousarray(self._b_pos4[:, :2])
+        self._b_radius = np.concatenate([m.radius for m in self.modelle]).astype(np.float32)
+        grenzen = []
+        self._b_bereich = []
+        a = 0
+        for m in self.modelle:
+            b = a + len(m.pos)
+            self._b_bereich.append((a, b))
+            grenzen.append(np.full(b - a, np.inf if m.kulisse else m.max_abstand, np.float32))
+            a = b
+        self._b_max = np.concatenate(grenzen)
+        self._b_kulisse = np.isinf(self._b_max)
+        self._b_schatten_r2 = (SCHATTEN_RADIUS_M + self._b_radius) ** 2
+        self._b_schatten = np.concatenate([np.full(len(m.pos), m.schatten) for m in self.modelle])
 
     def zeichnen(self, mvp, kamera_position, durchgang: str = "farbe",
                  fokus=None) -> None:
         """``durchgang``: ``"farbe"`` für das Bild, ``"schatten"`` für die Schattenkarte."""
-        auge = np.asarray(kamera_position, dtype=np.float32)
-        for m in self.modelle:
-            d = np.linalg.norm(m.pos[:, :2] - auge[:2], axis=1)
-            if durchgang == "schatten":
-                if not m.schatten:
-                    continue
-                f = np.asarray(fokus if fokus is not None else auge, dtype=np.float32)
-                nah = np.linalg.norm(m.pos[:, :2] - f[:2], axis=1) < SCHATTEN_RADIUS_M + m.radius
-                auswahl = nah
-            else:
-                auswahl = self._sichtbar(mvp, m.pos, m.radius)
-                if not m.kulisse:
-                    sicht = float(getattr(grafik.aktuell(), "sichtweite_m", SICHTWEITE_M))
-                    auswahl &= d < min(sicht, m.max_abstand)
+        self._buendeln()
+        if len(self._b_pos4) == 0:
+            return
+        auge = np.asarray(kamera_position, dtype=np.float32)[:2]
+        sicht = float(getattr(grafik.aktuell(), "sichtweite_m", SICHTWEITE_M))
+        d2_auge = ((self._b_xy - auge) ** 2).sum(axis=1)
+        if durchgang == "schatten":
+            f = np.asarray(fokus if fokus is not None else auge, dtype=np.float32)[:2]
+            alle = self._b_schatten & (((self._b_xy - f) ** 2).sum(axis=1) < self._b_schatten_r2)
+        else:
+            grenze = np.minimum(self._b_max, sicht)
+            alle = self._b_kulisse | (d2_auge < grenze * grenze)
+            kandidaten = np.flatnonzero(alle)
+            if len(kandidaten):
+                alle[kandidaten] = self._sichtbar(mvp, None, self._b_radius[kandidaten],
+                                                  self._b_pos4[kandidaten])
+        if not alle.any():
+            return
+        for m, (a, b) in zip(self.modelle, self._b_bereich):
+            auswahl = alle[a:b]
             if not auswahl.any():
+                for stufe in m.stufen:
+                    stufe.zuletzt.pop(durchgang, None)
                 continue
             if len(m.stufen) > 1:
-                gruppen = ((m.stufen[0], auswahl & (d < m.lod_abstand)),
-                           (m.stufen[1], auswahl & (d >= m.lod_abstand)))
+                nah = d2_auge[a:b] < m.lod_abstand * m.lod_abstand
+                gruppen = ((m.stufen[0], auswahl & nah), (m.stufen[1], auswahl & ~nah))
             else:
                 gruppen = ((m.stufen[0], auswahl),)
             if durchgang != "schatten":
                 shader.setzen(self.programm, "nebel_faktor", 0.45 if m.kulisse else 1.0)
             for stufe, maske in gruppen:
-                anzahl = self._schreiben(stufe, m.matrizen[maske])
+                if not maske.any():
+                    stufe.zuletzt.pop(durchgang, None)
+                    continue
+                anzahl = self._schreiben(stufe, m.matrizen, durchgang, maske)
                 if anzahl == 0:
                     continue
                 for vao, vao_s, mi in stufe.stuecke:
