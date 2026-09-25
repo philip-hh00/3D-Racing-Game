@@ -958,8 +958,22 @@ def boxengebaeude(garagen: int = 8, breite_garage: float = 6.0, tiefe: float = 1
     for x in (-laenge / 2 + 0.3, laenge / 2 - 0.3):
         teile.append(kasten("gelaender", (x, 0, dach_h + 1.4), (0.06, tiefe - 0.6, 0.06), stahl))
     # Vorplatz aus Beton vor den Garagen — die Boxengasse.
-    vorplatz = kasten("vorplatz", (0, front + 4.0, 0.03), (laenge + 4.0, 8.0, 0.06), beton)
-    uv_kasten(vorplatz, 3.0)
+    # Ein Bild über die ganze Fläche (texturen_erzeugen.boxengasse): Linien,
+    # Boxenfelder und Ölflecken sitzen dort, wo die Garagen sind.
+    gasse = tex_mat("boxengasse", ERZEUGT / "boxengasse.jpg", ERZEUGT / "boxengasse_mr.png")
+    vb, vt = laenge + 4.0, 8.0
+    vorplatz = kasten("vorplatz", (0, front + vt / 2, 0.035), (vb, vt, 0.07), gasse)
+    me = vorplatz.data
+    me.uv_layers.new(name="UVMap")
+    for poly in me.polygons:
+        for li in poly.loop_indices:
+            co = me.vertices[me.loops[li].vertex_index].co
+            u = (co.x + vb / 2) / vb
+            v = (co.y - front) / vt
+            if poly.normal.z < 0.6:
+                # Seiten: nur ein schmaler Streifen am Rand des Bildes.
+                v = min(max(v, 0.002), 0.998)
+            me.uv_layers[0].data[li].uv = (u, v)
     teile.append(vorplatz)
     # Drei Hütchen vor der ersten Box.
     for k in range(3):
@@ -1060,25 +1074,31 @@ def flaggenmasten(anzahl: int = 3, abstand: float = 3.0, hoehe: float = 8.0):
         teile.append(kasten("fuss", (x, 0, 0.1), (0.5, 0.5, 0.2), beton))
         teile.append(zylinder("knauf", (x, 0, hoehe + 0.05), 0.08, 0.08, 0.1, stahl, 8))
         mat = tex_mat(f"flagge_{k % 4}", ERZEUGT / f"flagge_{k % 4}.jpg", rauheit=0.8)
-        # Flagge weht nach +X, leicht gewellt; zweiseitig durch die
-        # Normalenumkehr im Shader.
+        # Flagge weht nach +X, leicht gewellt. Zwei Lagen, 4 cm auseinander:
+        # vorn (+Y) mit gespiegeltem u — von dort läuft +X nach links —,
+        # hinten mit dem geraden. So liest sich die Marke von beiden Seiten,
+        # und der Tiefentest trennt die Lagen sauber.
         bm = bmesh.new()
         uvl = bm.loops.layers.uv.verify()
         spalten = 8
         fl_b, fl_h = 2.4, 1.5
         oben = hoehe - 0.15
-        reihe = []
-        for s in range(spalten + 1):
-            u = s / spalten
-            welle = math.sin(u * math.pi * 2.2 + k) * 0.18 * u
-            px = x + 0.08 + u * fl_b
-            reihe.append((bm.verts.new((px, welle, oben - fl_h - 0.1 * u)), bm.verts.new((px, welle, oben)), u))
-        for s in range(spalten):
-            a0, a1, ua = reihe[s]
-            b0, b1, ub = reihe[s + 1]
-            f = bm.faces.new((a0, b0, b1, a1))
-            for l, w in zip(f.loops, ((ua, 0), (ub, 0), (ub, 1), (ua, 1))):
-                l[uvl].uv = w
+        for lage, spiegeln in ((0.02, True), (-0.02, False)):
+            reihe = []
+            for s in range(spalten + 1):
+                u = s / spalten
+                welle = math.sin(u * math.pi * 2.2 + k) * 0.18 * u + lage
+                px = x + 0.08 + u * fl_b
+                reihe.append((bm.verts.new((px, welle, oben - fl_h - 0.1 * u)),
+                              bm.verts.new((px, welle, oben)), 1.0 - u if spiegeln else u))
+            for s in range(spalten):
+                a0, a1, ua = reihe[s]
+                b0, b1, ub = reihe[s + 1]
+                ecken = (a0, b0, b1, a1) if spiegeln else (a1, b1, b0, a0)
+                uvs = ((ua, 0), (ub, 0), (ub, 1), (ua, 1)) if spiegeln else ((ua, 1), (ub, 1), (ub, 0), (ua, 0))
+                f = bm.faces.new(ecken)
+                for l, w in zip(f.loops, uvs):
+                    l[uvl].uv = w
         fl = g.objekt_aus(bm, "flagge", [mat])
         for p in fl.data.polygons:
             p.use_smooth = True
@@ -1119,6 +1139,8 @@ def kameraturm(hoehe: float = 6.0):
     for x in (-s - 0.3, s + 0.3):
         for y in (-s - 0.3, s + 0.3):
             teile.append(kasten("gel_pfosten", (x, y, hoehe + 0.55), (0.05, 0.05, 1.0), gerust))
+    # Rücken hinter dem Schild: von hinten keine Spiegelschrift.
+    teile.append(kasten("tv_ruecken", (0, s + 0.27, hoehe - 0.45), (1.04, 0.06, 0.54), schwarz))
     teile.append(tafel("tv", [(0.5, s + 0.31, hoehe - 0.7), (-0.5, s + 0.31, hoehe - 0.7),
                               (-0.5, s + 0.31, hoehe - 0.2), (0.5, s + 0.31, hoehe - 0.2)], schild,
                        uv=((0, 0), (1, 0), (1, 1), (0, 1))))

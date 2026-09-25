@@ -474,7 +474,7 @@
   "strecke/flaggenmasten": {
     "radius_m": 4.5,
     "hoehe_m": 8.1,
-    "dreiecke": 252,
+    "dreiecke": 300,
     "schatten": true
   },
   "strecke/huetchen": {
@@ -487,7 +487,7 @@
   "strecke/kameraturm": {
     "radius_m": 1.6,
     "hoehe_m": 8.63,
-    "dreiecke": 506,
+    "dreiecke": 518,
     "schatten": true
   },
   "strecke/postenhaus": {

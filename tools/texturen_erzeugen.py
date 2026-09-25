@@ -396,6 +396,78 @@ def schilder() -> None:
     bild.save(ZIEL / "tvschild.jpg", quality=92)
 
 
+#: Maße der Boxengasse vor dem Boxengebäude, Meter (siehe
+#: ``umgebung_bauen.boxengebaeude``): 8 Garagen je 6 m, 2 m Rand je Seite.
+BOXENGASSE_M = (52.0, 8.0)
+
+
+def boxengasse(je_m: int = 64) -> None:
+    """Der Vorplatz der Boxen als **ein** Bild über die ganze Fläche.
+
+    Grund ist der Asphalt der Strecke, auf das Grau der Fahrbahn gezogen und
+    etwas dunkler als sie — eine Boxengasse wirkt nie heller als die
+    Rennstrecke daneben. Darauf Schmutz, Ölflecken vor den Garagen, Fugen alle
+    fünf Meter, eine weiße Linie zwischen Arbeits- und Fahrspur und gelbe
+    Boxenfelder. Zeile 0 ist die Streckenseite (v = 1), Spalte 0 liegt bei
+    lokal -X. Dazu die Rauheit: Linien etwas glatter.
+    """
+    breite_m, tiefe_m = BOXENGASSE_M
+    b, h = int(breite_m * je_m), int(tiefe_m * je_m)
+    rng = np.random.default_rng(23)
+    quelle = Image.open(TEX / "asphalt_farbe.jpg").convert("L")
+    kachel = quelle.resize((9 * je_m, 9 * je_m), Image.LANCZOS)
+    grund = np.asarray(kachel, dtype=np.float64) / 255.0
+    grund = np.tile(grund, (h // grund.shape[0] + 1, b // grund.shape[1] + 1))[:h, :b]
+    # Kontrast zusammenziehen, auf ein mittleres Grau um 0,22 (sRGB).
+    grund = 0.22 + (grund - grund.mean()) * 0.55
+    # Großflächiger Schmutz: grobes Rauschen, weich.
+    grob = Image.fromarray((rng.random((h // 32 + 2, b // 32 + 2)) * 255).astype(np.uint8))
+    grob = np.asarray(grob.resize((b, h), Image.BICUBIC), dtype=np.float64) / 255.0
+    grund *= 0.9 + 0.18 * grob
+    y_m = (1.0 - (np.arange(h) + 0.5) / h) * tiefe_m          # 0 an den Garagen
+    x_m = (np.arange(b) + 0.5) / b * breite_m
+    bild = np.stack([grund * 1.0, grund * 0.99, grund * 0.97], axis=2)
+    rau = np.full((h, b), 0.86)
+    # Ölflecken in der Arbeitsspur vor jeder Garage.
+    maske = Image.new("L", (b, h), 0)
+    d = ImageDraw.Draw(maske)
+    for i in range(8):
+        mitte_x = (2.0 + 6.0 * (i + 0.5)) * je_m
+        for _ in range(rng.integers(2, 5)):
+            cx = mitte_x + rng.normal(0, 1.2) * je_m
+            cy = h - (rng.uniform(1.0, 3.2)) * je_m
+            r = rng.uniform(0.2, 0.6) * je_m
+            d.ellipse((cx - r * 1.4, cy - r, cx + r * 1.4, cy + r), fill=int(rng.uniform(90, 170)))
+    fleck = np.asarray(maske.filter(ImageFilter.GaussianBlur(je_m * 0.15)), dtype=np.float64) / 255.0
+    bild *= (1.0 - 0.45 * fleck)[:, :, None]
+    rau -= 0.2 * fleck
+    # Linien: weiß zwischen Arbeits- und Fahrspur (4 m von den Garagen),
+    # gestrichelt an der Streckenseite; gelbe Boxenfelder je Garage.
+    weiss = np.array([0.72, 0.72, 0.70])
+    gelb = np.array([0.74, 0.58, 0.12])
+
+    def band(maske_bool, farbe, abnutzung=0.25):
+        staerke = maske_bool * (1.0 - abnutzung * rng.random((h, b)))
+        bild[:] = bild * (1 - staerke[:, :, None]) + farbe * staerke[:, :, None]
+        rau[:] = np.where(maske_bool, 0.6, rau)
+
+    band(np.abs(y_m - 4.0)[:, None] < 0.07 + 0 * x_m[None, :], weiss)
+    strich = ((x_m % 3.0) < 1.5)[None, :]
+    band((np.abs(y_m - 7.6)[:, None] < 0.06) & strich, weiss)
+    for i in range(8):
+        x0, x1 = 2.0 + 6.0 * i + 0.4, 2.0 + 6.0 * (i + 1) - 0.4
+        in_x = (x_m >= x0) & (x_m <= x1)
+        rahmen = ((np.abs(x_m - x0) < 0.05) | (np.abs(x_m - x1) < 0.05))[None, :] & (y_m < 3.6)[:, None]
+        rahmen |= in_x[None, :] & (np.abs(y_m - 3.6) < 0.05)[:, None]
+        band(rahmen, gelb)
+    # Fugen alle fünf Meter quer, dunkel und schmal.
+    fuge = (np.abs(((x_m + 2.5) % 5.0) - 2.5) < 0.012)[None, :] | (np.abs(y_m - 6.0) < 0.012)[:, None]
+    bild *= np.where(fuge, 0.55, 1.0)[:, :, None]
+    bild *= (0.95 + 0.05 * rng.random((h, b)))[:, :, None]
+    Image.fromarray((np.clip(bild, 0, 1) * 255).astype(np.uint8), "RGB").save(ZIEL / "boxengasse.jpg", quality=90)
+    mr_bild((b // 2, h // 2), np.clip(rau, 0.3, 1.0)).save(ZIEL / "boxengasse_mr.png")
+
+
 def main() -> None:
     ZIEL.mkdir(parents=True, exist_ok=True)
     fassade("wohn_hell", wandkachel("putz", 512, (228, 220, 205)),
@@ -431,6 +503,7 @@ def main() -> None:
     publikum()
     fangzaun()
     schilder()
+    boxengasse()
     print("fertig:", sorted(p.name for p in ZIEL.iterdir()))
 
 
