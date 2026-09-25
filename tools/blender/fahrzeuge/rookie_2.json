@@ -1,0 +1,920 @@
+{
+ "vorlage": "kompakt",
+ "lack": [
+  92,
+  94,
+  98
+ ],
+ "lack2": [
+  205,
+  22,
+  30
+ ],
+ "breite": [
+  [
+   0,
+   0.243
+  ],
+  [
+   0.006,
+   0.4
+  ],
+  [
+   0.015,
+   0.56
+  ],
+  [
+   0.03,
+   0.64
+  ],
+  [
+   0.05,
+   0.753
+  ],
+  [
+   0.075,
+   0.817
+  ],
+  [
+   0.1,
+   0.861
+  ],
+  [
+   0.15,
+   0.89
+  ],
+  [
+   0.2,
+   0.905
+  ],
+  [
+   0.3,
+   0.902
+  ],
+  [
+   0.4,
+   0.89
+  ],
+  [
+   0.5,
+   0.89
+  ],
+  [
+   0.6,
+   0.886
+  ],
+  [
+   0.7,
+   0.895
+  ],
+  [
+   0.8,
+   0.91
+  ],
+  [
+   0.85,
+   0.886
+  ],
+  [
+   0.9,
+   0.876
+  ],
+  [
+   0.925,
+   0.849
+  ],
+  [
+   0.95,
+   0.803
+  ],
+  [
+   0.97,
+   0.678
+  ],
+  [
+   0.985,
+   0.558
+  ],
+  [
+   0.994,
+   0.471
+  ],
+  [
+   1.0,
+   0.247
+  ]
+ ],
+ "achsmitte_u": 0.4975,
+ "reifen_v": 0.96,
+ "spiegel": {
+  "u": 0.625,
+  "v": 0.995,
+  "mat": "zierteil"
+ },
+ "kabine": {
+  "dach": [
+   [
+    0.0,
+    0.95
+   ],
+   [
+    0.008,
+    1.02
+   ],
+   [
+    0.025,
+    1.06
+   ],
+   [
+    0.055,
+    1.09
+   ],
+   [
+    0.075,
+    1.12
+   ],
+   [
+    0.1,
+    1.2
+   ],
+   [
+    0.15,
+    1.33
+   ],
+   [
+    0.2,
+    1.4
+   ],
+   [
+    0.27,
+    1.415
+   ],
+   [
+    0.45,
+    1.42
+   ],
+   [
+    0.53,
+    1.405
+   ],
+   [
+    0.557,
+    1.39
+   ],
+   [
+    0.6,
+    1.29
+   ],
+   [
+    0.66,
+    1.15
+   ],
+   [
+    0.72,
+    1.03
+   ],
+   [
+    0.77,
+    0.93
+   ]
+  ],
+  "dach_v": [
+   [
+    0.0,
+    0.44
+   ],
+   [
+    0.06,
+    0.48
+   ],
+   [
+    0.1,
+    0.5
+   ],
+   [
+    0.2,
+    0.52
+   ],
+   [
+    0.55,
+    0.54
+   ],
+   [
+    0.6,
+    0.58
+   ],
+   [
+    0.74,
+    0.7
+   ]
+  ],
+  "basis_v": 0.8,
+  "frontscheibe": [
+   [
+    0.557,
+    0
+   ],
+   [
+    0.56,
+    0.35
+   ],
+   [
+    0.57,
+    0.55
+   ],
+   [
+    0.575,
+    0.62
+   ],
+   [
+    0.7,
+    0.7
+   ],
+   [
+    0.735,
+    0.6
+   ],
+   [
+    0.75,
+    0.3
+   ],
+   [
+    0.753,
+    0
+   ]
+  ],
+  "heckscheibe": [
+   [
+    0.2,
+    0
+   ],
+   [
+    0.197,
+    0.4
+   ],
+   [
+    0.185,
+    0.5
+   ],
+   [
+    0.085,
+    0.52
+   ],
+   [
+    0.075,
+    0.4
+   ],
+   [
+    0.072,
+    0
+   ]
+  ],
+  "seitenfenster": [
+   [
+    0.26,
+    0.9
+   ],
+   [
+    0.2,
+    1.6
+   ],
+   [
+    0.9,
+    1.6
+   ],
+   [
+    0.9,
+    0.9
+   ]
+  ],
+  "b_saeulen": [
+   [
+    0.375,
+    0.03
+   ]
+  ]
+ },
+ "tuergriffe_u": [
+  0.425
+ ],
+ "zoll": 18,
+ "felge": "y",
+ "felgenfarbe": [
+  48,
+  48,
+  52
+ ],
+ "sattelfarbe": [
+  205,
+  22,
+  30
+ ],
+ "schweller_mat": "lack2",
+ "splitter": true,
+ "splitter_mat": "lack2",
+ "diffusor": true,
+ "diffusor_mat": "zierteil",
+ "auspuff": {
+  "lagen": [
+   -1,
+   0,
+   1
+  ],
+  "mitte_m": 0.1,
+  "radius_m": 0.045
+ },
+ "spoiler": [
+  {
+   "art": "fluegel",
+   "u": 0.005,
+   "v": 0.66,
+   "tiefe_m": 0.26,
+   "hoehe_m": 1.13,
+   "mat": "kunststoff",
+   "platten_mat": "kunststoff",
+   "stuetzen_mat": "lack2",
+   "fuss_m": 0.18,
+   "profil": "naca",
+   "stuetzen": "sockel",
+   "endplatte_m": [
+    0.08,
+    0.04
+   ]
+  },
+  {
+   "art": "dach",
+   "u": 0.218,
+   "laenge_m": 0.13,
+   "v": 0.5,
+   "mat": "lack",
+   "neigung_m": 0.012
+  }
+ ],
+ "zonen": [
+  {
+   "ansicht": "vorn",
+   "punkte": [
+    [
+     0.42,
+     0.672
+    ],
+    [
+     0.8,
+     0.64
+    ],
+    [
+     0.84,
+     0.66
+    ],
+    [
+     0.84,
+     0.73
+    ],
+    [
+     0.68,
+     0.72
+    ],
+    [
+     0.54,
+     0.702
+    ],
+    [
+     0.42,
+     0.694
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": -0.7,
+   "mat": "kunststoff",
+   "und": [
+    {
+     "ansicht": "oben",
+     "punkte": [
+      [
+       0.83,
+       0.0
+      ],
+      [
+       1.2,
+       0.0
+      ],
+      [
+       1.2,
+       1.3
+      ],
+      [
+       0.83,
+       1.3
+      ]
+     ]
+    }
+   ],
+   "leuchte": {
+    "tiefe_m": 0.03,
+    "rand_m": 0.004,
+    "abdeckung": "klarglas",
+    "led": [
+     {
+      "ringe": [
+       0.9
+      ],
+      "breite_m": 0.007,
+      "hoehe_m": 0.005
+     },
+     {
+      "quer": [
+       0.68
+      ],
+      "abstand_m": 0.01,
+      "breite_m": 0.006,
+      "hoehe_m": 0.005
+     },
+     {
+      "verlauf": "aussen",
+      "abstand_m": 0.006,
+      "breite_m": 0.008,
+      "mat": "blinker"
+     }
+    ],
+    "projektoren": {
+     "anzahl": 1,
+     "radius_m": 0.02,
+     "lage": 0.5,
+     "rand_anteil": 0.3
+    }
+   }
+  },
+  {
+   "ansicht": "hinten",
+   "punkte": [
+    [
+     0.4,
+     0.7879999999999999
+    ],
+    [
+     0.84,
+     0.7559999999999999
+    ],
+    [
+     0.9,
+     0.8839999999999999
+    ],
+    [
+     0.45,
+     0.8759999999999999
+    ]
+   ],
+   "spiegeln": true,
+   "und": [
+    {
+     "ansicht": "oben",
+     "punkte": [
+      [
+       -0.1,
+       0.2
+      ],
+      [
+       0.15,
+       0.2
+      ],
+      [
+       0.15,
+       1.1
+      ],
+      [
+       -0.1,
+       1.1
+      ]
+     ]
+    }
+   ],
+   "mat": "zierteil",
+   "leuchte": {
+    "tiefe_m": 0.025,
+    "rand_m": 0.005,
+    "rand_mat": "chrom",
+    "abdeckung": "streuscheibe",
+    "led": [
+     {
+      "verlauf": "rand",
+      "abstand_m": 0.01,
+      "mat": "licht_hinten",
+      "breite_m": 0.009
+     },
+     {
+      "quer": [
+       0.45
+      ],
+      "mat": "licht_hinten",
+      "breite_m": 0.006
+     }
+    ]
+   }
+  },
+  {
+   "ansicht": "oben",
+   "punkte": [
+    [
+     0.835,
+     0.14
+    ],
+    [
+     0.87,
+     0.12
+    ],
+    [
+     0.878,
+     0.38
+    ],
+    [
+     0.84,
+     0.4
+    ]
+   ],
+   "spiegeln": true,
+   "mat": "kunststoff",
+   "stufen": [
+    {
+     "dicke": 0.006,
+     "tiefe": -0.03,
+     "rand": "zierteil"
+    }
+   ],
+   "gitter": {
+    "art": "lamellen",
+    "richtung": "a",
+    "masche_m": 0.03,
+    "steg_m": 0.007,
+    "hoehe_m": 0.022,
+    "winkel_grad": 30,
+    "mat": "kunststoff",
+    "rand_m": 0.008
+   }
+  },
+  {
+   "ansicht": "vorn",
+   "punkte": [
+    [
+     -0.34,
+     0.55
+    ],
+    [
+     0.34,
+     0.55
+    ],
+    [
+     0.3,
+     0.63
+    ],
+    [
+     -0.3,
+     0.63
+    ]
+   ],
+   "mat": "zierteil",
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.022,
+    "steg_m": 0.004,
+    "hoehe_m": 0.008,
+    "mat": "kunststoff",
+    "rand_m": 0.006
+   }
+  },
+  {
+   "ansicht": "vorn",
+   "punkte": [
+    [
+     -0.5,
+     0.26
+    ],
+    [
+     0.5,
+     0.26
+    ],
+    [
+     0.56,
+     0.48
+    ],
+    [
+     -0.56,
+     0.48
+    ]
+   ],
+   "mat": "kunststoff",
+   "stufen": [
+    {
+     "dicke": 0.012,
+     "tiefe": -0.05,
+     "rand": "zierteil"
+    }
+   ],
+   "gitter": {
+    "art": "waben",
+    "masche_m": 0.03,
+    "steg_m": 0.006,
+    "hoehe_m": 0.016,
+    "rand_m": 0.01
+   }
+  },
+  {
+   "ansicht": "hinten",
+   "punkte": [
+    [
+     -0.66,
+     0.28
+    ],
+    [
+     0.66,
+     0.28
+    ],
+    [
+     0.64,
+     0.42
+    ],
+    [
+     -0.64,
+     0.42
+    ]
+   ],
+   "mat": "zierteil"
+  },
+  {
+   "ansicht": "hinten",
+   "punkte": [
+    [
+     0.62,
+     0.3
+    ],
+    [
+     0.9,
+     0.3
+    ],
+    [
+     0.9,
+     0.36
+    ],
+    [
+     0.66,
+     0.36
+    ]
+   ],
+   "spiegeln": true,
+   "mat": "lack2"
+  },
+  {
+   "ansicht": "seite",
+   "linie": 0.006,
+   "punkte": [
+    [
+     0.69,
+     0.3
+    ],
+    [
+     0.692,
+     1.0
+    ]
+   ],
+   "mat": "kunststoff",
+   "stufen": [
+    {
+     "dicke": 0.001,
+     "tiefe": -0.006,
+     "rand": "kunststoff"
+    }
+   ]
+  },
+  {
+   "ansicht": "seite",
+   "linie": 0.006,
+   "punkte": [
+    [
+     0.38,
+     0.3
+    ],
+    [
+     0.38,
+     1.0
+    ]
+   ],
+   "mat": "kunststoff",
+   "stufen": [
+    {
+     "dicke": 0.001,
+     "tiefe": -0.006,
+     "rand": "kunststoff"
+    }
+   ]
+  },
+  {
+   "ansicht": "hinten",
+   "punkte": [
+    [
+     0.6,
+     0.45
+    ],
+    [
+     0.8,
+     0.45
+    ],
+    [
+     0.8,
+     0.47200000000000003
+    ],
+    [
+     0.6,
+     0.47200000000000003
+    ]
+   ],
+   "spiegeln": true,
+   "n_min": 0.3,
+   "mat": "licht_hinten",
+   "stufen": [
+    {
+     "dicke": 0.003,
+     "tiefe": -0.004,
+     "rand": "kunststoff"
+    }
+   ],
+   "u": [
+    -0.2,
+    0.1
+   ]
+  },
+  {
+   "ansicht": "hinten",
+   "punkte": [
+    [
+     -0.3,
+     0.615
+    ],
+    [
+     0.3,
+     0.615
+    ],
+    [
+     0.3,
+     0.7849999999999999
+    ],
+    [
+     -0.3,
+     0.7849999999999999
+    ]
+   ],
+   "mat": "lack",
+   "n_min": 0.2,
+   "stufen": [
+    {
+     "dicke": 0.006,
+     "tiefe": -0.014,
+     "rand": "lack"
+    }
+   ]
+  }
+ ],
+ "kennzeichen": {
+  "vorn_m": 0.4,
+  "hinten_m": 0.7,
+  "vorn_vorsprung_m": 0.045
+ },
+ "teile": {
+  "reifen": {
+   "profil": "sport",
+   "bloecke": 26
+  },
+  "felge": {
+   "radmuttern": 5,
+   "nabenkappe": "emblem"
+  },
+  "bremse": {
+   "art": "gelocht"
+  },
+  "spiegel": {
+   "art": "fuss",
+   "kappe_mat": "zierteil",
+   "fuss_mat": "zierteil"
+  },
+  "tuergriff": {
+   "art": "buegel",
+   "laenge_m": 0.15
+  },
+  "wischer": {
+   "anzahl": 2,
+   "heck": true
+  },
+  "diffusor": {
+   "finnen": 4,
+   "laenge_m": 0.4,
+   "breite_v": 0.6,
+   "mat": "zierteil"
+  },
+  "auspuff": {
+   "art": "rund",
+   "blende": true
+  },
+  "innenraum": {
+   "sitz": "schale",
+   "akzent_mat": "lack2"
+  },
+  "kennzeichen": {
+   "text": "HC 220"
+  },
+  "antenne": {
+   "u": 0.255,
+   "laenge_m": 0.15,
+   "hoehe_m": 0.05
+  },
+  "emblem": {
+   "groesse_m": 0.07,
+   "orte": [
+    {
+     "ansicht": "vorn",
+     "z_m": 0.59
+    },
+    {
+     "ansicht": "hinten",
+     "z_m": 0.86
+    }
+   ]
+  },
+  "fugen": [
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.72,
+      0.77
+     ],
+     [
+      0.86,
+      0.76
+     ],
+     [
+      0.905,
+      0.72
+     ],
+     [
+      0.93,
+      0.6
+     ],
+     [
+      0.945,
+      0.4
+     ],
+     [
+      0.952,
+      0.2
+     ],
+     [
+      0.954,
+      0.0
+     ]
+    ],
+    "symmetrisch": true,
+    "n_min": 0.6
+   },
+   {
+    "ansicht": "oben",
+    "punkte": [
+     [
+      0.2,
+      0.55
+     ],
+     [
+      0.2,
+      -0.55
+     ]
+    ],
+    "n_min": 0.3
+   },
+   {
+    "ansicht": "hinten",
+    "punkte": [
+     [
+      0.46,
+      0.6
+     ],
+     [
+      0.48,
+      1.0
+     ]
+    ],
+    "spiegeln": true,
+    "n_min": 0.2
+   },
+   {
+    "ansicht": "seite",
+    "punkte": [
+     [
+      0.2,
+      0.33
+     ],
+     [
+      0.69,
+      0.33
+     ]
+    ]
+   }
+  ]
+ }
+}
