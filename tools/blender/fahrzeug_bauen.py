@@ -40,6 +40,14 @@ entlang der Polygonkanten mit senkrechten Ebenen aufgeschnitten
 Wunsch Stufen (``inset_region``: Rahmen, Vertiefung, Erhöhung) und Lamellen.
 So lassen sich Formen direkt aus dem Sprite abnehmen, und die Kanten bleiben
 sauber, egal wie grob das Netz darunter ist.
+
+**Teile-Bibliothek.** Mit einem Block ``"teile"`` in der Fahrzeugdatei kommen
+Detailteile aus ``teile.py``, ``teile_rad.py`` und ``teile_innen.py``:
+Leuchteneinheiten und Gitter in Zonen (``leuchte``, ``gitter``), Fugen,
+Profilreifen, Felgen mit Muttern, Bremsscheibe und Sattel, Spiegel, Griffe,
+Wischer, Profilflügel, Diffusor, Endrohre, Innenraum, Kennzeichen, erfundene
+Embleme. Ohne den Block baut ein Fahrzeug genau wie vorher. Die Parameter
+stehen im Kopf von ``teile.py``.
 """
 from __future__ import annotations
 
@@ -55,6 +63,9 @@ from mathutils.bvhtree import BVHTree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gemeinsam as g  # noqa: E402
+import teile as tb  # noqa: E402
+import teile_innen as ti  # noqa: E402
+import teile_rad as tr  # noqa: E402
 
 M_PER_PX = 0.08          # wie src/core/settings.py
 PARAMETER = Path(__file__).resolve().parent / "fahrzeuge.json"
@@ -133,134 +144,10 @@ def abstand2(a, b) -> float:
     return math.hypot(a[0] - b[0], a[1] - b[1])
 
 
-# ---------------------------------------------------------------------------
-# Hilfsformen
-# ---------------------------------------------------------------------------
-
-def kasten(name, mitte, groesse, mat, fase: float = 0.0, drehung=None, segmente: int = 2):
-    bm = bmesh.new()
-    bmesh.ops.create_cube(bm, size=1.0)
-    bmesh.ops.scale(bm, vec=Vector(groesse), verts=bm.verts)
-    ob = g.objekt_aus(bm, name, [mat])
-    if fase > 0:
-        mod = ob.modifiers.new("fase", "BEVEL")
-        mod.width = fase
-        mod.segments = segmente
-        mod.limit_method = "NONE"
-        g.modifikator_anwenden(ob, mod)
-    if drehung is not None:
-        ob.rotation_euler = drehung
-    ob.location = mitte
-    g.transform_anwenden(ob)
-    return ob
-
-
-def kugel(name, mitte, groesse, mat, segmente: int = 20, ringe: int = 10, drehung=None):
-    bm = bmesh.new()
-    bmesh.ops.create_uvsphere(bm, u_segments=segmente, v_segments=ringe, radius=0.5)
-    bmesh.ops.scale(bm, vec=Vector(groesse), verts=bm.verts)
-    ob = g.objekt_aus(bm, name, [mat])
-    for p in ob.data.polygons:
-        p.use_smooth = True
-    if drehung is not None:
-        ob.rotation_euler = drehung
-    ob.location = mitte
-    g.transform_anwenden(ob)
-    return ob
-
-
-def zylinder_y(name, mitte, radius, breite, mat, segmente: int = 32, kappen=True):
-    """Zylinder mit Achse entlang Y."""
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=kappen, cap_tris=False, segments=segmente,
-                          radius1=radius, radius2=radius, depth=breite)
-    bmesh.ops.rotate(bm, verts=bm.verts, cent=(0, 0, 0),
-                     matrix=Matrix.Rotation(math.radians(90), 3, "X"))
-    ob = g.objekt_aus(bm, name, [mat])
-    ob.location = mitte
-    g.transform_anwenden(ob)
-    return ob
-
-
-def zylinder_x(name, mitte, radius, laenge, mat, segmente: int = 20):
-    bm = bmesh.new()
-    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segmente,
-                          radius1=radius, radius2=radius, depth=laenge)
-    bmesh.ops.rotate(bm, verts=bm.verts, cent=(0, 0, 0),
-                     matrix=Matrix.Rotation(math.radians(90), 3, "Y"))
-    ob = g.objekt_aus(bm, name, [mat])
-    ob.location = mitte
-    g.transform_anwenden(ob)
-    return ob
-
-
-def platte(name, breite, hoehe, dicke, mats, rundung: float = 4.0, punkte: int = 24):
-    """Eine Superellipsen-Platte in der YZ-Ebene, Vorderseite zeigt nach +X."""
-    bm = bmesh.new()
-    vorn, hinten = [], []
-    for k in range(punkte):
-        w = 2 * math.pi * k / punkte
-        y = sp(math.cos(w), 2.0 / rundung) * breite / 2
-        z = sp(math.sin(w), 2.0 / rundung) * hoehe / 2
-        vorn.append(bm.verts.new((dicke / 2, y, z)))
-        hinten.append(bm.verts.new((-dicke / 2, y, z)))
-    f_vorn = bm.faces.new(vorn)
-    f_hinten = bm.faces.new(list(reversed(hinten)))
-    f_vorn.material_index = 0
-    f_hinten.material_index = 1
-    for k in range(punkte):
-        f = bm.faces.new((vorn[k], hinten[k], hinten[(k + 1) % punkte], vorn[(k + 1) % punkte]))
-        f.material_index = 1
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    return g.objekt_aus(bm, name, list(mats))
-
-
-def auf_flaeche(ob, treffer, normale, einsenken: float, dreh_um_normale: float = 0.0):
-    """Ein Teil, dessen Vorderseite nach +X zeigt, auf eine Fläche setzen."""
-    n = Vector(normale).normalized()
-    q = Vector((1, 0, 0)).rotation_difference(n)
-    oben = q @ Vector((0, 0, 1))
-    ziel_oben = Vector((0, 0, 1)) - n * n.z
-    if ziel_oben.length > 1e-4 and oben.length > 1e-4:
-        ziel_oben.normalize()
-        winkel = oben.angle(ziel_oben)
-        achse = oben.cross(ziel_oben)
-        if achse.dot(n) < 0:
-            winkel = -winkel
-        q = Matrix.Rotation(winkel, 4, n).to_quaternion() @ q
-    if dreh_um_normale:
-        q = Matrix.Rotation(dreh_um_normale, 4, n).to_quaternion() @ q
-    ob.rotation_mode = "QUATERNION"
-    ob.rotation_quaternion = q
-    ob.location = Vector(treffer) - n * einsenken
-    g.transform_anwenden(ob)
-    return ob
-
-
-def strahl(ziel_ob, start, richtung):
-    """Wo ein Strahl die Karosserie trifft: (Ort, Normale) oder None."""
-    ok, ort, normale, _i = ziel_ob.ray_cast(Vector(start), Vector(richtung).normalized())
-    if not ok:
-        return None
-    return ort, normale
-
-
-def netz_aus_ringen(name, ringe, mat, geschlossen=True, kappen=False):
-    """Loft aus Ringen gleicher Punktzahl (für kleine Anbauteile)."""
-    bm = bmesh.new()
-    vs = [[bm.verts.new(p) for p in r] for r in ringe]
-    n = len(ringe[0])
-    for i in range(len(vs) - 1):
-        for j in range(n if geschlossen else n - 1):
-            bm.faces.new((vs[i][j], vs[i][(j + 1) % n], vs[i + 1][(j + 1) % n], vs[i + 1][j]))
-    if kappen:
-        bm.faces.new(list(reversed(vs[0])))
-        bm.faces.new(vs[-1])
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-    ob = g.objekt_aus(bm, name, [mat])
-    for p in ob.data.polygons:
-        p.use_smooth = True
-    return ob
+# Grundformen stehen in teile.py (Teile-Bibliothek), damit die Teile sie
+# ohne Kreisimport nutzen können.
+from teile import (auf_flaeche, kasten, kugel, netz_aus_ringen, platte, strahl,  # noqa: E402
+                   zylinder_x, zylinder_y)
 
 
 # ---------------------------------------------------------------------------
@@ -298,6 +185,9 @@ def materialien(p):
         "zierteil": g.material("zierteil", (0.025, 0.025, 0.03), 0.0, 0.12, klarlack=1.0),
         # Feste weiße Folie (Livree-Elemente, die beim Umlackieren bleiben).
         "dekor_weiss": g.material("dekor_weiss", (0.93, 0.93, 0.94), 0.0, 0.3, klarlack=1.0),
+        # Leuchtenabdeckungen der Teile-Bibliothek (durchsichtig wie "glas").
+        "klarglas": g.material("klarglas", (0.55, 0.6, 0.65), 0.0, 0.02, alpha=0.1),
+        "streuscheibe": g.material("streuscheibe", (0.62, 0.02, 0.03), 0.0, 0.05, alpha=0.62),
     }
 
 
@@ -655,7 +545,7 @@ def kappe(bm, ring, richtung: int, buckel: float, kennung: int, seg) -> None:
 # Zonen
 # ---------------------------------------------------------------------------
 
-ACHSEN = {"oben": (0, 1, 2), "seite": (0, 2, 1), "vorn": (1, 2, 0), "hinten": (1, 2, 0)}
+ACHSEN = tb.ACHSEN
 
 
 def zone_polygone(z: dict, ms: Masse):
@@ -712,8 +602,12 @@ def im_polygon(pt, poly) -> bool:
     return drin
 
 
-def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> None:
-    """Alle Zonen schneiden und einfärben, danach Stufen und Lamellen."""
+def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
+    """Alle Zonen schneiden und einfärben, danach Stufen und Lamellen.
+
+    Liefert je Leuchtenzone (Nummer ab 1) die Haut vor dem Vertiefen, aus der
+    ``leuchten_bauen`` die Abdeckscheibe macht.
+    """
     ms = fo.ms
     seg = bm.faces.layers.int["seg"]
     zl = bm.faces.layers.int["zone"]
@@ -831,9 +725,21 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> None:
                 f.material_index = mat
                 f[zl] = nr
 
+    # Leuchten der Teile-Bibliothek: die Haut der Zone vor dem Vertiefen
+    # abnehmen — daraus wird die bündige Abdeckscheibe.
+    deckel = {}
+    for nr, z in enumerate(zonen, start=1):
+        le = z.get("leuchte")
+        if le and le.get("abdeckung", "klarglas") and le.get("abdeckung") is not False:
+            deckel[nr] = [[tuple(v.co) for v in f.verts] for f in bm.faces if f[zl] == nr]
+
     # Stufen: Rahmen, Vertiefungen, Erhöhungen.
     for nr, z in enumerate(zonen, start=1):
         stufen = z.get("stufen")
+        if not stufen and z.get("leuchte"):
+            le = z["leuchte"]
+            stufen = [{"dicke": le.get("rand_m", 0.005), "tiefe": -le.get("tiefe_m", 0.03),
+                       "rand": le.get("rand_mat", "zierteil")}]
         if not stufen:
             continue
         flaechen = [f for f in bm.faces if f[zl] == nr]
@@ -848,6 +754,7 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> None:
             for f in erg["faces"]:
                 f.material_index = idx[st.get("rand", "kunststoff")]
                 f[zl] = 0
+    return deckel
 
 
 def zone_mat(z) -> int:
@@ -916,6 +823,161 @@ def lamellen_bauen(ob_haut, fo: Form, zonen: list, mats):
                             spiegelbilder.append(m3)
                         for m3 in spiegelbilder:
                             teile.append(kasten("lamelle", m3, groesse, mats[lm.get("mat", "kunststoff")]))
+    return teile
+
+
+# ---------------------------------------------------------------------------
+# Leuchten und Gitter der Teile-Bibliothek
+# ---------------------------------------------------------------------------
+
+def _zonenseiten(ansicht: str):
+    """Seitenansichten gelten für beide Flanken, die übrigen für eine Seite."""
+    return (True, False) if ansicht == "seite" else (True,)
+
+
+def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, deckel: dict):
+    """Leuchteneinheiten in Zonen mit ``leuchte``: Abdeckscheibe bündig auf der
+    alten Haut, darunter im vertieften Gehäuse LED-Leisten und Projektoren."""
+    ms = fo.ms
+    teile = []
+    for nr, z in enumerate(zonen, start=1):
+        le = z.get("leuchte")
+        if not le:
+            continue
+        ansicht = z["ansicht"]
+        boden = {KAROSSERIE_MATS.index(z["mat"])}
+        abdeckung = le.get("abdeckung", "klarglas")
+        if abdeckung and deckel.get(nr):
+            ob = tb.deckel("leuchtenglas", deckel[nr], mats[abdeckung])
+            if ob is not None:
+                teile.append(ob)
+        for poly in zone_polygone(z, ms):
+            for links in _zonenseiten(ansicht):
+                def proj(a, b, _l=links):
+                    return treffer.ansicht(ansicht, a, b, boden, _l)
+                leds = le.get("led") or []
+                for led in (leds if isinstance(leds, list) else [leds]):
+                    teile += _led_bauen(poly, led, proj, ansicht, mats)
+                if le.get("projektoren"):
+                    teile += _projektoren_bauen(poly, le["projektoren"], proj, mats)
+    return teile
+
+
+def _led_bauen(poly, led, proj, ansicht, mats):
+    mat = mats[led.get("mat", "licht_vorn")]
+    breite, hoehe = led.get("breite_m", 0.007), led.get("hoehe_m", 0.004)
+    wege = []
+    if "ringe" in led:
+        for f in led["ringe"]:
+            wege.append((tb.polygon_skalieren(poly, f), True))
+    elif "quer" in led:
+        innen, _ = tb.polygon_einruecken(poly, led.get("abstand_m", 0.008))
+        b0 = min(q[1] for q in innen)
+        b1 = max(q[1] for q in innen)
+        for anteil in led["quer"]:
+            c = b0 + (b1 - b0) * anteil
+            for s0, s1 in tb.quer_schnitte(innen, 1, c):
+                wege.append(([(s0, c), (s1, c)], False))
+    else:
+        innen, aussen = tb.polygon_einruecken(poly, led.get("abstand_m", 0.008))
+        verlauf = led.get("verlauf", "rand")
+        if verlauf == "rand":
+            wege.append((innen, True))
+        else:
+            ia, ib, _ic = ACHSEN[ansicht]
+            if verlauf in ("aussen", "innen"):
+                c = tb.schwerpunkt2(poly)
+                y = c[1] if ansicht == "oben" else (c[0] if ansicht in ("vorn", "hinten") else 1.0)
+                s = (1.0 if y >= 0 else -1.0) * (1.0 if verlauf == "aussen" else -1.0)
+                d3 = (0.0, s, 0.0)
+            else:
+                d3 = {"oben": (0, 0, 1), "unten": (0, 0, -1), "vorn": (1, 0, 0),
+                      "hinten": (-1, 0, 0)}[verlauf]
+            lauf = tb.laengster_lauf(innen, aussen, (d3[ia], d3[ib]))
+            if len(lauf) >= 2:
+                wege.append((lauf, False))
+    teile = []
+    for pts, geschlossen in wege:
+        dicht = tb.verdichten(list(pts) + ([pts[0]] if geschlossen else []), 0.01)
+        if geschlossen:
+            dicht = dicht[:-1]
+        stuecke, pp, nn = [], [], []
+        for a, b in dicht:
+            h = proj(a, b)
+            if h is None:
+                if len(pp) >= 2:
+                    stuecke.append((pp, nn, False))
+                pp, nn = [], []
+                geschlossen = False
+                continue
+            pp.append(h[0])
+            nn.append(h[1])
+        if len(pp) >= 2:
+            stuecke.append((pp, nn, geschlossen))
+        for pp, nn, gg in stuecke:
+            ob = tb.band("led", pp, nn, breite, hoehe, mat, geschlossen=gg)
+            if ob is not None:
+                teile.append(ob)
+    return teile
+
+
+def _projektoren_bauen(poly, pj, proj, mats):
+    a0, a1 = min(q[0] for q in poly), max(q[0] for q in poly)
+    b0, b1 = min(q[1] for q in poly), max(q[1] for q in poly)
+    n = pj.get("anzahl", 2)
+    r = pj.get("radius_m", min(0.032, 0.32 * (b1 - b0)))
+    rand = pj.get("rand_anteil", 0.22)
+    teile = []
+    for k in range(n):
+        a = a0 + (a1 - a0) * (rand + (1 - 2 * rand) * (k + 0.5) / n)
+        b = b0 + (b1 - b0) * pj.get("lage", 0.5)
+        h = proj(a, b)
+        if h is None:
+            continue
+        ort, normale = h
+        # Einsätze schauen nach vorn bzw. hinten, nicht nur entlang der Haut.
+        fahrt = Vector((1 if ort.x > 0 else -1, 0, 0))
+        richtung = (Vector(normale).normalized() + fahrt * pj.get("vorhalt", 0.7)).normalized()
+        ob = tb.projektor("projektor", r, mats, pj.get("art", "projektor"))
+        teile.append(auf_flaeche(ob, ort, richtung, 0.004))
+    return teile
+
+
+def gitter_bauen(treffer, fo: Form, zonen: list, mats):
+    """Gitter in Zonen mit ``gitter``: Waben, Rauten oder Lamellen auf dem
+    Boden der vertieften Öffnung."""
+    ms = fo.ms
+    teile = []
+    for z in zonen:
+        gt = z.get("gitter")
+        if not gt:
+            continue
+        ansicht = z["ansicht"]
+        boden = {KAROSSERIE_MATS.index(z["mat"])}
+        art = gt.get("art", "waben")
+        mat = mats[gt.get("mat", "zierteil")]
+        masche = gt.get("masche_m", 0.032)
+        steg = gt.get("steg_m", 0.006)
+        hoehe = gt.get("hoehe_m", 0.012)
+        for poly in zone_polygone(z, ms):
+            innen, _ = tb.polygon_einruecken(poly, gt.get("rand_m", 0.01))
+            for links in _zonenseiten(ansicht):
+                blick = tb.blickrichtung(ansicht, links)
+
+                def proj(a, b, _l=links):
+                    return treffer.ansicht(ansicht, a, b, boden, _l)
+                if art == "lamellen":
+                    if gt.get("richtung", "a") == "b":
+                        ob = tb.gitter_lamellen("gitter", [(q[1], q[0]) for q in innen], masche, steg, hoehe,
+                                               lambda a, b, _p=proj: _p(b, a), blick, tb.achse3(ansicht, 0),
+                                               mat, gt.get("winkel_grad", 0.0))
+                    else:
+                        ob = tb.gitter_lamellen("gitter", innen, masche, steg, hoehe, proj, blick,
+                                               tb.achse3(ansicht, 1), mat, gt.get("winkel_grad", 0.0))
+                else:
+                    ob = tb.gitter_zellen("gitter", innen, art, masche, steg, hoehe, proj, blick, mat)
+                if ob is not None:
+                    teile.append(ob)
     return teile
 
 
@@ -1010,8 +1072,11 @@ def radlaeufe(karosserie, fo: Form, p, mats):
 # ---------------------------------------------------------------------------
 
 def anbauteile(karosserie, fo: Form, p, mats):
+    """Kennzeichen, Spiegel, Griffe, Schweller, Diffusor, Auspuff, Spoiler,
+    Wischer. Mit ``teile``-Block kommen die Teile aus der Bibliothek."""
     ms = fo.ms
     teile = []
+    tp = p.get("teile")
     x_vorn = ms.x(fo.u1)
     x_hinten = ms.x(fo.u0)
 
@@ -1028,23 +1093,37 @@ def anbauteile(karosserie, fo: Form, p, mats):
         z = kz.get("vorn_m" if vorn else "hinten_m")
         if z is None:
             continue
-        schild = platte("kennzeichen", 0.52, 0.115, 0.012,
-                        (mats["kennzeichen"], mats["kunststoff"]), rundung=10)
-        if vorn:
-            teile.append(setzen(schild, (x_vorn + 1, 0, z), (-1, 0, 0), 0.0))
+        if tp is not None and tp.get("kennzeichen", {}) is not False:
+            text = (tp.get("kennzeichen") or {}).get("text") or ti.kennzeichen_text(p.get("_key", ""))
+            schild = ti.kennzeichen(text, mats)
         else:
-            teile.append(setzen(schild, (x_hinten - 1, 0, z), (1, 0, 0), 0.0))
+            schild = platte("kennzeichen", 0.52, 0.115, 0.012,
+                            (mats["kennzeichen"], mats["kunststoff"]), rundung=10)
+        vor = -kz.get("vorn_vorsprung_m" if vorn else "hinten_vorsprung_m", 0.0)
+        if vorn:
+            teile.append(setzen(schild, (x_vorn + 1, 0, z), (-1, 0, 0), vor))
+        else:
+            teile.append(setzen(schild, (x_hinten - 1, 0, z), (1, 0, 0), vor))
 
     # --- Spiegel ------------------------------------------------------------
     sp_def = p.get("spiegel", {})
     if sp_def is not None:
-        teile += spiegel_bauen(karosserie, fo, sp_def, mats)
+        if tp is not None and tp.get("spiegel", {}) is not False:
+            teile += spiegel_neu(karosserie, fo, sp_def, tp.get("spiegel") or {}, mats)
+        else:
+            teile += spiegel_bauen(karosserie, fo, sp_def, mats)
 
     # --- Türgriffe ----------------------------------------------------------
     for u_griff in p.get("tuergriffe_u", []):
         x = ms.x(u_griff)
         z = fo.zd(u_griff) - p.get("griff_tiefe_m", 0.07)
         for seite in (1, -1):
+            if tp is not None and tp.get("tuergriff", {}) is not False:
+                tg = tp.get("tuergriff") or {}
+                griff = tb.tuergriff(tg.get("art", "buegel"), tg.get("laenge_m", 0.15), mats,
+                                     mats[p.get("griffe", "lack")])
+                teile.append(setzen(griff, (x, seite * (ms.breite_gesamt + 1), z), (0, -seite, 0), 0.0))
+                continue
             griff = kasten("griff", (0, 0, 0), (0.026, 0.15, 0.028), mats[p.get("griffe", "lack")],
                            fase=0.009)
             griff.data.transform(Matrix.Rotation(math.radians(-90), 4, "Z"))
@@ -1083,7 +1162,9 @@ def anbauteile(karosserie, fo: Form, p, mats):
         ringe.reverse()
         teile.append(netz_aus_ringen("splitter", ringe, mats[p.get("splitter_mat", "kunststoff")],
                                      kappen=True))
-    if p.get("diffusor", False):
+    if p.get("diffusor", False) and tp is not None and tp.get("diffusor", {}) is not False:
+        teile += tb.diffusor(tp.get("diffusor") or {}, fo, p, mats)
+    elif p.get("diffusor", False):
         zu = fo.zu(fo.u0 + 0.03)
         breite = 2 * fo.w(fo.u0 + 0.05) * 0.72
         teile.append(kasten("diffusor", (x_hinten + 0.22, 0, zu + 0.02),
@@ -1099,9 +1180,19 @@ def anbauteile(karosserie, fo: Form, p, mats):
     lagen = {1: [-0.55], 2: [-0.55, 0.55], 4: [-0.66, -0.52, 0.52, 0.66], 0: []}
     for rel in ap.get("lagen", lagen.get(ap.get("anzahl", 1), [])):
         y = rel * fo.w(fo.u0 + 0.05) if not ap.get("mitte_m") else rel * ap["mitte_m"]
-        t = strahl(karosserie, (x_hinten - 1, y, z_a), (1, 0, 0))
-        x0 = t[0].x if t else x_hinten + 0.1
+        hit = strahl(karosserie, (x_hinten - 1, y, z_a), (1, 0, 0))
+        x0 = hit[0].x if hit else x_hinten + 0.1
         r_a = ap.get("radius_m", 0.045)
+        if tp is not None and tp.get("auspuff", {}) is not False:
+            ta = tp.get("auspuff") or {}
+            blende = tb.auspuffblende("auspuff", r_a, ta.get("laenge_m", 0.16), mats, ta.get("art", "rund"))
+            blende.data.transform(Matrix.Translation((x0 - 0.035, y, z_a)))
+            teile.append(blende)
+            if ta.get("blende", True) and hit is not None:
+                ring = platte("auspuffblende", r_a * 2.7, r_a * 2.3, 0.01,
+                              (mats["zierteil"], mats["zierteil"]), rundung=2.6)
+                teile.append(auf_flaeche(ring, hit[0], hit[1], 0.003))
+            continue
         teile.append(zylinder_x("auspuff", (x0 + 0.06, y, z_a), r_a, 0.24, mats["chrom"]))
         teile.append(zylinder_x("auspuffloch", (x0 - 0.055, y, z_a), r_a * 0.8, 0.02,
                                 mats["kunststoff"]))
@@ -1111,10 +1202,42 @@ def anbauteile(karosserie, fo: Form, p, mats):
         teile += spoiler(sp_def, karosserie, fo, p, mats)
 
     # --- Scheibenwischer ----------------------------------------------------
-    if p.get("wischer", True) and "frontscheibe" in p["kabine"]:
+    if tp is not None and tp.get("wischer", {}) is not False:
+        if p.get("wischer", True):
+            teile += wischer_neu(karosserie, fo, p, tp.get("wischer") or {}, mats)
+    elif p.get("wischer", True) and "frontscheibe" in p["kabine"]:
         teile += wischer(karosserie, fo, p, mats)
 
-    return [t for t in teile if t is not None]
+    # --- Dachantenne -------------------------------------------------------
+    if tp is not None and tp.get("antenne"):
+        an = tp["antenne"]
+        flosse = tb.antenne(an.get("laenge_m", 0.16), an.get("hoehe_m", 0.06), mats[an.get("mat", "lack")])
+        hit = strahl(karosserie, (ms.x(an.get("u", 0.2)), 0, 5), (0, 0, -1))
+        if hit is not None:
+            flosse.data.transform(Matrix.Translation(hit[0]))
+            teile.append(flosse)
+        else:
+            bpy.data.objects.remove(flosse, do_unlink=True)
+
+    # --- Embleme ------------------------------------------------------------
+    if tp is not None and tp.get("emblem", {}) is not False:
+        te = tp.get("emblem") or {}
+        form = ti.emblemform(p.get("_key", ""), te)
+        orte = te.get("orte")
+        if orte is None:
+            orte = [{"ansicht": "vorn", "z_m": kz.get("vorn_m", 0.45) + 0.14},
+                    {"ansicht": "hinten", "z_m": kz.get("hinten_m", 0.6) + 0.14}]
+        for ort in orte:
+            em = ti.emblem(form, ort.get("groesse_m", te.get("groesse_m", 0.07)), mats)
+            y = ms.y(ort.get("v", 0.0))
+            if ort["ansicht"] == "oben":
+                teile.append(setzen(em, (ms.x(ort["u"]), y, 5), (0, 0, -1), 0.0))
+            elif ort["ansicht"] == "vorn":
+                teile.append(setzen(em, (x_vorn + 1, y, ort["z_m"]), (-1, 0, 0), 0.0))
+            else:
+                teile.append(setzen(em, (x_hinten - 1, y, ort["z_m"]), (1, 0, 0), 0.0))
+
+    return [o for o in teile if o is not None]
 
 
 def spiegel_bauen(karosserie, fo: Form, d, mats):
@@ -1168,6 +1291,79 @@ def spiegel_bauen(karosserie, fo: Form, d, mats):
     return teile
 
 
+def spiegel_neu(karosserie, fo: Form, d, td, mats):
+    """Außenspiegel aus der Bibliothek, Lage wie ``spiegel_bauen``."""
+    ms = fo.ms
+    u = d.get("u", 0.65)
+    x = ms.x(u)
+    spitze = ms.y(d.get("v", 0.99))
+    groesse = d.get("groesse", [0.12, 0.22, 0.13])
+    z = d.get("z_m", fo.T(u, fo.wg(u)) + 0.1)
+    teile = []
+    for seite in (1, -1):
+        hit = strahl(karosserie, (x, seite * (ms.breite_gesamt + 1), z - 0.07), (0, -seite, 0))
+        y_wand = abs(hit[0].y) if hit else fo.ws(u)
+        teile += tb.spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td)
+    return teile
+
+
+def _wischer_eins(treffer, glas, drehpunkt, a, b, mats):
+    """Ein Wischer: Blatt von ``a`` nach ``b`` (x, y) auf der Scheibe, Arm vom
+    Drehpunkt (x, y) zur Blattmitte."""
+    pts, nrm = [], []
+    for i in range(12):
+        s = i / 11
+        h = treffer.strahl((a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s, 5), (0, 0, -1))
+        if h is None or h[2] not in glas:
+            continue
+        n = Vector(h[1]).normalized()
+        pts.append(h[0] + n * 0.002)
+        nrm.append(n)
+    if len(pts) < 3:
+        return []
+    teile = tb.wischerblatt("wischer", pts, nrm, mats)
+    hp = treffer.strahl((drehpunkt[0], drehpunkt[1], 5), (0, 0, -1))
+    if hp is not None:
+        k = len(pts) // 2
+        n0 = Vector(hp[1]).normalized()
+        pa = hp[0] + n0 * 0.012
+        pe = pts[k] + nrm[k] * 0.02
+        nm = (n0 + nrm[k]).normalized()
+        mitte = (pa + pe) / 2 + nm * 0.012
+        arm = tb.band("wischerarm", [pa, mitte, pe], [n0, nm, nrm[k]], 0.013, 0.008, mats["zierteil"])
+        if arm is not None:
+            teile.append(arm)
+        teile.append(kugel("wischerlager", pa, (0.034, 0.034, 0.022), mats["zierteil"], 12, 6))
+    return teile
+
+
+def wischer_neu(karosserie, fo: Form, p, tw, mats):
+    """Wischer aus der Bibliothek: Blatt mit Träger liegt auf der Scheibe."""
+    ms = fo.ms
+    k = p["kabine"]
+    teile = []
+    treffer = tb.Treffer(karosserie)
+    glas = {KAROSSERIE_MATS.index("glas")}
+    if "frontscheibe" in k:
+        u = max(a for a, _ in k["frontscheibe"]) - 0.01
+        while u > fo.dach_u0 and fo.G(u, 0) < fo.T(u, 0) + 0.02:
+            u -= 0.002
+        x_f = ms.x(u)
+        anzahl = tw.get("anzahl", 2)
+        lagen = tw.get("lagen_m", [0.06, -0.5] if anzahl == 2 else [-0.28])
+        laengen = tw.get("laenge_m", [0.62, 0.5] if anzahl == 2 else [0.7])
+        for y0, lg in zip(lagen[:anzahl], laengen):
+            teile += _wischer_eins(treffer, glas, (x_f + 0.03, y0),
+                                   (x_f - 0.045, y0 + 0.05), (x_f - 0.075, y0 + 0.05 + lg), mats)
+    if tw.get("heck") and "heckscheibe" in k:
+        u = min(a for a, _ in k["heckscheibe"]) + 0.012
+        x_h = ms.x(u)
+        lg = tw.get("heck_laenge_m", 0.36)
+        teile += _wischer_eins(treffer, glas, (x_h - 0.02, 0.0), (x_h + 0.005, 0.04),
+                               (x_h + 0.005, 0.04 + lg), mats)
+    return teile
+
+
 def wischer(karosserie, fo: Form, p, mats):
     """Zwei Wischerarme am Fuß der Frontscheibe."""
     ms = fo.ms
@@ -1196,6 +1392,8 @@ def spoiler(d, karosserie, fo: Form, p, mats):
     ms = fo.ms
     art = d["art"]
     teile = []
+    if art == "fluegel" and d.get("profil"):
+        return tb.fluegel(d, fo, lambda s, r: strahl(karosserie, s, r), mats)
     if art == "fluegel":
         # u: Hinterkante; v: halbe Spannweite; Höhe der Oberkante in Metern.
         x_hk = ms.x(d.get("u", 0.02))
@@ -1563,9 +1761,36 @@ def felge(ms: Masse, p, mats, rr: float):
     return teile
 
 
+def _emblem_klein(p, mats):
+    te = (p.get("teile") or {}).get("emblem") or {}
+    form = ti.emblemform(p.get("_key", ""), te)
+    return lambda groesse: ti.emblem(form, groesse, mats, sockel=False)
+
+
+def rad_neu(ms: Masse, p, mats):
+    """Rad aus der Bibliothek: Profilreifen, Felge mit Muttern und Kappe,
+    Bremsscheibe. Liefert (Teile, Speichenform)."""
+    tp = p["teile"]
+    rr = p.get("zoll", 17) * 0.0254 / 2
+    reif = tr.reifen(ms.rad_r, ms.reifen_b, rr, tp.get("reifen") or {}, mats)
+    tf = tp.get("felge") or {}
+    if p.get("felge", "fuenf") in tr.MUSTER:
+        fteile, form = tr.felge(p, tf, mats, rr, ms.reifen_b, _emblem_klein(p, mats))
+        bremse = tr.bremsscheibe(rr, form, tp.get("bremse") or {}, mats)
+    else:
+        # Aero- und Turbinenfelgen bleiben wie bisher (samt Scheibe).
+        fteile = felge(ms, p, mats, rr)
+        form = tr.speichenform(p, tf, rr, ms.reifen_b)
+        bremse = []
+    return [reif] + fteile + bremse, form
+
+
 def rad_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int):
-    reif, rr = reifen(ms, p, mats)
-    teile = [reif] + felge(ms, p, mats, rr)
+    if p.get("teile") is not None:
+        teile, _form = rad_neu(ms, p, mats)
+    else:
+        reif, rr = reifen(ms, p, mats)
+        teile = [reif] + felge(ms, p, mats, rr)
     ob = g.verbinden(teile, name)
     if seite < 0:
         ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
@@ -1578,10 +1803,15 @@ def rad_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int):
 
 def sattel_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int, rr: float):
     """Bremssattel: lenkt mit, dreht aber nicht mit dem Rad."""
-    r = rr - 0.07
-    ob = kasten(name, (0, 0, 0), (0.1, 0.07, 0.16), mats["sattel"], fase=0.015)
-    ob.data.transform(Matrix.Translation((-r * 0.7, 0.02, r * 0.7)))
-    ob.data.transform(Matrix.Rotation(math.radians(-10 if vorn > 0 else 10), 4, "Y"))
+    tp = p.get("teile")
+    if tp is not None:
+        form = tr.speichenform(p, tp.get("felge") or {}, rr, ms.reifen_b)
+        ob = tr.bremssattel(name, rr, form, tp.get("bremse") or {}, tp.get("sattel") or {}, mats)
+    else:
+        r = rr - 0.07
+        ob = kasten(name, (0, 0, 0), (0.1, 0.07, 0.16), mats["sattel"], fase=0.015)
+        ob.data.transform(Matrix.Translation((-r * 0.7, 0.02, r * 0.7)))
+        ob.data.transform(Matrix.Rotation(math.radians(-10 if vorn > 0 else 10), 4, "Y"))
     if seite < 0:
         ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
         ob.data.flip_normals()
@@ -1717,10 +1947,10 @@ def karosserie_bauen(fo: Form, p, mats):
     bm = bmesh.new()
     bm.from_mesh(ob.data)
     zonen = glaszonen(p) + p.get("zonen", [])
-    zonen_anwenden(bm, fo, zonen, mats)
+    deckel = zonen_anwenden(bm, fo, zonen, mats)
     bm.to_mesh(ob.data)
     bm.free()
-    return ob, zonen, radhaeuser
+    return ob, zonen, radhaeuser, deckel
 
 
 def linsen_bauen(ob_haut, fo: Form, zonen: list, mats):
@@ -1774,13 +2004,21 @@ def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | Non
     fo = Form(p, ms)
     mats = materialien(p)
 
-    karosserie, zonen, radhaeuser = karosserie_bauen(fo, p, mats)
+    karosserie, zonen, radhaeuser, deckel = karosserie_bauen(fo, p, mats)
     lamellen = lamellen_bauen(karosserie, fo, zonen, mats) + linsen_bauen(karosserie, fo, zonen, mats)
+    if any(z.get("leuchte") or z.get("gitter") for z in zonen):
+        treffer = tb.Treffer(karosserie)
+        lamellen += leuchten_bauen(karosserie, treffer, fo, zonen, mats, deckel)
+        lamellen += gitter_bauen(treffer, fo, zonen, mats)
     for pol in karosserie.data.polygons:
         pol.use_smooth = True
     g.glatt(karosserie, p.get("glatt_grad", 40))
     anbau = anbauteile(karosserie, fo, p, mats) + radlauf_lippen(karosserie, fo, p, mats)
-    innen = innenraum(fo, p, mats)
+    tp = p.get("teile")
+    if tp is not None and tp.get("innenraum", {}) is not False:
+        innen = ti.innenraum(fo, p, tp.get("innenraum") or {}, mats)
+    else:
+        innen = innenraum(fo, p, mats)
     karo = g.verbinden([karosserie] + lamellen + radhaeuser + anbau + innen, "karosserie")
     ms.hoehe = max(v.co.z for v in karo.data.vertices)
 
@@ -1842,6 +2080,18 @@ def fugen_zonen(p) -> list:
         zonen.append({"ansicht": "seite", "punkte": [[u0, z - 0.003], [u1, z - 0.003], [u1, z + 0.003], [u0, z + 0.003]],
                       "n_min": -1.0, "mat": "kunststoff",
                       "stufen": [{"dicke": 0.001, "tiefe": -0.005, "rand": "kunststoff"}]})
+    # Fugen der Teile-Bibliothek: Rillen entlang frei gezogener Linien.
+    for fu in (p.get("teile") or {}).get("fugen", []):
+        punkte = [list(q) for q in fu["punkte"]]
+        if fu.get("geschlossen"):
+            punkte.append(list(punkte[0]))
+        z = {"ansicht": fu["ansicht"], "linie": fu.get("breite_m", 0.005), "punkte": punkte,
+             "mat": "kunststoff",
+             "stufen": [{"dicke": 0.0008, "tiefe": -fu.get("tiefe_m", 0.005), "rand": "kunststoff"}]}
+        for k in ("n_min", "auf", "spiegeln", "symmetrisch", "und", "u", "z", "segmente"):
+            if k in fu:
+                z[k] = fu[k]
+        zonen.append(z)
     return zonen
 
 
@@ -1914,6 +2164,7 @@ def parameter_laden() -> dict:
         if "zonen" in eintrag and basis.get("zonen") and not eintrag.get("zonen_ersetzen"):
             p["zonen"] = eintrag["zonen"] + basis["zonen"]
         p["zonen"] = p.get("zonen", []) + fugen_zonen(p)
+        p["_key"] = key
         ergebnis[key] = p
     return ergebnis
 

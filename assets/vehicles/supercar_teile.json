@@ -3,7 +3,7 @@
   "quelle": "tools/blender/fahrzeug_bauen.py",
   "laenge_m": 4.96,
   "breite_m": 2.32,
-  "hoehe_m": 1.27,
+  "hoehe_m": 1.3009,
   "raddurchmesser_m": 0.64,
   "radstand_m": 2.674,
   "achsen": {
@@ -28,7 +28,7 @@
         0.9015,
         0.32
       ],
-      "dreiecke": 5584
+      "dreiecke": 8096
     },
     {
       "name": "rad_vr",
@@ -37,7 +37,7 @@
         -0.9015,
         0.32
       ],
-      "dreiecke": 5584
+      "dreiecke": 8096
     },
     {
       "name": "rad_hl",
@@ -46,7 +46,7 @@
         0.9015,
         0.32
       ],
-      "dreiecke": 5584
+      "dreiecke": 8096
     },
     {
       "name": "rad_hr",
@@ -55,7 +55,7 @@
         -0.9015,
         0.32
       ],
-      "dreiecke": 5584
+      "dreiecke": 8096
     }
   ],
   "saettel": [
@@ -69,5 +69,5 @@
     212,
     22
   ],
-  "dreiecke_karosserie": 51892
+  "dreiecke_karosserie": 79494
 }
