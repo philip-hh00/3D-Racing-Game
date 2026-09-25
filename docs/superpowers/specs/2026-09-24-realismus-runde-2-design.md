@@ -71,3 +71,36 @@ Boxengebäude, Streckenposten, Fangzäune, Hütchen.
 Fotos je Thema vorher/nachher, Zeitmessung je Stufe im Budget, Tests grün
 (`.venv\Scripts\python.exe -m pytest tests -q`, bekannte Altlasten
 ausgenommen), Release-Build läuft.
+
+## Ergebnis (25.09.2026)
+
+Echtes Rennen, 8 Autos, 1920×1080, RTX 5060 Ti, ohne Nebenlast
+(`tools/rennen_probe.py <strecke> --stufe <stufe>`), Median / 95. Perzentil:
+
+| Stufe | gp | desert | mountain | city |
+|---|---|---|---|---|
+| Niedrig | 9,9 / 11,0 ms | | | |
+| Mittel | 10,4 / 11,8 ms | | | |
+| Hoch | 11,4 / 12,6 ms | 11,0 / 12,4 ms | 10,8 / 12,3 ms | 11,3 / 12,7 ms |
+| Ultra | 10,6 / 12,2 ms | | | |
+
+Welt allein auf Niedrig (`tools/szene_foto.py`): 2,8 ms (desert, gp) — im
+Budget von 3 ms.
+
+* **F** — Teile-Bibliothek `tools/blender/teile.py`, `teile_rad.py`,
+  `teile_innen.py`; alle 15 Autos umgestellt (IoU gegen das Sprite gleich oder
+  besser, 90–115k Dreiecke), je Auto ein `<key>_lod1.glb` (50–60k), das die
+  Szene ab `grafik.fahrzeug_lod_m` zeichnet. Erfundene Embleme je Familie.
+* **G** — `nachbearbeitung.py` (HDR, SSAO, Bloom, FXAA/MSAA, ACES),
+  `reifenspuren.py`, Grafikseite mit Stufe und Einzelreglern, Stufe beim
+  ersten Start nach `GL_RENDERER`.
+* **W** — `gelaende.py`: Höhenfeld je Strecke, flacher Korridor, Bergkette,
+  Gras, ferner Wald; Geländemischung im Shader.
+* **S** — Asphalt mit Ideallinie, Flicken und Rissen im Shader, 3D-Randsteine,
+  Kiesbetten, Tribünen mit Publikum, Boxengebäude, Posten, Fangzäune,
+  Kameratürme, Flaggen.
+
+Offen: Gelände wirft keinen Schatten (bräuchte Kaskaden), einzelne
+Fahrzeugschwächen stehen in den Commit-Nachrichten der Gruppen (z. B. Falte
+unter den Scheinwerfern von electric/electric_2, hinteres Seitenfenster der
+Limousinen, LED-Leiste in `teile.led_am_rand` senkt entlang der Hautnormale).
