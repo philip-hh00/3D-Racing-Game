@@ -44,7 +44,14 @@
   },
   "fahrbahn": {
     "textur": "asphalt",
-    "kachel_m": 9.0
+    "kachel_m": 9.0,
+    "ton": [
+      4.2,
+      5.0,
+      5.4
+    ],
+    "randlinie_m": 1.1,
+    "mittellinie": true
   },
   "begrenzung": "betonmauer",
   "rand": [
@@ -64,19 +71,80 @@
       "radius_m": 1.0
     },
     {
-      "modell": "gemeinsam/tribuene",
-      "art": "start",
-      "abstand_m": 11,
-      "seite": "aussen",
-      "radius_m": 17
-    },
-    {
       "modell": "city/laterne",
       "art": "reihe",
       "abstand_m": 3.2,
       "je_m": 32,
       "seite": "beide",
       "radius_m": 0.8
+    },
+    {
+      "modell": "strecke/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    },
+    {
+      "modell": "strecke/boxengebaeude",
+      "art": "start",
+      "abstand_m": 17.5,
+      "seite": "innen",
+      "radius_m": 26,
+      "versatz_m": 40
+    },
+    {
+      "modell": "strecke/flaggenmasten",
+      "art": "start",
+      "abstand_m": 5.5,
+      "seite": "aussen",
+      "radius_m": 5,
+      "versatz_m": -28,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/tribuene_klein",
+      "art": "reihe",
+      "abstand_m": 12,
+      "je_m": 170,
+      "seite": "aussen",
+      "radius_m": 9,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/postenhaus",
+      "art": "reihe",
+      "abstand_m": 3.5,
+      "je_m": 120,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/kameraturm",
+      "art": "reihe",
+      "abstand_m": 6.5,
+      "je_m": 210,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/huetchen",
+      "art": "scheitel",
+      "abstand_m": 2.2,
+      "seite": "innen",
+      "radius_m": 2.0,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 3.2,
+      "seite": "beide",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "detail": 1
     }
   ],
   "deko": [
@@ -92,7 +160,8 @@
         1.1
       ],
       "radius_m": 17,
-      "drehen": false
+      "drehen": false,
+      "flach": true
     },
     {
       "modell": "city/buero_turm_1|city/buero_turm_2|city/buero_turm_3",
@@ -107,7 +176,8 @@
       ],
       "radius_m": 22,
       "drehen": false,
-      "seite": "aussen"
+      "seite": "aussen",
+      "flach": true
     },
     {
       "modell": "natur/laubbaum_2|natur/laubbaum_1",
@@ -159,5 +229,60 @@
         1.3
       ]
     }
-  ]
+  ],
+  "gelaende": {
+    "nah": {
+      "art": "flach",
+      "hoehe_m": 0.0
+    },
+    "fern": {
+      "art": "wellen",
+      "hoehe_m": 0.0
+    },
+    "horizont": {
+      "art": "huegel",
+      "hoehe_m": 90.0,
+      "wellenlaenge_m": 900.0,
+      "ab_m": 900.0
+    },
+    "korridor_m": 14.0,
+    "anstieg_m": 45.0,
+    "hang_ab": 0.18,
+    "fels_ab": 0.5,
+    "wald_farbe": [
+      0.2,
+      0.26,
+      0.16
+    ],
+    "wald_ab_m": 900.0,
+    "schichten": {
+      "hang": {
+        "textur": "fels_gras",
+        "kachel_m": 16.0,
+        "ton": [
+          0.85,
+          1.0,
+          0.8
+        ]
+      },
+      "fels": {
+        "textur": "felswand",
+        "kachel_m": 24.0
+      }
+    }
+  },
+  "gras": {
+    "an": false
+  },
+  "auslauf": {
+    "breite_m": 8.0,
+    "textur": "asphalt",
+    "kachel_m": 9.0,
+    "ton": [
+      8.5,
+      10.0,
+      10.5
+    ],
+    "rauheit": 0.9
+  }
 }

@@ -44,7 +44,13 @@
   },
   "fahrbahn": {
     "textur": "asphalt",
-    "kachel_m": 9.0
+    "kachel_m": 9.0,
+    "ton": [
+      3.7,
+      4.4,
+      4.8
+    ],
+    "randlinie_m": 1.1
   },
   "begrenzung": "reifenwand",
   "rand": [
@@ -64,11 +70,82 @@
       "radius_m": 1.0
     },
     {
-      "modell": "gemeinsam/tribuene",
+      "modell": "strecke/tribuene",
       "art": "start",
       "abstand_m": 11,
       "seite": "aussen",
       "radius_m": 17
+    },
+    {
+      "modell": "strecke/boxengebaeude",
+      "art": "start",
+      "abstand_m": 17.5,
+      "seite": "innen",
+      "radius_m": 26,
+      "versatz_m": 40
+    },
+    {
+      "modell": "strecke/flaggenmasten",
+      "art": "start",
+      "abstand_m": 5.5,
+      "seite": "aussen",
+      "radius_m": 5,
+      "versatz_m": -28,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 4.0,
+      "seite": "aussen",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "bereich_m": 110,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/tribuene_klein",
+      "art": "reihe",
+      "abstand_m": 12,
+      "je_m": 170,
+      "seite": "aussen",
+      "radius_m": 9,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/postenhaus",
+      "art": "reihe",
+      "abstand_m": 3.5,
+      "je_m": 120,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/kameraturm",
+      "art": "reihe",
+      "abstand_m": 6.5,
+      "je_m": 210,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/huetchen",
+      "art": "scheitel",
+      "abstand_m": 2.2,
+      "seite": "innen",
+      "radius_m": 2.0,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 1.2,
+      "seite": "auslauf",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "detail": 2
     }
   ],
   "deko": [
@@ -80,7 +157,8 @@
         220
       ],
       "radius_m": 9,
-      "drehen": false
+      "drehen": false,
+      "flach": true
     },
     {
       "modell": "desert/kaktus_1|desert/kaktus_2|desert/kaktus_3",
@@ -141,33 +219,85 @@
         0.6,
         2.2
       ],
-      "radius_m": 2.4
+      "radius_m": 2.4,
+      "hang_max_grad": 42.0
     }
   ],
-  "kulisse": [
-    {
-      "modell": "desert/tafelberg",
-      "anzahl": 9,
-      "radius_m": [
-        450,
-        850
-      ],
-      "skala": [
-        0.8,
-        1.4
-      ]
+  "kulisse": [],
+  "gelaende": {
+    "nah": {
+      "art": "duenen",
+      "hoehe_m": 5.0,
+      "wellenlaenge_m": 70.0
     },
-    {
-      "modell": "desert/klippe",
-      "anzahl": 7,
-      "radius_m": [
-        200,
-        340
-      ],
-      "skala": [
-        0.8,
-        1.3
-      ]
+    "fern": {
+      "art": "tafelberge",
+      "hoehe_m": 85.0,
+      "wellenlaenge_m": 380.0,
+      "ab_m": 110.0
+    },
+    "horizont": {
+      "art": "tafelberge",
+      "hoehe_m": 170.0,
+      "wellenlaenge_m": 700.0,
+      "ab_m": 650.0
+    },
+    "korridor_m": 14.0,
+    "anstieg_m": 45.0,
+    "hang_ab": 0.07,
+    "fels_ab": 0.36,
+    "hang_hoehe_m": 45.0,
+    "baum_hang_max_grad": 26.0,
+    "schichten": {
+      "hang": {
+        "textur": "felswand",
+        "kachel_m": 22.0,
+        "ton": [
+          1.15,
+          0.9,
+          0.7
+        ]
+      },
+      "fels": {
+        "textur": "felswand",
+        "kachel_m": 34.0,
+        "ton": [
+          1.2,
+          0.78,
+          0.55
+        ]
+      }
     }
-  ]
+  },
+  "gras": {
+    "an": true,
+    "trocken": true,
+    "farbe": [
+      0.42,
+      0.36,
+      0.22
+    ],
+    "spitze": [
+      0.78,
+      0.7,
+      0.46
+    ],
+    "hoehe_m": [
+      0.22,
+      0.5
+    ],
+    "dichte_je_m2": 0.45,
+    "bis_m": 30.0,
+    "halme": 16
+  },
+  "auslauf": {
+    "breite_m": 9.0,
+    "textur": "kies_grob",
+    "kachel_m": 3.5,
+    "ton": [
+      0.95,
+      1.1,
+      1.25
+    ]
+  }
 }

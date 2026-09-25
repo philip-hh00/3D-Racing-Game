@@ -44,7 +44,13 @@
   },
   "fahrbahn": {
     "textur": "asphalt",
-    "kachel_m": 9.0
+    "kachel_m": 9.0,
+    "ton": [
+      3.6,
+      4.4,
+      4.8
+    ],
+    "randlinie_m": 1.1
   },
   "begrenzung": "leitplanke",
   "rand": [
@@ -64,19 +70,90 @@
       "radius_m": 1.0
     },
     {
-      "modell": "gemeinsam/tribuene",
-      "art": "start",
-      "abstand_m": 11,
-      "seite": "aussen",
-      "radius_m": 17
-    },
-    {
       "modell": "plains/zaun",
       "art": "reihe",
       "abstand_m": 7.0,
       "je_m": 4.1,
       "seite": "aussen",
       "radius_m": 0.4
+    },
+    {
+      "modell": "strecke/tribuene",
+      "art": "start",
+      "abstand_m": 11,
+      "seite": "aussen",
+      "radius_m": 17
+    },
+    {
+      "modell": "strecke/boxengebaeude",
+      "art": "start",
+      "abstand_m": 17.5,
+      "seite": "innen",
+      "radius_m": 26,
+      "versatz_m": 40
+    },
+    {
+      "modell": "strecke/flaggenmasten",
+      "art": "start",
+      "abstand_m": 5.5,
+      "seite": "aussen",
+      "radius_m": 5,
+      "versatz_m": -28,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 4.0,
+      "seite": "aussen",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "bereich_m": 110,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/tribuene_klein",
+      "art": "reihe",
+      "abstand_m": 12,
+      "je_m": 170,
+      "seite": "aussen",
+      "radius_m": 9,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/postenhaus",
+      "art": "reihe",
+      "abstand_m": 3.5,
+      "je_m": 120,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/kameraturm",
+      "art": "reihe",
+      "abstand_m": 6.5,
+      "je_m": 210,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/huetchen",
+      "art": "scheitel",
+      "abstand_m": 2.2,
+      "seite": "innen",
+      "radius_m": 2.0,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 1.2,
+      "seite": "auslauf",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "detail": 2
     }
   ],
   "deko": [
@@ -88,7 +165,8 @@
         260
       ],
       "radius_m": 12,
-      "drehen": false
+      "drehen": false,
+      "flach": true
     },
     {
       "modell": "natur/laubbaum_1|natur/laubbaum_2|natur/laubbaum_3",
@@ -124,18 +202,6 @@
   ],
   "kulisse": [
     {
-      "modell": "plains/huegel",
-      "anzahl": 10,
-      "radius_m": [
-        450,
-        850
-      ],
-      "skala": [
-        0.9,
-        1.4
-      ]
-    },
-    {
       "modell": "plains/windrad",
       "anzahl": 7,
       "radius_m": [
@@ -147,5 +213,86 @@
         1.1
       ]
     }
-  ]
+  ],
+  "gelaende": {
+    "nah": {
+      "art": "wellen",
+      "hoehe_m": 5.0,
+      "wellenlaenge_m": 220.0
+    },
+    "fern": {
+      "art": "huegel",
+      "hoehe_m": 22.0,
+      "wellenlaenge_m": 420.0,
+      "ab_m": 180.0
+    },
+    "horizont": {
+      "art": "huegel",
+      "hoehe_m": 70.0,
+      "wellenlaenge_m": 900.0,
+      "ab_m": 700.0
+    },
+    "korridor_m": 14.0,
+    "anstieg_m": 50.0,
+    "hang_ab": 0.18,
+    "fels_ab": 0.5,
+    "wald_farbe": [
+      0.15,
+      0.22,
+      0.11
+    ],
+    "wald_ab_m": 500.0,
+    "schichten": {
+      "hang": {
+        "textur": "gras",
+        "kachel_m": 8.0,
+        "ton": [
+          0.8,
+          1.1,
+          0.62
+        ]
+      },
+      "fels": {
+        "textur": "fels_gras",
+        "kachel_m": 16.0,
+        "ton": [
+          0.85,
+          1.0,
+          0.8
+        ]
+      }
+    },
+    "fernwald_je_ha": 25.0,
+    "fernwald_bis_m": 1400.0
+  },
+  "gras": {
+    "an": true,
+    "farbe": [
+      0.22,
+      0.34,
+      0.12
+    ],
+    "spitze": [
+      0.56,
+      0.62,
+      0.26
+    ],
+    "hoehe_m": [
+      0.22,
+      0.5
+    ],
+    "dichte_je_m2": 4.2,
+    "bis_m": 30.0,
+    "halme": 20
+  },
+  "auslauf": {
+    "breite_m": 10.0,
+    "textur": "kies",
+    "kachel_m": 3.0,
+    "ton": [
+      1.1,
+      1.03,
+      0.88
+    ]
+  }
 }

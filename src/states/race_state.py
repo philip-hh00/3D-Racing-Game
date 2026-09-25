@@ -2231,6 +2231,7 @@ class RaceState(BaseState):
         from src.render3d import rennszene, vehicle_node
         kennung = int(getattr(fahrzeug, "id", 0))
         nick, wank = self._neigung(kennung, fahrzeug, dt)
+        vorn, hinten = self._reifenschlupf(kennung, fahrzeug)
         return rennszene.Fahrzeugstand(
             kennung=kennung,
             schluessel=getattr(fahrzeug, "config_key", "") or "rookie",
@@ -2240,7 +2241,35 @@ class RaceState(BaseState):
             lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(fahrzeug),
             lack=lackwerte(getattr(fahrzeug, "lack", None)),
             nick_rad=nick, wank_rad=wank,
+            schlupf_vorn=vorn, schlupf_hinten=hinten,
         )
+
+    def _reifenschlupf(self, kennung: int, fahrzeug) -> tuple[float, float]:
+        """Wie stark die Reifen rutschen, vorn und hinten — fuer Spuren und Rauch.
+
+        Aus Geschwindigkeit, Gierwinkel und Laengsbeschleunigung (die rechnet
+        ``_neigung`` ohnehin) plus Gas, Bremse und Handbremse. Ein
+        ferngesteuertes Fahrzeug hat keine Eingaben, driftet aber sichtbar.
+        """
+        from src.render3d import grafik, reifenspuren
+        if not grafik.aktuell().reifenspuren:
+            return 0.0, 0.0
+        koerper = getattr(getattr(fahrzeug, "physics", None), "body", None)
+        v = getattr(koerper, "velocity", None) if koerper is not None else None
+        if v is None:
+            v = getattr(fahrzeug, "velocity", None)
+        try:
+            v_m = (float(v[0]) * M_PER_PX, float(v[1]) * M_PER_PX)
+        except (TypeError, IndexError):
+            return 0.0, 0.0
+        laengs = (getattr(self, "_laengs_beschleunigung", None) or {}).get(kennung, 0.0)
+        cfg = getattr(fahrzeug, "config", None)
+        return reifenspuren.reifenschlupf(
+            v_m, float(fahrzeug.angle), laengs,
+            gas=float(getattr(fahrzeug, "throttle", 0.0) or 0.0),
+            bremse=float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
+            handbremse=bool(getattr(fahrzeug, "handbrake", False)),
+            antrieb=str(getattr(cfg, "drive_type", "rwd") or "rwd"))
 
     def _neigung(self, kennung: int, fahrzeug, dt: float) -> tuple[float, float]:
         """Nicken und Wanken aus der Beschleunigung, die die Physik ohnehin rechnet.
@@ -2264,6 +2293,9 @@ class RaceState(BaseState):
             eintrag = aufhaengungen[kennung] = [federung.Aufhaengung(), v]
         aufhaengung, v_alt = eintrag
         laengs, quer = federung.beschleunigung_im_fahrzeug(v, v_alt, float(fahrzeug.angle), dt)
+        if getattr(self, "_laengs_beschleunigung", None) is None:
+            self._laengs_beschleunigung = {}
+        self._laengs_beschleunigung[kennung] = laengs
         aufhaengung.fortschreiben(laengs, quer, dt)
         eintrag[1] = v
         return aufhaengung.nick_rad, aufhaengung.wank_rad
@@ -2315,7 +2347,7 @@ class RaceState(BaseState):
             staende.append(ghost)
         self._staende = staende
         if self.szene is not None:
-            self.szene.fortschreiben(staende)
+            self.szene.fortschreiben(staende, dt)
 
     def _welt_zeichnen(self) -> None:
         """Die Welt in OpenGL zeichnen, einmal je Kamera.

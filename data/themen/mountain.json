@@ -44,7 +44,13 @@
   },
   "fahrbahn": {
     "textur": "asphalt",
-    "kachel_m": 9.0
+    "kachel_m": 9.0,
+    "ton": [
+      3.6,
+      4.4,
+      4.8
+    ],
+    "randlinie_m": 1.1
   },
   "begrenzung": "leitplanke",
   "rand": [
@@ -64,11 +70,82 @@
       "radius_m": 1.0
     },
     {
-      "modell": "gemeinsam/tribuene",
+      "modell": "strecke/tribuene",
       "art": "start",
       "abstand_m": 11,
       "seite": "aussen",
       "radius_m": 17
+    },
+    {
+      "modell": "strecke/boxengebaeude",
+      "art": "start",
+      "abstand_m": 17.5,
+      "seite": "innen",
+      "radius_m": 26,
+      "versatz_m": 40
+    },
+    {
+      "modell": "strecke/flaggenmasten",
+      "art": "start",
+      "abstand_m": 5.5,
+      "seite": "aussen",
+      "radius_m": 5,
+      "versatz_m": -28,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 4.0,
+      "seite": "aussen",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "bereich_m": 110,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/tribuene_klein",
+      "art": "reihe",
+      "abstand_m": 12,
+      "je_m": 170,
+      "seite": "aussen",
+      "radius_m": 9,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/postenhaus",
+      "art": "reihe",
+      "abstand_m": 3.5,
+      "je_m": 120,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 1
+    },
+    {
+      "modell": "strecke/kameraturm",
+      "art": "reihe",
+      "abstand_m": 6.5,
+      "je_m": 210,
+      "seite": "innen",
+      "radius_m": 2.2,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/huetchen",
+      "art": "scheitel",
+      "abstand_m": 2.2,
+      "seite": "innen",
+      "radius_m": 2.0,
+      "detail": 2
+    },
+    {
+      "modell": "strecke/fangzaun",
+      "art": "kette",
+      "abstand_m": 1.2,
+      "seite": "auslauf",
+      "je_m": 4.0,
+      "radius_m": 0.4,
+      "detail": 2
     }
   ],
   "deko": [
@@ -80,7 +157,8 @@
         220
       ],
       "radius_m": 9,
-      "drehen": false
+      "drehen": false,
+      "flach": true
     },
     {
       "modell": "natur/tanne_1|natur/tanne_2|natur/tanne_3",
@@ -106,7 +184,8 @@
         0.7,
         2.4
       ],
-      "radius_m": 2.4
+      "radius_m": 2.4,
+      "hang_max_grad": 42.0
     },
     {
       "modell": "natur/stein",
@@ -119,7 +198,8 @@
         0.6,
         1.5
       ],
-      "radius_m": 1.0
+      "radius_m": 1.0,
+      "hang_max_grad": 42.0
     },
     {
       "modell": "natur/busch_2",
@@ -131,18 +211,98 @@
       "radius_m": 1.0
     }
   ],
-  "kulisse": [
-    {
-      "modell": "mountain/schneeberg_1|mountain/schneeberg_2",
-      "anzahl": 12,
-      "radius_m": [
-        750,
-        1300
-      ],
-      "skala": [
-        1.0,
-        1.6
-      ]
-    }
-  ]
+  "kulisse": [],
+  "gelaende": {
+    "nah": {
+      "art": "berge",
+      "hoehe_m": 45.0,
+      "wellenlaenge_m": 260.0
+    },
+    "fern": {
+      "art": "berge",
+      "hoehe_m": 160.0,
+      "wellenlaenge_m": 520.0,
+      "ab_m": 120.0
+    },
+    "horizont": {
+      "art": "berge",
+      "hoehe_m": 440.0,
+      "wellenlaenge_m": 1100.0,
+      "ab_m": 600.0
+    },
+    "korridor_m": 14.0,
+    "anstieg_m": 50.0,
+    "hang_ab": 0.14,
+    "fels_ab": 0.42,
+    "schnee_ab_m": 230.0,
+    "baum_hang_max_grad": 32.0,
+    "schichten": {
+      "unten": {
+        "textur": "wiese",
+        "kachel_m": 8.0,
+        "ton": [
+          0.8,
+          1.0,
+          0.7
+        ]
+      },
+      "hang": {
+        "textur": "fels_gras",
+        "kachel_m": 16.0,
+        "ton": [
+          0.85,
+          1.0,
+          0.8
+        ]
+      },
+      "fels": {
+        "textur": "felswand",
+        "kachel_m": 24.0,
+        "ton": [
+          0.95,
+          0.95,
+          0.95
+        ]
+      }
+    },
+    "fernwald_je_ha": 35.0,
+    "fernwald_bis_m": 1500.0,
+    "wald_farbe": [
+      0.11,
+      0.17,
+      0.1
+    ],
+    "baumgrenze_m": 170.0,
+    "wald_ab_m": 280.0
+  },
+  "gras": {
+    "an": true,
+    "farbe": [
+      0.24,
+      0.31,
+      0.13
+    ],
+    "spitze": [
+      0.56,
+      0.58,
+      0.3
+    ],
+    "hoehe_m": [
+      0.15,
+      0.35
+    ],
+    "dichte_je_m2": 2.6,
+    "bis_m": 24.0,
+    "halme": 18
+  },
+  "auslauf": {
+    "breite_m": 9.0,
+    "textur": "kies",
+    "kachel_m": 3.0,
+    "ton": [
+      1.0,
+      1.0,
+      0.98
+    ]
+  }
 }

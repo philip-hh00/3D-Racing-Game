@@ -38,8 +38,9 @@ from pathlib import Path
 
 import numpy as np
 
-from . import begrenzung, grafik, matrix, mesh, schatten, shader, vehicle_node
+from . import begrenzung, grafik, matrix, mesh, schatten, shader, track_mesh, vehicle_node
 from .nachbearbeitung import Nachbearbeitung
+from .reifenspuren import ERSATZRAEDER, Reifenspuren
 from .deko import Dekozeichner, material_setzen
 
 try:                                             # pragma: no cover - Importpfad
@@ -69,6 +70,9 @@ BODEN_RAND_M = 2500.0
 
 #: Kachellänge der Streckenbänder in ``track_mesh`` (v-Koordinate).
 STRECKE_KACHEL_M = 8.0
+
+#: Ein rotes und ein weißes Feld der Randsteine zusammen, Meter.
+RANDSTEIN_KACHEL_M = 2.0
 
 
 def band_hochladen(ctx, programm, band):
@@ -120,6 +124,10 @@ class Fahrzeugstand:
     #: Neigung des Aufbaus (siehe ``federung.py``), rein optisch.
     nick_rad: float = 0.0
     wank_rad: float = 0.0
+    #: Wie stark die Reifen rutschen, vorn und hinten, 0..1 (siehe
+    #: ``reifenspuren.reifenschlupf``) — daraus werden Spuren und Rauch.
+    schlupf_vorn: float = 0.0
+    schlupf_hinten: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -231,17 +239,18 @@ class Modellspeicher:
         )
         if self.tiefenprogramm is not None:
             # Eigene VAOs für die Schattenkarte: eine VAO gehört zu genau
-            # einem Programm.
+            # einem Programm. Je Teil **ein** Netz aus allen Stücken — der
+            # Schattenkarte ist das Material gleich, und 9 statt 38 Aufrufe je
+            # Auto sparen bei acht Autos gut eine Millisekunde Python.
             for teil in daten.teile:
-                vaos = []
-                for s in teil.stuecke:
-                    vp = self.ctx.buffer(np.ascontiguousarray(s.positionen, "f4").tobytes())
-                    vu = self.ctx.buffer(np.ascontiguousarray(s.uv, "f4").tobytes())
-                    ib = self.ctx.buffer(np.ascontiguousarray(s.indizes, "u4").tobytes())
-                    fahrzeugmodell.modell.puffer += [vp, vu, ib]
-                    vaos.append(self.ctx.vertex_array(
-                        self.tiefenprogramm, [(vp, "3f", "in_position"), (vu, "2f", "in_uv")], ib))
-                fahrzeugmodell.schatten_vaos[teil.name] = vaos
+                if not teil.stuecke:
+                    continue
+                vp = self.ctx.buffer(np.ascontiguousarray(teil.positionen, "f4").tobytes())
+                vu = self.ctx.buffer(np.ascontiguousarray(teil.uv, "f4").tobytes())
+                ib = self.ctx.buffer(np.ascontiguousarray(teil.indizes, "u4").tobytes())
+                fahrzeugmodell.modell.puffer += [vp, vu, ib]
+                fahrzeugmodell.schatten_vaos[teil.name] = [self.ctx.vertex_array(
+                    self.tiefenprogramm, [(vp, "3f", "in_position"), (vu, "2f", "in_uv")], ib)]
         if self.schattenprogramm is not None:
             laenge = teile.laenge_m if teile else ERSATZMASSE_M[0]
             breite = teile.breite_m if teile else ERSATZMASSE_M[1]
@@ -315,6 +324,14 @@ class _Flaeche:
     rauheit: float = 0.9
     ton: tuple = (1.0, 1.0, 1.0)
     makro: float = 0.0
+    #: Fahrbahn: Asphaltstufe für den Shader (0 aus, 1 einfach, 2 voll) und
+    #: die Gummimaske; siehe den Block "Strang S" in ``shader.py``.
+    asphalt: float = 0.0
+    maske: object = None
+
+
+#: Texturplatz der Gummimaske. 0–3 belegen Farbe, Rauheit, Himmel, Schatten.
+MASKE_EINHEIT = 5
 
 
 def _textur_laden(ctx, ordner: Path | None, name: str, cache: dict):
@@ -332,16 +349,54 @@ def _textur_laden(ctx, ordner: Path | None, name: str, cache: dict):
     return ergebnis
 
 
+def randstein_bild(farben, laengs: int = 256, quer: int = 64) -> np.ndarray:
+    """Rot-weiß im Wechsel, je Farbe eine halbe Kachel, mit Gebrauchsspuren.
+
+    Zeilen laufen entlang der Strecke, Spalten quer von der Fahrbahnkante
+    (u = 0) nach innen. Zur Fahrbahn hin liegt Gummi — dort fahren die Autos
+    über den Stein —, zwischen den Feldern eine dunkle Fuge, und die Farbe
+    ist nicht ganz gleichmäßig.
+    """
+    rng = np.random.default_rng(7)
+    rot, weiss = (np.asarray(f, dtype=np.float64) for f in farben[:2])
+    v = (np.arange(laengs) + 0.5) / laengs
+    u = (np.arange(quer) + 0.5) / quer
+    feld = np.where(v < 0.5, 0.0, 1.0)[:, None, None]
+    bild = rot[None, None, :] * (1 - feld) + weiss[None, None, :] * feld
+    bild = np.broadcast_to(bild, (laengs, quer, 3)).copy()
+    # Fugen quer zur Fahrtrichtung.
+    fuge = (np.minimum(np.abs(v - 0.5), np.minimum(v, 1 - v)) < 0.008)[:, None]
+    bild[fuge[:, 0]] *= 0.35
+    # Gummi innen, fleckig.
+    flecken = rng.random((laengs // 8, quer // 8))
+    flecken = np.kron(flecken, np.ones((8, 8)))[:laengs, :quer]
+    gummi = np.clip((u[None, :] - 0.45) / 0.55, 0, 1) ** 1.5 * (0.35 + 0.4 * flecken)
+    bild *= (1.0 - 0.55 * gummi)[:, :, None]
+    bild *= (0.93 + 0.07 * rng.random((laengs, quer)))[:, :, None]
+    return (np.clip(bild, 0, 1) * 255).astype(np.uint8)
+
+
 def _randsteintextur(ctx, farben):
-    """Rot-weiß im Wechsel entlang der Strecke, je Farbe eine halbe Kachel."""
     from PIL import Image
-    a = np.zeros((16, 4, 3), dtype=np.uint8)
-    rot, weiss = (np.asarray(f) * 255 for f in farben[:2])
-    a[:8] = rot
-    a[8:] = weiss
-    t = mesh.textur_hochladen(ctx, Image.fromarray(a, "RGB"))
-    t.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.NEAREST)
-    return t
+    return mesh.textur_hochladen(ctx, Image.fromarray(randstein_bild(farben), "RGB"))
+
+
+def _maske_hochladen(ctx, maske: np.ndarray):
+    """Die Gummimaske (Zeilen längs, Spalten quer) als Einkanaltextur.
+
+    Zeile 0 liegt bei v = 0 — roh hochgeladen, ohne das Spiegeln der Bilder.
+    Längs kachelt sie (die Strecke ist geschlossen), quer nicht.
+    """
+    maske = np.ascontiguousarray(maske, dtype=np.uint8)
+    textur = ctx.texture((maske.shape[1], maske.shape[0]), 1, maske.tobytes())
+    textur.build_mipmaps()
+    textur.repeat_x = False
+    textur.repeat_y = True
+    try:
+        textur.anisotropy = 8.0
+    except Exception:                                # pragma: no cover - Treiber
+        pass
+    return textur
 
 
 # ---------------------------------------------------------------------------
@@ -367,34 +422,89 @@ def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | No
                     shader.setzen(p, "emission", tuple(lin))
 
 
+def _zeichenplan(modell: mesh.Modell) -> dict:
+    """Die Stücke eines Modells nach Material geordnet, einmal je Modell.
+
+    ``{False: [(material, [(teilname, vao), …]), …], True: […]}`` — deckend
+    und Glas getrennt. Ein Material wird so je Auto **einmal** gesetzt statt
+    je Stück: vier Räder teilen sich Gummi, Felge und Bremse. Das halbiert die
+    Materialwechsel, und die waren der größte Posten der Bildzeit.
+    """
+    plan = getattr(modell, "_zeichenplan", None)
+    if plan is not None:
+        return plan
+    gruppen: dict = {}
+    for teil in modell.teile:
+        for st in teil.stuecke:
+            hm = modell.materialien[st.material] if st.material < len(modell.materialien) else None
+            glas = hm is not None and hm.daten.durchsichtig
+            gruppen.setdefault((glas, st.material), (hm, []))[1].append((teil.name, st.vao))
+    plan = {False: [], True: []}
+    for (glas, _mi), eintrag in sorted(gruppen.items(), key=lambda e: e[0]):
+        plan[glas].append(eintrag)
+    try:
+        modell._zeichenplan = plan
+    except AttributeError:                           # pragma: no cover - Attrappen
+        pass
+    return plan
+
+
 def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                            lack: Lackwerte | None, durchsichtig) -> None:
     """Alle Teile eines Fahrzeugs an ihren Matrizen zeichnen.
 
     ``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles.
     Den Mischmodus stellt der Aufrufer ein.
+
+    Die Matrizen eines Fahrzeugs sind **starr** (Drehung und Verschiebung,
+    keine Skalierung) — dann ist die Normalmatrix der Drehteil selbst, und die
+    Inverse je Teil entfällt.
     """
-    for name, m in matrizen.items():
-        teil = modell.teil(name)
-        if teil is None:
-            continue
-        gesetzt = False
-        for st in teil.stuecke:
-            hm = modell.materialien[st.material] if st.material < len(modell.materialien) else None
-            glas = hm is not None and hm.daten.durchsichtig
-            if durchsichtig is not None and glas != durchsichtig:
+    plan = _zeichenplan(modell)
+    if durchsichtig is None:
+        gruppen = plan[False] + plan[True]
+    else:
+        gruppen = plan[bool(durchsichtig)]
+    if not gruppen:
+        return
+    u_modell = p["modell"]
+    u_normale = p.get("normalmatrix", None)
+    bytes_je_teil: dict = {}
+    zuletzt = None
+    for hm, eintraege in gruppen:
+        material_gesetzt = False
+        for name, vao in eintraege:
+            m = matrizen.get(name)
+            if m is None:
                 continue
-            if not gesetzt:
-                shader.modell_setzen(p, m)
-                gesetzt = True
-            if hm is not None:
-                lack_material_setzen(p, hm, lack)
-            st.vao.render()
+            if not material_gesetzt:
+                if hm is not None:
+                    lack_material_setzen(p, hm, lack)
+                material_gesetzt = True
+            if name != zuletzt:
+                b = bytes_je_teil.get(name)
+                if b is None:
+                    m4 = np.asarray(m, dtype=np.float32)
+                    b = bytes_je_teil[name] = (np.ascontiguousarray(m4.T).tobytes(),
+                                               np.ascontiguousarray(m4[:3, :3].T).tobytes())
+                u_modell.write(b[0])
+                if u_normale is not None:
+                    u_normale.write(b[1])
+                zuletzt = name
+            vao.render()
 
 
 # ---------------------------------------------------------------------------
 # Die Szene
 # ---------------------------------------------------------------------------
+
+def _im_bild(mvp: np.ndarray, pos_m, radius_m: float = 3.5) -> bool:
+    """Ob eine Kugel um ein Fahrzeug im Sichtkegel liegen kann (großzügig)."""
+    p = np.asarray(pos_m, dtype=np.float64)
+    c = np.asarray(mvp, dtype=np.float64) @ np.array([p[0], p[1], p[2] + 0.7, 1.0])
+    r = radius_m * 2.0
+    return bool(c[3] > -r and abs(c[0]) < c[3] + r and abs(c[1]) < c[3] + r)
+
 
 #: Wie stark ein Ghost entfärbt und wie durchscheinend er gezeichnet wird.
 GHOST_ENTFAERBUNG = 0.85
@@ -425,6 +535,13 @@ class Rennszene:
         self.himmel = None
         self.schattenkarte = None
         self.nachbearbeitung: Nachbearbeitung | None = None
+        self.reifenspuren: Reifenspuren | None = None
+        # Gelände und Gras (Strang W); ohne Thema bleibt der flache Boden.
+        self.gelaende = None
+        self.gelaendezeichner = None
+        self.graszeichner = None
+        self.fernwald = None
+        self._radplaetze: dict = {}
         #: Belichtung des Themas; angewendet in der Nachbearbeitung.
         self.belichtung = 1.0
         self._texturen: dict = {}
@@ -444,6 +561,7 @@ class Rennszene:
         self.schattenwerfer = schatten.Schattenwerfer(ctx)
         from . import licht
         self.nachbearbeitung = Nachbearbeitung(ctx)
+        self.reifenspuren = Reifenspuren(ctx)
         if self.schattenwurf_an:
             try:
                 self.schattenkarte = licht.Schattenkarte(
@@ -465,6 +583,9 @@ class Rennszene:
         name = getattr(self.thema, "himmel", "") if self.thema else ""
         self.himmel = licht.Himmel(ctx, self.himmelordner or ".", name)
         self._umgebung_setzen()
+
+        yield 0.08, "Gelände"
+        self._gelaende_bauen()
 
         yield 0.1, "Strecke"
         self._strecke_hochladen()
@@ -502,6 +623,11 @@ class Rennszene:
                 self.belichtung = float(t.belichtung)
                 shader.setzen(p, "nebel_farbe", tuple(t.nebel_farbe))
                 shader.setzen(p, "nebel_dichte", float(t.nebel_dichte))
+        if self.reifenspuren is not None:
+            # Rauch ist hell und matt: grob Sonne von schräg plus Himmel.
+            sonne = np.asarray(t.sonne_farbe if t is not None else shader.SONNE_FARBE, dtype=float)
+            himmel = np.asarray(t.himmel_horizont if t is not None else shader.HIMMEL_HORIZONT, dtype=float)
+            self.reifenspuren.rauch_farbe = tuple(float(c) for c in 0.72 * (sonne * 0.2 + himmel * 0.75))
 
     def _strecke_hochladen(self) -> None:
         ctx = self.ctx
@@ -514,20 +640,32 @@ class Rennszene:
             kachel = STRECKE_KACHEL_M
             rauheit, farbe = 0.9, BANDFARBEN.get(band.name, (0.5, 0.5, 0.5))
             ton = (1.0, 1.0, 1.0)
+            asphalt, maske = 0.0, None
             if band.name == "fahrbahn":
+                # uv in Metern: quer ab der linken Kante, längs die Bogenlänge.
                 uv[:, 0] *= max(breite, 1.0)
                 uv[:, 1] *= STRECKE_KACHEL_M
                 if t is not None:
                     textur, mr = _textur_laden(ctx, self.texturordner, t.fahrbahn_textur, self._texturen)
                     kachel = t.fahrbahn_kachel_m
+                    ton = tuple(t.fahrbahn_ton)
                 farbe = (1.0, 1.0, 1.0) if textur else farbe
+                asphalt = 1.0 if grafik.aktuell().strecken_details <= 0 else 2.0
+                maske = _maske_hochladen(ctx, track_mesh.gummi_maske(self.netz))
+                self._eigene_texturen.append(maske)
             elif band.name.startswith("randstein"):
-                uv[:, 1] *= STRECKE_KACHEL_M
+                # uv: quer 0..1 von der Kante nach innen, längs in Metern. Die
+                # Kachel gilt für beide Richtungen — quer deshalb vorab
+                # strecken, damit die ganze Breite genau eine Textur ist.
+                kachel = RANDSTEIN_KACHEL_M
+                uv[:, 0] *= kachel
                 if t is not None:
                     textur = _randsteintextur(ctx, t.randstein_farben)
                     self._eigene_texturen.append(textur)
-                    kachel, rauheit, farbe = 4.0, 0.55, (1.0, 1.0, 1.0)
+                    rauheit, farbe = 0.55, (1.0, 1.0, 1.0)
             elif band.name == "untergrund":
+                if self.gelaendezeichner is not None:
+                    continue            # das Gelände ist der Boden (Strang W)
                 band = self._grosser_boden()
                 uv = band.uv
                 if t is not None:
@@ -540,7 +678,9 @@ class Rennszene:
             band_neu.uv, band_neu.indizes = uv, band.indizes
             makro = {"untergrund": 0.28, "fahrbahn": 0.08}.get(name, 0.0)
             self.flaechen.append(_Flaeche(band_hochladen(ctx, self.programm, band_neu),
-                                          farbe, textur, mr, kachel, 0.0, rauheit, ton, makro))
+                                          farbe, textur, mr, kachel, 0.0, rauheit, ton, makro,
+                                          asphalt, maske))
+        self._auslauf_hochladen()
         self._startlinie_hochladen()
         if t is not None:
             for s in begrenzung.bauen(self.netz, t.begrenzung):
@@ -550,21 +690,30 @@ class Rennszene:
                     (1.0, 1.0, 1.0) if textur else s.farbe, textur, mr, s.kachel_m,
                     s.metallic, s.rauheit))
 
-    def _startlinie_hochladen(self) -> None:
-        """Karierte Ziellinie über Punkt 0 und weiße Startplätze.
+    def _auslauf_hochladen(self) -> None:
+        """Kiesbetten, Sand- oder Asphaltauslauf außen an den Kurven (Strang S)."""
+        t = self.thema
+        art = getattr(t, "auslauf", None) if t is not None else None
+        if art is None or art.breite_m <= 0:
+            return
+        textur, mr = _textur_laden(self.ctx, self.texturordner, art.textur, self._texturen)
+        for band in track_mesh.auslauf_baender(self.netz, art.breite_m):
+            self.flaechen.append(_Flaeche(
+                band_hochladen(self.ctx, self.programm, band),
+                (1.0, 1.0, 1.0) if textur else (0.55, 0.52, 0.47), textur, mr, art.kachel_m,
+                0.0, art.rauheit, tuple(art.ton), 0.22))
 
-        Beides flach auf der Fahrbahn, einen halben Zentimeter darüber gegen
-        Z-Fighting. Die Karos sind eine kleine Textur, die Startplätze ein
-        einfarbiges Band.
+    def _startlinie_hochladen(self) -> None:
+        """Weiße Startplätze, flach einen halben Zentimeter über der Fahrbahn.
+
+        Die karierte Ziellinie über Punkt 0 malt der Asphalt-Shader selbst
+        (Block "Strang S" in ``shader.py``) — in der Fahrbahn statt darüber,
+        also ohne Z-Fighting in der Ferne.
         """
-        from PIL import Image
         linie = np.asarray(self.netz.mittellinie, dtype=np.float64)
         halb = float(getattr(self.netz, "halbe_breite_m", 0.0) or 0.0)
         if len(linie) < 2 or halb <= 0:
             return
-        t = linie[1] - linie[0]
-        t /= max(np.linalg.norm(t), 1e-9)
-        links = np.array([-t[1], t[0]])
 
         def quad(mitte, vor, quer, laenge, breite, uv_u, uv_v):
             ecken = [mitte - vor * laenge / 2 - quer * breite / 2, mitte + vor * laenge / 2 - quer * breite / 2,
@@ -572,19 +721,6 @@ class Rennszene:
             pos = np.array([[e[0], e[1], 0.006] for e in ecken], dtype=np.float32)
             uv = np.array([[0, 0], [uv_u, 0], [uv_u, uv_v], [0, uv_v]], dtype=np.float32)
             return pos, uv
-
-        b = type("B", (), {})()
-        b.positionen, b.uv = quad(linie[0], t, links, 1.6, 2 * halb, 2.0, 2 * halb / 0.8)
-        b.normalen = np.tile(np.array([[0, 0, 1]], dtype=np.float32), (4, 1))
-        b.indizes = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.uint32)
-        karo = np.zeros((2, 2, 3), dtype=np.uint8)
-        karo[0, 0] = karo[1, 1] = 240
-        karo[0, 1] = karo[1, 0] = 18
-        textur = mesh.textur_hochladen(self.ctx, Image.fromarray(karo, "RGB"))
-        textur.filter = (moderngl.NEAREST_MIPMAP_LINEAR, moderngl.NEAREST)
-        self._eigene_texturen.append(textur)
-        self.flaechen.append(_Flaeche(band_hochladen(self.ctx, self.programm, b),
-                                      (1, 1, 1), textur, None, 1.0, 0.0, 0.6))
 
         # Startplätze: ein weißer Balken quer vor jedem Startplatz.
         pos_alle, idx_alle = [], []
@@ -604,6 +740,85 @@ class Rennszene:
             s.indizes = np.array(idx_alle, dtype=np.uint32)
             self.flaechen.append(_Flaeche(band_hochladen(self.ctx, self.programm, s),
                                           (0.92, 0.92, 0.9), None, None, 1.0, 0.0, 0.6))
+
+    # -- Gelände (Strang W) ------------------------------------------------
+    def _gelaende_bauen(self) -> None:
+        """Höhenfeld, Netz und Gras; Deko und Kulisse auf den Boden setzen.
+
+        Ohne Thema (Tests, Werkstatt) bleibt der flache große Boden.
+        """
+        t = self.thema
+        art = getattr(t, "gelaende", None) if t is not None else None
+        if art is None:
+            return
+        from . import gelaende, platzierung
+        einstellung = grafik.aktuell()
+        name = getattr(self.netz, "name", "") or "strecke"
+        auslauf = float(getattr(getattr(t, "auslauf", None), "breite_m", 0.0) or 0.0)
+        gel = gelaende.Gelaende(self.netz.mittellinie, self.netz.halbe_breite_m, art, name,
+                                rand_arten=t.rand, auslauf_m=auslauf,
+                                detail=einstellung.gelaende_detail)
+        orte = platzierung.ausduennen(self.platzierungen, t, einstellung.deko_dichte, name)
+        self.platzierungen = platzierung.hoehen_setzen(orte, gel, t)
+        texturen = {}
+        for schluessel, schicht, ersatz in (("gelaende_unten", art.unten, t.boden_farbe),
+                                            ("gelaende_hang", art.hang, (0.45, 0.42, 0.36)),
+                                            ("gelaende_fels", art.fels, (0.42, 0.40, 0.38))):
+            farbe, _mr = _textur_laden(self.ctx, self.texturordner, schicht.textur, self._texturen)
+            if farbe is None:
+                from PIL import Image
+                pixel = np.full((1, 1, 3), np.asarray(ersatz) * 255, dtype=np.uint8)
+                farbe = mesh.textur_hochladen(self.ctx, Image.fromarray(pixel, "RGB"))
+                self._eigene_texturen.append(farbe)
+            texturen[schluessel] = farbe
+        schattenprogramm = self.schattenkarte.programm if self.schattenkarte else None
+        self.gelaendezeichner = gelaende.Gelaendezeichner(self.ctx, self.programm, schattenprogramm,
+                                                          gel, texturen)
+        self.gelaende = gel
+        if art.wald_farbe is not None and art.fernwald_je_ha > 0:
+            # Quadratisch: auf Niedrig (0,4) bleibt ein Sechstel — Kegel sind billig,
+            # aber tausende davon nicht für eine Einsteigerkarte.
+            wald = gelaende.fernwald_platzieren(gel, name, einstellung.deko_dichte ** 2)
+            if len(wald.pos):
+                self.fernwald = gelaende.Fernwaldzeichner(self.ctx, self.programm_instanz, wald,
+                                                          art.wald_farbe)
+        stufe = int(einstellung.gras)
+        if t.gras.an and stufe > 0:
+            feld = gelaende.gras_platzieren(
+                gel, t.gras, stufe, name,
+                platzierung.grasfreie_flaechen(self.platzierungen, t, self._modellgrenzen(t)))
+            if len(feld.pos):
+                boden = None
+                if self.texturordner is not None:
+                    boden = gelaende.mittlere_farbe(
+                        self.texturordner / f"{art.unten.textur}_farbe.jpg", art.unten.ton)
+                self.graszeichner = gelaende.Graszeichner(
+                    self.ctx, self.programm_instanz, feld, t.gras, gel.keim,
+                    gelaende.GRAS_WEITE_M.get(stufe, 60.0), boden)
+
+    def _modellgrenzen(self, t) -> dict:
+        """Grundriss der großen Rand- und Hausmodelle, ``(x_min, x_max, y_min, y_max)``.
+
+        Nur für die, die Gras sperren (Platzbedarf ab 4 m); aus dem GLB, weil
+        ein Vorplatz nicht im Katalog steht.
+        """
+        if self.umgebungsordner is None:
+            return {}
+        namen = {n for a in list(t.rand) + [d for d in t.deko if d.flach] if a.radius_m >= 4.0
+                 for n in a.modell.split("|")}
+        grenzen = {}
+        for n in namen:
+            pfad = self.umgebungsordner / f"{n}.glb"
+            if not pfad.is_file():
+                continue
+            daten = mesh.laden(pfad)
+            punkte = [s.positionen[:, :2] + np.asarray(teil.versatz)[:2]
+                      for teil in daten.teile for s in teil.stuecke]
+            if punkte:
+                p = np.concatenate(punkte)
+                grenzen[n] = (float(p[:, 0].min()), float(p[:, 0].max()),
+                              float(p[:, 1].min()), float(p[:, 1].max()))
+        return grenzen
 
     def _grosser_boden(self):
         """Ein Boden bis weit hinter die Kulisse, in Metern kachelnd."""
@@ -630,13 +845,33 @@ class Rennszene:
         return fahrzeugmodell.knoten() if fahrzeugmodell else None
 
     # -- Zeichnen --------------------------------------------------------
-    def fortschreiben(self, staende) -> None:
+    def fortschreiben(self, staende, dt: float | None = None) -> None:
         """Den Radzustand aller Fahrzeuge um ein Bild weiterdrehen.
 
         Getrennt von :meth:`zeichnen`, weil im Splitscreen zweimal gezeichnet
-        wird und trotzdem nur einmal Zeit vergeht.
+        wird und trotzdem nur einmal Zeit vergeht. ``dt`` (Sekunden) braucht
+        der Reifenrauch; ohne wird die Uhr gelesen.
         """
         self.knotenspeicher.fortschreiben(staende)
+        if self.reifenspuren is not None:
+            if grafik.aktuell().reifenspuren:
+                self.reifenspuren.fortschreiben(staende, self._raeder_von, dt)
+            elif self.reifenspuren.belegt or self.reifenspuren.teilchen_aktiv:
+                self.reifenspuren.leeren()
+
+    def _raeder_von(self, stand: Fahrzeugstand):
+        """Radplätze ``(x, y, hinten)`` eines Fahrzeugs, je Schlüssel gemerkt."""
+        plaetze = self._radplaetze.get(stand.schluessel)
+        if plaetze is None:
+            fm = self.speicher.holen(stand.schluessel)
+            teile = fm.teile if fm is not None else None
+            if teile is not None and teile.plaetze:
+                plaetze = tuple((float(r.nabe[0]), float(r.nabe[1]), float(r.nabe[0]) < 0.0)
+                                for r in teile.plaetze)
+            else:
+                plaetze = ERSATZRAEDER
+            self._radplaetze[stand.schluessel] = plaetze
+        return plaetze
 
     def zeichnen(self, mvp: np.ndarray, kamera_position, staende, fokus=None) -> None:
         """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort.
@@ -679,16 +914,28 @@ class Rennszene:
         # drei- bis viermal voll schattiert. Himmel ganz zuletzt, nur wo
         # noch nichts steht.
         auge = np.asarray(kamera_position, dtype=np.float64)[:2]
-        nach_abstand = sorted(staende, key=lambda s: float(np.linalg.norm(np.asarray(s.pos_m)[:2] - auge)))
+        # Nur, was im Bild sein kann: in der Startaufstellung stehen sieben von
+        # acht Autos hinter der Kamera, und jedes kostet gut hundert Aufrufe.
+        sichtbar = [s for s in staende if _im_bild(mvp, s.pos_m)]
+        nach_abstand = sorted(sichtbar, key=lambda s: float(np.linalg.norm(np.asarray(s.pos_m)[:2] - auge)))
         for stand in nach_abstand:
             if not stand.entfaerbt:
                 self._fahrzeug_zeichnen(stand, durchsichtig=False)
+        if self.graszeichner is not None:
+            self.ctx.enable(moderngl.DEPTH_TEST)
+            self.ctx.disable(moderngl.BLEND)
+            self.graszeichner.zeichnen(mvp, kamera_position)
         if self.deko is not None:
             self.ctx.enable(moderngl.DEPTH_TEST)
             self.ctx.disable(moderngl.BLEND)
             self.deko.zeichnen(mvp, kamera_position, "farbe")
+        if self.fernwald is not None:
+            self.fernwald.zeichnen()
         self._strecke_zeichnen()
         self.himmel.zeichnen(mvp, kamera_position)
+        spuren = self.reifenspuren is not None and einstellung.reifenspuren
+        if spuren:
+            self.reifenspuren.spuren_zeichnen(mvp)
         self._schatten_zeichnen(mvp, staende)
         # Durchscheinendes zuletzt, von hinten nach vorn.
         reihe = list(reversed(nach_abstand))
@@ -699,26 +946,46 @@ class Rennszene:
                 self._fahrzeug_zeichnen(stand, durchsichtig=True)
         self.ctx.disable(moderngl.BLEND)
         self.ctx.depth_mask = True
+        if spuren and self.reifenspuren.teilchen_aktiv:
+            _farbe, tiefe = self.nachbearbeitung.aufloesen()
+            self.reifenspuren.rauch_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position,
+                                             tiefe, self.nachbearbeitung.groesse)
         self.nachbearbeitung.abschliessen(self.belichtung)
 
     def _schattenkarte_zeichnen(self, staende, fokus) -> None:
         karte = self.schattenkarte
+        if karte.statisch_neu:
+            # Was sich nicht bewegt, nur wenn die ruhende Karte neu gemittelt
+            # wurde (siehe licht.Schattenkarte).
+            vorher = karte.statisch_beginnen()
+            try:
+                if self.deko is not None:
+                    self.deko.zeichnen(None, fokus, "schatten", fokus=fokus)
+                if self.gelaendezeichner is not None:
+                    self.gelaendezeichner.schatten_zeichnen(karte.programm)
+            finally:
+                karte.beenden(vorher)
         vorher = karte.beginnen()
         try:
             p = karte.programm
             shader.setzen(p, "alpha_schwelle", 0.0)
+            reichweite = karte.halbe_breite * 1.5 + 5.0
+            f = np.asarray(fokus, dtype=np.float64)[:2]
             for stand in staende:
                 if stand.entfaerbt:
+                    continue
+                if float(np.hypot(*(np.asarray(stand.pos_m, dtype=np.float64)[:2] - f))) > reichweite:
                     continue
                 fm = self.speicher.holen(stand.schluessel)
                 if fm is None:
                     continue
                 for name, m in self._teilmatrizen(stand, fm).items():
-                    for vao in fm.schatten_vaos.get(name, ()):
-                        shader.matrix_setzen(p, "modell", m)
+                    vaos = fm.schatten_vaos.get(name)
+                    if not vaos:
+                        continue
+                    shader.matrix_setzen(p, "modell", m)
+                    for vao in vaos:
                         vao.render()
-            if self.deko is not None:
-                self.deko.zeichnen(None, fokus, "schatten", fokus=fokus)
         finally:
             karte.beenden(vorher)
 
@@ -736,10 +1003,27 @@ class Rennszene:
         shader.setzen(p, "klarlack", 0.0)
         shader.setzen(p, "alpha_faktor", 1.0)
         shader.setzen(p, "alpha_schwelle", 0.0)
+        shader.setzen(p, "asphalt", float(f.asphalt))
+        if f.asphalt > 0 and f.maske is not None:
+            self._asphalt_setzen(p)
+            f.maske.use(MASKE_EINHEIT)
         if f.textur is not None:
             f.textur.use(0)
         if f.mr is not None:
             f.mr.use(1)
+
+    def _asphalt_setzen(self, p) -> None:
+        """Maße und Linien der Fahrbahn für den Asphalt-Block im Shader."""
+        t = self.thema
+        breite = 2.0 * float(getattr(self.netz, "halbe_breite_m", 0.0) or 0.0)
+        shader.setzen(p, "strecken_maske", MASKE_EINHEIT)
+        shader.setzen(p, "strecke_mass", (max(breite, 1.0), max(float(self.netz.laenge_m), 1.0)))
+        if t is not None:
+            linien = (float(t.randlinie_m), float(t.linienbreite_m),
+                      1.0 if t.mittellinie else 0.0, float(t.linien_gelb))
+        else:
+            linien = (1.1, 0.2, 0.0, 0.0)
+        shader.setzen(p, "strecke_linien", linien)
 
     def _strecke_zeichnen(self) -> None:
         self.ctx.enable(moderngl.DEPTH_TEST)
@@ -751,6 +1035,9 @@ class Rennszene:
         for f in self.flaechen:
             self._flaeche_setzen(f)
             f.vao.render()
+        if self.gelaendezeichner is not None:
+            shader.setzen(p, "asphalt", 0.0)
+            self.gelaendezeichner.zeichnen()
         shader.setzen(p, "uv_skala", 1.0)
         shader.setzen(p, "farbton", (1.0, 1.0, 1.0))
         shader.setzen(p, "makro", 0.0)
@@ -843,6 +1130,11 @@ class Rennszene:
         self._eigene_texturen = []
         if getattr(self, "deko", None) is not None:
             self.deko.freigeben()
+        for ding in (getattr(self, "gelaendezeichner", None), getattr(self, "graszeichner", None),
+                     getattr(self, "fernwald", None)):
+            if ding is not None:
+                ding.freigeben()
+        self.gelaendezeichner = self.graszeichner = self.fernwald = None
         if getattr(self, "speicher", None) is not None:
             self.speicher.freigeben()
         for ding in (getattr(self, "himmel", None), getattr(self, "schattenkarte", None)):
@@ -853,6 +1145,9 @@ class Rennszene:
         if getattr(self, "nachbearbeitung", None) is not None:
             self.nachbearbeitung.freigeben()
             self.nachbearbeitung = None
+        if getattr(self, "reifenspuren", None) is not None:
+            self.reifenspuren.freigeben()
+            self.reifenspuren = None
         for ding in (getattr(self, "programm", None), getattr(self, "programm_instanz", None),
                      getattr(self, "_leere_tiefe", None)):
             if ding is not None:

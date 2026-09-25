@@ -227,10 +227,206 @@ float rauschen(vec2 p) {
                mix(rauschen_hash(i + vec2(0, 1)), rauschen_hash(i + vec2(1, 1)), u.x), u.y);
 }
 
+/* === Strang S: Asphalt der Fahrbahn (Anfang) ==============================
+   Nur fuer die Fahrbahn (asphalt > 0), gesetzt von
+   rennszene._strecke_hochladen. uv ist dort in Metern: x quer ab der linken
+   Kante, y entlang der Mittellinie (Bogenlaenge ab der Ziellinie). Alles
+   entsteht in diesen Streckenkoordinaten und kachelt deshalb nicht: Bahnen
+   des Fertigers, heller Rand, Gummi der Ideallinie (Maske aus
+   track_mesh.gummi_maske), Flicken, Risse, Linien und die Ziellinie. */
+uniform float asphalt;            // 0 aus, 1 einfach, 2 mit Flicken, Rissen, Kachelbruch
+uniform sampler2D strecken_maske; // r: Gummiabrieb
+uniform vec2  strecke_mass;       // Breite, Laenge (m)
+uniform vec4  strecke_linien;     // Randlinie ab Kante (0: keine), Linienbreite, Mittellinie (0/1), Gelbanteil
+
+/* 1 auf einer Linie der halben Breite hb um abstand = 0, weich ueber ein Pixel. */
+float s_linie(float abstand, float hb) {
+    float w = max(fwidth(abstand), 1e-4);
+    return 1.0 - smoothstep(hb - w, hb + w, abs(abstand));
+}
+
+/* Ein Riss entlang einer Hoehenlinie des Rauschens, ``breite`` in Metern.
+   Der Abstand zur Linie wird durch das Gefaelle des Rauschens geteilt —
+   sonst wird der Riss dort, wo das Rauschen flach ist, zur breiten Pfuetze.
+   In der Ferne blendet er aus, statt zu flimmern. */
+float s_riss(float r, float hoehe, float breite, float pixel_m) {
+    float gefaelle = max(length(vec2(dFdx(r), dFdy(r))) / pixel_m, 1e-3);
+    float d = abs(r - hoehe) / gefaelle;
+    return (1.0 - smoothstep(breite, breite + pixel_m, d)) * clamp(breite / pixel_m * 2.0, 0.0, 1.0);
+}
+
+void asphalt_details(inout vec3 basis, inout float rauheit) {
+    vec2 m = uv;
+    float breite = strecke_mass.x;
+    float kante = min(m.x, breite - m.x);
+    if (asphalt > 1.5 && hat_basisfarbe > 0.5) {
+        // Kachelbruch: eine zweite, gedrehte Probe, nach Rauschen eingemischt.
+        // Nur mit gesetzter Basistextur — sonst liegt auf Einheit 0 irgendetwas.
+        vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * (m * uv_skala * 0.71) + vec2(0.37, 0.61);
+        vec3 zweit = nach_linear(texture(basisfarbe, q).rgb) * farbton;
+        basis = mix(basis, zweit, smoothstep(0.3, 0.7, rauschen(welt_position.xy / 6.0 + 3.1)));
+    }
+    // Die Asphalttextur ist fast schwarz und sehr koernig; eingefaerbt auf
+    // ein glaubhaftes Grau wuerde jedes Korn zum Fleck. Kontrast und
+    // Saettigung zur Mitte hin zusammenziehen.
+    vec3 mittel = farbton * 0.0105;
+    basis = mix(mittel, basis, 0.55);
+    basis = mix(vec3(dot(basis, vec3(0.3, 0.59, 0.11))), basis, 0.35);
+    // Bahnen des Fertigers (laengs gestreckt) und grossflaechige Schwankung.
+    float bahn = rauschen(vec2(m.x / 4.2, m.y / 70.0));
+    float gross = rauschen(vec2(m.x / 16.0, m.y / 40.0) + 5.0);
+    basis *= 0.86 + 0.14 * bahn + 0.12 * gross;
+    // Heller Rand: Staub und kaum befahren.
+    basis *= 1.0 + 0.22 * (1.0 - smoothstep(0.2, 3.2, kante)) * (0.7 + 0.6 * rauschen(m * vec2(1.3, 0.2)));
+    // Gummi der Ideallinie, in Laengsstreifen.
+    float gummi = texture(strecken_maske, vec2(m.x / breite, m.y / strecke_mass.y)).r;
+    gummi *= 0.7 + 0.3 * rauschen(vec2(m.x * 3.1, m.y * 0.07));
+    basis *= 1.0 - 0.62 * gummi;
+    rauheit *= 1.0 - 0.2 * gummi;
+    if (asphalt > 1.5) {
+        // Flicken: rechteckige Ausbesserungen, je Zelle hoechstens einer.
+        vec2 zelle = vec2(7.3, 26.0);
+        vec2 id = floor(m / zelle);
+        vec2 lokal = m - id * zelle;
+        // Ohne Verzweigung: fwidth braucht alle Nachbarpixel im selben Zweig.
+        float da = step(rauschen_hash(id + 11.0), 0.13);
+        vec2 gr = vec2(1.6 + 3.4 * rauschen_hash(id + 3.0), 2.2 + 13.0 * rauschen_hash(id + 5.0));
+        gr = min(gr, zelle - 0.8);
+        vec2 ecke = 0.4 + (zelle - 0.8 - gr) * vec2(rauschen_hash(id + 7.0), rauschen_hash(id + 9.0));
+        vec2 d = abs(lokal - ecke - gr * 0.5) - gr * 0.5;
+        float innen = max(d.x, d.y);
+        float w = max(fwidth(innen), 1e-4);
+        float flick = (1.0 - smoothstep(-w, w, innen)) * da;
+        float ton = 0.68 + 0.14 * rauschen_hash(id + 13.0);
+        basis *= mix(1.0, ton * (0.92 + 0.16 * rauschen(m * 1.7)), flick);
+        basis *= 1.0 - 0.45 * s_linie(innen, 0.035) * da;
+        rauheit *= mix(1.0, 0.88, flick);
+        // Risse nur in manchen Abschnitten: vergossene Fugen (dunkel,
+        // glaenzend) und feine Haarrisse.
+        float zone = smoothstep(0.62, 0.8, rauschen(m / vec2(9.0, 30.0) + 41.0));
+        // Laengsrisse laufen mit der Fahrbahn, Querrisse quer dazu; ein
+        // wenig feineres Rauschen macht sie unruhig statt glatt.
+        float rl = rauschen(m * vec2(0.35, 0.025) + 31.0) * 0.9 + rauschen(m * vec2(2.5, 0.4) + 7.0) * 0.1;
+        float rq = rauschen(m * vec2(0.04, 0.25) + 13.0) * 0.9 + rauschen(m * vec2(0.5, 2.2) + 3.0) * 0.1;
+        float pixel_m = max(length(fwidth(m)), 1e-4);
+        float verguss = max(s_riss(rl, 0.5, 0.02, pixel_m), s_riss(rq, 0.5, 0.016, pixel_m)) * zone;
+        float r2 = rauschen(m * vec2(2.2, 1.6) + 57.0) * 0.6 + rauschen(m * 5.3 + 3.0) * 0.4;
+        float haar = s_riss(r2, 0.5, 0.005, pixel_m) * zone * 0.6;
+        basis *= 1.0 - 0.5 * verguss - 0.35 * haar;
+        rauheit *= 1.0 - 0.12 * verguss;
+        // Laengsnaht zwischen zwei Fertigerbahnen.
+        basis *= 1.0 - 0.12 * s_linie(m.x - breite * 0.37, 0.03);
+    }
+    // Linien: weiss oder gelb, abgefahren, wo der Gummi liegt.
+    vec3 lack = mix(vec3(0.78, 0.78, 0.76), vec3(0.78, 0.55, 0.08), strecke_linien.w);
+    float hb = strecke_linien.y * 0.5;
+    float farbe = 0.0;
+    if (strecke_linien.x > 0.0) farbe = s_linie(kante - strecke_linien.x - hb, hb);
+    if (strecke_linien.z > 0.5) {
+        float strich = s_linie(fract(m.y / 9.0) - 0.25, 0.25);
+        farbe = max(farbe, s_linie(m.x - breite * 0.5, hb) * strich);
+    }
+    // Ziellinie: Karos ueber die ganze Breite, 1,6 m lang, um y = 0.
+    float s = mod(m.y + 0.8, strecke_mass.y) - 0.8;
+    vec2 karo = floor(vec2(m.x, s + 0.8) / 0.4);
+    float dunkel = mod(karo.x + karo.y, 2.0);
+    float ziel = s_linie(s, 0.8);
+    basis = mix(basis, mix(lack, vec3(0.012), dunkel), ziel);
+    rauheit = mix(rauheit, 0.6, ziel);
+    farbe *= (0.8 + 0.2 * rauschen(m * vec2(2.0, 0.5))) * (1.0 - 0.6 * gummi);
+    basis = mix(basis, lack, farbe);
+    rauheit = mix(rauheit, 0.55, farbe);
+}
+/* === Strang S: Asphalt der Fahrbahn (Ende) ============================== */
+
+/* === Strang W: Gelaende (Anfang, gelaende.py) ===========================
+   Bodentexturen nach Hang und Hoehe mischen: unten Gras oder Sand, am Hang
+   Fels mit Gras oder Sandstein, steil nackter Fels (von der Seite
+   projiziert, sonst zieht er sich zu Streifen), oben Schnee, in der Ferne
+   Wald als Farbe. Nur aktiv, wenn `gelaende` > 0.5 - alle anderen Flaechen
+   laufen am Block vorbei. */
+uniform float gelaende;
+uniform sampler2D gelaende_unten;
+uniform sampler2D gelaende_hang;
+uniform sampler2D gelaende_fels;
+uniform vec3  gelaende_kachel;      // 1/m je Schicht: unten, hang, fels
+uniform vec3  gelaende_ton_unten;
+uniform vec3  gelaende_ton_hang;
+uniform vec3  gelaende_ton_fels;
+uniform vec4  gelaende_grenzen;     // hang_ab, fels_ab (1 - n.z), hang_hoehe_m, schnee_ab_m (<0: keiner)
+uniform vec4  gelaende_wald;        // Farbe sRGB, a = ab_m vom Streckenrechteck (<0: kein Wald)
+uniform vec4  gelaende_rechteck;    // Mitte xy, halbe Ausdehnung xy
+
+vec3 gelaende_probe(sampler2D t, vec2 p) {
+    return pow(max(texture(t, p).rgb, vec3(0.0)), vec3(2.2));
+}
+
+/* Aus drei Richtungen projiziert, nach der Normalen gewichtet (b). In der
+   Ferne gut dreimal groesser gekachelt: an einem Hang in 300 m reihen sich
+   sonst die Kacheln zu sichtbaren Baendern. */
+vec3 gelaende_dreifach_k(sampler2D t, vec3 p, float k, vec3 b) {
+    return gelaende_probe(t, p.yz * k) * b.x + gelaende_probe(t, p.xz * k) * b.y
+         + gelaende_probe(t, p.xy * k) * b.z;
+}
+
+vec3 gelaende_dreifach(sampler2D t, vec3 p, float k, vec3 b) {
+    float fern = smoothstep(70.0, 260.0, length(kamera_position - p));
+    if (fern < 0.01) return gelaende_dreifach_k(t, p, k, b);
+    vec3 grob = gelaende_dreifach_k(t, p + 13.7, k * 0.29, b);
+    if (fern > 0.99) return grob;
+    return mix(gelaende_dreifach_k(t, p, k, b), grob, fern);
+}
+
+vec3 gelaende_basis(vec3 p, vec3 n) {
+    float r1 = rauschen(p.xy / 13.0);
+    float r2 = rauschen(p.xy / 57.0 + 3.7);
+    float steil = 1.0 - clamp(n.z, 0.0, 1.0) + (r1 - 0.5) * 0.08;
+    // Unten zweimal in verschiedenem Massstab und gedreht - gegen Kacheln.
+    vec2 q = p.xy * gelaende_kachel.x;
+    vec3 unten = mix(gelaende_probe(gelaende_unten, q),
+                     gelaende_probe(gelaende_unten, vec2(q.y, -q.x) * 0.31 + 0.17),
+                     0.25 + 0.3 * r2) * gelaende_ton_unten;
+    float w_hang = smoothstep(gelaende_grenzen.x - 0.05, gelaende_grenzen.x + 0.07, steil);
+    w_hang = max(w_hang, smoothstep(gelaende_grenzen.z - 4.0, gelaende_grenzen.z + 4.0,
+                                    p.z + (r2 - 0.5) * 10.0));
+    vec3 farbe = unten;
+    vec3 b = pow(abs(n), vec3(4.0));
+    b /= (b.x + b.y + b.z);
+    if (w_hang > 0.001) {
+        // Flach von oben, am Hang von der Seite - sonst zieht sich die
+        // Textur zu Streifen. Weich gewichtet, damit keine Naht entsteht.
+        vec3 hang = gelaende_dreifach(gelaende_hang, p, gelaende_kachel.y, b);
+        farbe = mix(unten, hang * gelaende_ton_hang, w_hang);
+    }
+    float w_fels = smoothstep(gelaende_grenzen.y - 0.06, gelaende_grenzen.y + 0.1, steil);
+    if (w_fels > 0.001) {
+        vec3 fels = gelaende_dreifach(gelaende_fels, p, gelaende_kachel.z, b) * gelaende_ton_fels;
+        farbe = mix(farbe, fels, w_fels);
+    }
+    if (gelaende_wald.a >= 0.0) {
+        vec2 aussen = max(abs(p.xy - gelaende_rechteck.xy) - gelaende_rechteck.zw, vec2(0.0));
+        float r = length(aussen) + (r2 - 0.5) * 120.0;
+        float krone = 0.6 * rauschen(p.xy / 7.0) + 0.4 * rauschen(p.xy / 2.3 + 9.1);
+        float w = smoothstep(gelaende_wald.a, gelaende_wald.a * 1.5, r) * (1.0 - w_fels)
+                * smoothstep(0.3, 0.5, r1 * 0.5 + r2 * 0.7);
+        vec3 wald = pow(gelaende_wald.rgb, vec3(2.2)) * (0.5 + 0.8 * krone);
+        farbe = mix(farbe, wald, w);
+    }
+    if (gelaende_grenzen.w >= 0.0) {
+        float w_schnee = smoothstep(gelaende_grenzen.w - 30.0, gelaende_grenzen.w + 30.0,
+                                    p.z + (r2 - 0.5) * 120.0 + (r1 - 0.5) * 30.0)
+                       * (1.0 - smoothstep(0.38, 0.62, steil));
+        farbe = mix(farbe, vec3(0.80, 0.83, 0.88) * (0.92 + 0.12 * r1), w_schnee);
+    }
+    return farbe;
+}
+/* === Strang W: Gelaende (Ende) ========================================== */
+
 void main() {
     vec2 tuv = uv * uv_skala;
     vec4 textur = texture(basisfarbe, tuv);
     vec3 basis = nach_linear(mix(grundton, textur.rgb, hat_basisfarbe)) * farbton;
+    if (gelaende > 0.5) basis = gelaende_basis(welt_position, normalize(welt_normale));  // Strang W
     float alpha = alpha_faktor * mix(1.0, textur.a, hat_basisfarbe);
     if (makro > 0.0) {
         float r = 0.65 * rauschen(welt_position.xy / 30.0) + 0.35 * rauschen(welt_position.xy / 90.0 + 17.0);
@@ -242,6 +438,7 @@ void main() {
     vec2 mr = texture(metallic_rauheit, tuv).gb;
     float rauheit  = clamp(mix(1.0, mr.x, hat_metallic_rauheit) * rauheit_faktor, 0.04, 1.0);
     float metallic = clamp(mix(1.0, mr.y, hat_metallic_rauheit) * metallic_faktor, 0.0, 1.0);
+    if (asphalt > 0.0) asphalt_details(basis, rauheit);   // Strang S
 
     vec3 N = normalize(welt_normale);
     vec3 V = normalize(kamera_position - welt_position);
