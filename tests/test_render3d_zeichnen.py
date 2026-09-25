@@ -187,3 +187,36 @@ def test_zeichnen_dreht_die_raeder_nicht_weiter(ctx, netz, modellordner):
     _bild(ctx, szene, [stand])
     assert knoten.rollwinkel_rad == pytest.approx(vorher)
     szene.freigeben()
+
+
+def test_fernes_fahrzeug_faehrt_mit_lod1(ctx, netz, modellordner, tmp_path):
+    """Liegt ``<key>_lod1.glb`` daneben, zeichnet ein fernes Auto damit.
+
+    Nah bleibt das volle Modell, ab ``grafik.fahrzeug_lod_m`` das LOD1; der
+    Ghost immer das volle, er fährt ohnehin durchsichtig. Ohne LOD1-Datei
+    bleibt alles beim vollen Modell.
+    """
+    import shutil
+    from src.render3d import grafik
+    for datei in modellordner.iterdir():
+        shutil.copy(datei, tmp_path / datei.name)
+    shutil.copy(modellordner / "rookie.glb", tmp_path / "rookie_lod1.glb")
+
+    szene = rennszene.Rennszene(ctx, netz, tmp_path)
+    fm = szene.speicher.holen("rookie")
+    assert fm.lod1 is not None and fm.lod1 is not fm.modell
+    grenze = grafik.aktuell().fahrzeug_lod_m
+    assert rennszene.modell_nach_abstand(fm, grenze * 0.5) is fm.modell
+    assert rennszene.modell_nach_abstand(fm, grenze * 2.0) is fm.lod1
+    assert rennszene.modell_nach_abstand(fm, grenze * 2.0, ghost=True) is fm.modell
+    # Weit weg gezeichnet: der Weg über das LOD1 läuft ohne Fehler durch.
+    staende = [_stand(), _stand(kennung=2, x=grenze * 1.5)]
+    szene.fortschreiben(staende)
+    assert _bild(ctx, szene, staende).std() > 5.0
+    szene.freigeben()
+
+    ohne = rennszene.Rennszene(ctx, netz, modellordner)
+    fm = ohne.speicher.holen("rookie")
+    assert fm.lod1 is None
+    assert rennszene.modell_nach_abstand(fm, 1e6) is fm.modell
+    ohne.freigeben()

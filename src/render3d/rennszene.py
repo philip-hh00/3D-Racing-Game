@@ -187,6 +187,9 @@ class Fahrzeugmodell:
     teile: Teiledaten | None
     schatten_vao: object = None
     schatten_vaos: dict = field(default_factory=dict)
+    #: ``<key>_lod1.glb``, wenn es daneben liegt: dieselben Knoten und
+    #: Materialien mit halb so vielen Dreiecken, für ferne Autos.
+    lod1: mesh.Modell | None = None
 
     def knoten(self) -> vehicle_node.Fahrzeugknoten | None:
         """Ein frischer Knoten für **ein** Fahrzeug dieses Typs."""
@@ -194,6 +197,19 @@ class Fahrzeugmodell:
             return None
         return vehicle_node.Fahrzeugknoten(self.teile.plaetze,
                                            self.teile.raddurchmesser_m)
+
+
+def modell_nach_abstand(fm: Fahrzeugmodell, abstand_m: float,
+                        ghost: bool = False) -> mesh.Modell:
+    """Volles Modell oder LOD1, je nach Abstand zur Kamera.
+
+    Die Grenze kommt aus ``grafik.fahrzeug_lod_m``. Der Ghost fährt immer
+    voll: er ist durchsichtig, und im LOD1 fehlen Teile, durch die man bei
+    ihm hindurchsieht.
+    """
+    if fm.lod1 is None or ghost or abstand_m < grafik.aktuell().fahrzeug_lod_m:
+        return fm.modell
+    return fm.lod1
 
 
 class Modellspeicher:
@@ -237,12 +253,19 @@ class Modellspeicher:
             modell=mesh.hochladen(self.ctx, self.programm, daten),
             teile=teile,
         )
+        lod1_pfad = self.ordner / f"{echter}_lod1.glb"
+        schattendaten = daten
+        if lod1_pfad.is_file():
+            lod1_daten = mesh.laden(lod1_pfad)
+            fahrzeugmodell.lod1 = mesh.hochladen(self.ctx, self.programm, lod1_daten)
+            # Die Schattenkarte sieht keine Radmuttern: das LOD1 reicht ihr.
+            schattendaten = lod1_daten
         if self.tiefenprogramm is not None:
             # Eigene VAOs für die Schattenkarte: eine VAO gehört zu genau
             # einem Programm. Je Teil **ein** Netz aus allen Stücken — der
             # Schattenkarte ist das Material gleich, und 9 statt 38 Aufrufe je
             # Auto sparen bei acht Autos gut eine Millisekunde Python.
-            for teil in daten.teile:
+            for teil in schattendaten.teile:
                 if not teil.stuecke:
                     continue
                 vp = self.ctx.buffer(np.ascontiguousarray(teil.positionen, "f4").tobytes())
@@ -271,6 +294,8 @@ class Modellspeicher:
                     v.release()
             if fm.schatten_vao is not None:
                 fm.schatten_vao.release()
+            if fm.lod1 is not None:
+                fm.lod1.freigeben()
             fm.modell.freigeben()
         self._geladen = {}
 
@@ -914,6 +939,7 @@ class Rennszene:
         # drei- bis viermal voll schattiert. Himmel ganz zuletzt, nur wo
         # noch nichts steht.
         auge = np.asarray(kamera_position, dtype=np.float64)[:2]
+        self._auge = auge            # für die Wahl zwischen vollem Modell und LOD1
         # Nur, was im Bild sein kann: in der Startaufstellung stehen sieben von
         # acht Autos hinter der Kamera, und jedes kostet gut hundert Aufrufe.
         sichtbar = [s for s in staende if _im_bild(mvp, s.pos_m)]
@@ -1083,7 +1109,10 @@ class Rennszene:
         fahrzeugmodell = self.speicher.holen(stand.schluessel)
         if fahrzeugmodell is None:
             return
-        modell = fahrzeugmodell.modell
+        auge = getattr(self, "_auge", None)
+        abstand = 0.0 if auge is None else float(
+            np.hypot(*(np.asarray(stand.pos_m, dtype=np.float64)[:2] - auge)))
+        modell = modell_nach_abstand(fahrzeugmodell, abstand, ghost=stand.entfaerbt)
         p = self.programm
         self.ctx.enable(moderngl.DEPTH_TEST)
         if stand.entfaerbt:
