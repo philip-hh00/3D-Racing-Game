@@ -257,6 +257,145 @@ def heu() -> None:
         ImageFilter.GaussianBlur(0.6)).save(ZIEL / "heu.jpg", quality=90)
 
 
+# ---------------------------------------------------------------------------
+# Streckenobjekte: Publikum, Fangzaun, Schilder, Flaggen
+# ---------------------------------------------------------------------------
+
+#: Kleidung und Haut der Zuschauer, sRGB. Viel Rot, Weiß und Schwarz —
+#: Fanfarben —, dazu Alltagsfarben.
+KLEIDUNG = [(196, 32, 36), (232, 232, 228), (26, 26, 30), (40, 70, 160), (236, 196, 40),
+            (60, 130, 70), (220, 120, 50), (120, 120, 126), (150, 40, 110), (90, 160, 210),
+            (180, 150, 110), (240, 90, 120)]
+HAUT = [(236, 196, 164), (214, 168, 128), (180, 130, 96), (120, 82, 56), (240, 208, 180)]
+HAARE = [(30, 22, 16), (70, 48, 30), (150, 110, 60), (200, 170, 110), (90, 90, 90), (20, 20, 20)]
+
+
+def publikum() -> None:
+    """Zuschauer als Karten: 16 Figuren in einem Bild (4 x 4), mit Alpha.
+
+    Jede Figur sitzt oder steht, von vorn gesehen: Kopf, Haare, Oberkörper in
+    einer Fanfarbe, Arme — manche hochgereckt, manche mit Mütze oder Fahne.
+    Die Tribüne legt je Platz eine Karte und wählt eine Figur, dadurch sieht
+    kein Block gleich aus.
+    """
+    rng = random.Random(17)
+    zelle_b, zelle_h = 128, 256
+    bild = Image.new("RGBA", (zelle_b * 4, zelle_h * 4), (0, 0, 0, 0))
+    d = ImageDraw.Draw(bild)
+    for k in range(16):
+        x0, y0 = (k % 4) * zelle_b, (k // 4) * zelle_h
+        mx = x0 + zelle_b / 2
+        haut = rng.choice(HAUT)
+        hemd = rng.choice(KLEIDUNG)
+        hose = rng.choice([(40, 44, 60), (30, 30, 34), (90, 80, 70), (60, 70, 110)])
+        kopf_r = rng.uniform(17, 21)
+        kopf_y = y0 + 58 + rng.uniform(-6, 6)
+        schulter = kopf_y + kopf_r + 6
+        breite = rng.uniform(34, 44)
+        # Beine/Hose (sitzend: kurz sichtbar), dann Oberkörper.
+        d.rectangle((mx - breite * 0.8, schulter + 88, mx + breite * 0.8, y0 + zelle_h - 4), fill=hose)
+        d.rounded_rectangle((mx - breite, schulter, mx + breite, schulter + 100), radius=16, fill=hemd)
+        # Arme.
+        hoch = rng.random() < 0.35
+        for seite in (-1, 1):
+            ax = mx + seite * (breite - 6)
+            if hoch and (seite == 1 or rng.random() < 0.6):
+                d.line((ax, schulter + 10, ax + seite * 14, schulter - 70), fill=hemd, width=16)
+                d.ellipse((ax + seite * 14 - 9, schulter - 84, ax + seite * 14 + 9, schulter - 66), fill=haut)
+            else:
+                d.line((ax, schulter + 10, ax + seite * 4, schulter + 84), fill=hemd, width=15)
+                d.ellipse((ax + seite * 4 - 8, schulter + 78, ax + seite * 4 + 8, schulter + 94), fill=haut)
+        # Hals, Kopf, Haare oder Mütze.
+        d.rectangle((mx - 7, kopf_y + kopf_r - 4, mx + 7, schulter + 4), fill=haut)
+        d.ellipse((mx - kopf_r, kopf_y - kopf_r, mx + kopf_r, kopf_y + kopf_r), fill=haut)
+        wahl = rng.random()
+        if wahl < 0.3:
+            muetze = rng.choice(KLEIDUNG)
+            d.chord((mx - kopf_r - 1, kopf_y - kopf_r - 3, mx + kopf_r + 1, kopf_y + kopf_r * 0.6),
+                    180, 360, fill=muetze)
+            d.rectangle((mx - kopf_r - 1, kopf_y - 6, mx + kopf_r + 10, kopf_y - 1), fill=muetze)
+        else:
+            haar = rng.choice(HAARE)
+            d.chord((mx - kopf_r - 1, kopf_y - kopf_r - 2, mx + kopf_r + 1, kopf_y + kopf_r * 0.5),
+                    180, 360, fill=haar)
+        # Sonnenbrille bei manchen.
+        if rng.random() < 0.25:
+            d.rectangle((mx - kopf_r * 0.7, kopf_y - 3, mx + kopf_r * 0.7, kopf_y + 4), fill=(15, 15, 18))
+        # Streifen oder Aufdruck auf dem Hemd.
+        if rng.random() < 0.4:
+            streifen = rng.choice(KLEIDUNG)
+            d.rectangle((mx - breite, schulter + 30, mx + breite, schulter + 42), fill=streifen)
+    bild = rand_fuellen(bild)
+    bild.save(ZIEL / "publikum.png")
+
+
+def fangzaun() -> None:
+    """Maschendraht, eine Kachel = 1 m x 1 m, mit Alpha (Material ``fangzaun_maske``).
+
+    Rauten von gut 6 cm, Draht 4 px breit — dünner verschwände er in den
+    Mip-Stufen schon auf halbe Distanz.
+    """
+    groesse = 512
+    maschen = 8
+    a = np.zeros((groesse, groesse), dtype=np.float64)
+    y, x = np.mgrid[0:groesse, 0:groesse] / groesse * maschen
+    # Zwei Scharen diagonaler Drähte.
+    for u in ((x + y) % 1.0, (x - y) % 1.0):
+        d = np.minimum(u, 1.0 - u) * groesse / maschen
+        a = np.maximum(a, np.clip(2.6 - d, 0.0, 1.0))
+    rgba = np.zeros((groesse, groesse, 4), dtype=np.uint8)
+    # Verzinkter Draht, leicht fleckig.
+    rng = np.random.default_rng(5)
+    ton = 150 + 40 * rng.random((groesse, groesse))
+    rgba[:, :, 0] = ton
+    rgba[:, :, 1] = ton
+    rgba[:, :, 2] = ton + 6
+    rgba[:, :, 3] = (a * 255).astype(np.uint8)
+    Image.fromarray(rgba, "RGBA").save(ZIEL / "fangzaun.png")
+
+
+def schilder() -> None:
+    """Schilder der Streckenobjekte: Boxengebäude, Posten, Kameraturm, Flaggen."""
+    # Boxengebäude: breites Band über den Garagen.
+    b, h = 2048, 192
+    bild = Image.new("RGB", (b, h), (22, 26, 34))
+    d = ImageDraw.Draw(bild)
+    d.rectangle((0, h - 16, b, h), fill=(200, 24, 30))
+    d.text((60, h / 2 - 6), "APEX RACEWAY", font=schrift(120), fill=(245, 245, 245), anchor="lm")
+    d.text((b - 60, h / 2 - 6), "PIT LANE  ·  BOXEN", font=schrift(90), fill=(245, 200, 30), anchor="rm")
+    bild.save(ZIEL / "boxenschild.jpg", quality=92)
+    # Garagennummern 1-8 in einer Reihe.
+    b, h = 1024, 128
+    bild = Image.new("RGB", (b, h), (240, 240, 236))
+    d = ImageDraw.Draw(bild)
+    for i in range(8):
+        d.text((i * 128 + 64, h / 2), str(i + 1), font=schrift(96), fill=(20, 20, 24), anchor="mm")
+    bild.save(ZIEL / "garagennummern.jpg", quality=92)
+    # Postenhaus: Nummerntafel.
+    b, h = 256, 256
+    bild = Image.new("RGB", (b, h), (250, 250, 248))
+    d = ImageDraw.Draw(bild)
+    d.rectangle((0, 0, b, 40), fill=(236, 110, 20))
+    d.text((b / 2, 150), "POSTEN", font=schrift(46), fill=(20, 20, 24), anchor="mm")
+    d.text((b / 2, 90), "7", font=schrift(64), fill=(236, 110, 20), anchor="mm")
+    bild.save(ZIEL / "postenschild.jpg", quality=92)
+    # Flaggen: je Marke eine.
+    for i, (marke, _zusatz, grund, schriftfarbe) in enumerate(BANDEN[:4]):
+        b, h = 512, 320
+        bild = Image.new("RGB", (b, h), grund)
+        d = ImageDraw.Draw(bild)
+        d.rectangle((0, h - 40, b, h), fill=tuple(min(255, int(c * 0.75 + 30)) for c in grund))
+        d.text((b / 2, h / 2 - 12), marke, font=schrift(92 if len(marke) < 8 else 70),
+               fill=schriftfarbe, anchor="mm")
+        bild.save(ZIEL / f"flagge_{i}.jpg", quality=92)
+    # Kameraturm: Blende mit "TV".
+    b, h = 256, 128
+    bild = Image.new("RGB", (b, h), (30, 30, 34))
+    d = ImageDraw.Draw(bild)
+    d.text((b / 2, h / 2), "TV", font=schrift(90), fill=(245, 245, 245), anchor="mm")
+    bild.save(ZIEL / "tvschild.jpg", quality=92)
+
+
 def main() -> None:
     ZIEL.mkdir(parents=True, exist_ok=True)
     fassade("wohn_hell", wandkachel("putz", 512, (228, 220, 205)),
@@ -289,6 +428,9 @@ def main() -> None:
     banden()
     startbanner()
     heu()
+    publikum()
+    fangzaun()
+    schilder()
     print("fertig:", sorted(p.name for p in ZIEL.iterdir()))
 
 

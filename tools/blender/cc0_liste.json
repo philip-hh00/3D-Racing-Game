@@ -47,7 +47,9 @@
     "wellblech": "corrugated_iron",
     "rinde": "bark_brown_02",
     "felswand": "rock_face_03",
-    "sandstein": "red_sandstone_wall"
+    "sandstein": "red_sandstone_wall",
+    "kies": "gravel_floor_03",
+    "kies_grob": "rocky_gravel"
   },
   "himmel": {
     "City": "kloofendal_48d_partly_cloudy_puresky",

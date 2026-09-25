@@ -457,5 +457,56 @@
     "hoehe_m": 1.2,
     "dreiecke": 60,
     "schatten": true
+  },
+  "strecke/boxengebaeude": {
+    "radius_m": 24.0,
+    "hoehe_m": 9.65,
+    "dreiecke": 1050,
+    "schatten": true
+  },
+  "strecke/fangzaun": {
+    "radius_m": 2.0,
+    "hoehe_m": 3.92,
+    "dreiecke": 104,
+    "schatten": true,
+    "max_abstand_m": 250.0
+  },
+  "strecke/flaggenmasten": {
+    "radius_m": 4.5,
+    "hoehe_m": 8.1,
+    "dreiecke": 252,
+    "schatten": true
+  },
+  "strecke/huetchen": {
+    "radius_m": 1.8,
+    "hoehe_m": 0.73,
+    "dreiecke": 216,
+    "schatten": true,
+    "max_abstand_m": 160.0
+  },
+  "strecke/kameraturm": {
+    "radius_m": 1.6,
+    "hoehe_m": 8.63,
+    "dreiecke": 506,
+    "schatten": true
+  },
+  "strecke/postenhaus": {
+    "radius_m": 1.8,
+    "hoehe_m": 3.0,
+    "dreiecke": 126,
+    "schatten": true,
+    "max_abstand_m": 450.0
+  },
+  "strecke/tribuene": {
+    "radius_m": 16.0,
+    "hoehe_m": 8.7,
+    "dreiecke": 1068,
+    "schatten": true
+  },
+  "strecke/tribuene_klein": {
+    "radius_m": 8.0,
+    "hoehe_m": 7.2,
+    "dreiecke": 480,
+    "schatten": true
   }
 }

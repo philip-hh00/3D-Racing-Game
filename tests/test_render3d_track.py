@@ -112,24 +112,25 @@ def test_normalen_der_fahrbahn_zeigen_nach_oben_und_haben_laenge_eins():
     np.testing.assert_allclose(laengen, 1.0, atol=1e-6)
 
 
-def test_fahrbahn_ist_geschlossen_letzter_ring_verbindet_zum_ersten():
+def test_fahrbahn_ist_geschlossen_ueber_eine_kopie_des_ersten_rings():
+    """Die Naht schliesst mit einer Kopie des ersten Rings.
+
+    Nur so kann v dort die Gesamtlaenge tragen statt auf 0 zurueckzuspringen —
+    sonst stauchte sich jede Textur entlang der Strecke im letzten Abschnitt.
+    """
     strecke = _kreis_strecke(n=48)
     netz = track_mesh.bauen(strecke)
     fahrbahn = netz.band("fahrbahn")
     n_ringe = len(fahrbahn.positionen) // 2
-    # Bei n geschlossenen Ringen und je 2 Dreiecken pro Segment muss es
-    # genau n Segmente geben, nicht n-1 -- sonst faehlt das schliessende Stueck.
-    assert fahrbahn.indizes.shape[0] == 2 * n_ringe
-
-    # Es muss ein Dreieck geben, das den letzten Ring (Index n_ringe-1) mit
-    # dem ersten Ring (Index 0) verbindet -- die Naht.
-    letzter_ring_indizes = {2 * (n_ringe - 1), 2 * (n_ringe - 1) + 1}
-    erster_ring_indizes = {0, 1}
-    naht_gefunden = any(
-        (set(dreieck) & letzter_ring_indizes) and (set(dreieck) & erster_ring_indizes)
-        for dreieck in fahrbahn.indizes.tolist()
-    )
-    assert naht_gefunden
+    assert n_ringe == 49
+    # 48 Abschnitte, keiner fehlt, keiner doppelt.
+    assert fahrbahn.indizes.shape[0] == 2 * 48
+    np.testing.assert_allclose(fahrbahn.positionen[-2:], fahrbahn.positionen[:2], atol=1e-6)
+    # Der letzte Abschnitt verbindet den vorletzten Ring mit der Kopie.
+    assert any({2 * 47, 2 * 48} <= set(d) or {2 * 47 + 1, 2 * 48 + 1} <= set(d)
+               for d in fahrbahn.indizes.tolist())
+    v = fahrbahn.uv[0::2, 1]
+    assert v[-1] * 8.0 == pytest.approx(netz.laenge_m, rel=1e-5)
 
 
 def test_kein_dreieck_ist_entartet_flaeche_ueberall_positiv():
@@ -194,6 +195,9 @@ def test_v_waechst_monoton_entlang_der_strecke_und_ueberschreitet_eins():
 def test_randsteine_liegen_innen_an_der_fahrbahnkante():
     """Die Randsteine liegen auf der Fahrbahn, bündig mit ihrer Kante.
 
+    Auf einem engen Kreis ist die ganze Strecke Kurve: beide Seiten bekommen
+    einen durchgehenden Stein.
+
     Die Wände des Spiels fallen mit der Fahrbahnkante zusammen; dort stehen in
     3D die Leitplanken. Außen liegende Randsteine schöben die Planke einen
     Meter hinter die Stelle, an der das Auto abprallt.
@@ -219,7 +223,11 @@ def test_randsteine_liegen_innen_an_der_fahrbahnkante():
     assert abstand_rechts.max() == pytest.approx(radius_m + halbe_breite_m, rel=1e-6)
     assert abstand_rechts.min() == pytest.approx(
         radius_m + halbe_breite_m - randstein_m, rel=1e-6)
-    assert (links.positionen[:, 2] > 0).all()
+    # Ein Körper: oben wenige Zentimeter hoch, die Innenkante taucht unter
+    # die Fahrbahn (kein Z-Fighting), nichts ragt mehr als 5 cm auf.
+    assert links.positionen[:, 2].max() == pytest.approx(track_mesh.RANDSTEIN_HOEHE_M, rel=1e-3)
+    assert links.positionen[:, 2].min() < 0.0
+    assert links.positionen[:, 2].max() < 0.05
 
 
 # ---------------------------------------------------------------------------

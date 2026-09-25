@@ -765,6 +765,390 @@ def windrad():
 
 
 # ---------------------------------------------------------------------------
+# Streckenobjekte (Strang S): Tribüne mit Publikum, Boxen, Posten, Fangzaun,
+# Hütchen, Flaggen, Kameraturm. Vorderseite nach +Y, zur Strecke.
+# ---------------------------------------------------------------------------
+
+def tafel(name, ecken, mat, uv=((0, 0), (1, 0), (1, 1), (0, 1))):
+    """Ein Viereck mit UV — Schilder, Karten, Netzflächen."""
+    bm = bmesh.new()
+    v = [bm.verts.new(p) for p in ecken]
+    f = bm.faces.new(v)
+    uvl = bm.loops.layers.uv.verify()
+    for l, w in zip(f.loops, uv):
+        l[uvl].uv = w
+    return g.objekt_aus(bm, name, [mat])
+
+
+def _atlas_uv(k: int, spalten: int = 4, zeilen: int = 4):
+    """UV-Ecken der Figur ``k`` im Publikumsbild (Zeile 0 oben im Bild)."""
+    s, z = k % spalten, k // spalten
+    u0, u1 = s / spalten, (s + 1) / spalten
+    v1 = 1.0 - z / zeilen
+    v0 = v1 - 1.0 / zeilen
+    return ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
+
+
+def tribuene_publikum(laenge: float = 30.0, reihen: int = 9, seed: int = 3):
+    """Tribüne mit Dach und Publikum aus Karten.
+
+    Jeder Platz ist eine Karte mit einer von 16 Figuren (siehe
+    ``texturen_erzeugen.publikum``), zufällig gewählt und leicht versetzt —
+    so gibt es Farbvariation ohne je Zuschauer ein eigenes Material. Zwei
+    Dreiecke je Kopf: 300 Zuschauer kosten weniger als ein Baum.
+    """
+    rng = random.Random(seed)
+    beton = wand("betonwand")
+    sitzfarben = [farbe(f"tribuene_sitz_{i}", c, 0.45) for i, c in
+                  enumerate(((30, 60, 150), (200, 30, 30), (230, 230, 230)))]
+    stahl = farbe("tribuene_stahl", (70, 74, 80), 0.4, 0.8)
+    dach_mat = farbe("tribuene_dach", (228, 230, 234), 0.35, 0.3)
+    leute = tex_mat("publikum", ERZEUGT / "publikum.png", maske=True, rauheit=0.85)
+    teile = []
+    stufe_t, stufe_h = 0.85, 0.5
+    for s in range(reihen):
+        y = -s * stufe_t
+        z = s * stufe_h
+        k = kasten("stufe", (0, y - stufe_t / 2, z / 2 + 0.25), (laenge, stufe_t, z + 0.5), beton)
+        uv_kasten(k, 2.0)
+        teile.append(k)
+        # Sitzreihe: ein farbiger Block je Reihe, Blöcke im Wechsel.
+        teile.append(kasten("sitze", (0, y - 0.6, z + 0.68), (laenge - 1.0, 0.4, 0.36),
+                            sitzfarben[(s // 3) % 3]))
+    bm = bmesh.new()
+    uvl = bm.loops.layers.uv.verify()
+    for s in range(reihen):
+        y = -s * stufe_t - 0.35
+        z = s * stufe_h + 0.5
+        x = -laenge / 2 + 0.7
+        while x < laenge / 2 - 0.7:
+            if rng.random() < 0.8:
+                b = rng.uniform(0.52, 0.6)
+                h = b * 2.0 * rng.uniform(0.92, 1.06)
+                xx = x + rng.uniform(-0.06, 0.06)
+                ecken = [(xx + b / 2, y, z), (xx - b / 2, y, z), (xx - b / 2, y, z + h), (xx + b / 2, y, z + h)]
+                v = [bm.verts.new(p) for p in ecken]
+                f = bm.faces.new(v)
+                # Von vorn (+Y) gesehen läuft +X nach links; die erste Ecke
+                # (+X) ist deshalb die linke untere des Bildes.
+                uvs = _atlas_uv(rng.randrange(16))
+                for l, w in zip(f.loops, uvs):
+                    l[uvl].uv = w
+            x += rng.uniform(0.55, 0.62)
+    publikum = g.objekt_aus(bm, "publikum", [leute])
+    teile.append(publikum)
+    hinten = -reihen * stufe_t
+    hoch = reihen * stufe_h
+    rueck = kasten("rueckwand", (0, hinten - 0.2, (hoch + 4.2) / 2), (laenge, 0.4, hoch + 4.2), beton)
+    uv_kasten(rueck, 2.0)
+    teile.append(rueck)
+    for x in (-laenge / 2 - 0.2, laenge / 2 + 0.2):
+        seite = kasten("seitenwand", (x, hinten / 2, (hoch + 1.0) / 2), (0.4, -hinten + 0.2, hoch + 1.0), beton)
+        uv_kasten(seite, 2.0)
+        teile.append(seite)
+    # Brüstung vorn mit Werbung.
+    teile.append(kasten("bruestung", (0, 0.1, 0.55), (laenge, 0.2, 1.1), stahl))
+    for i, x in enumerate(range(-int(laenge / 2) + 3, int(laenge / 2) - 2, 6)):
+        mat = tex_mat(f"bande_{i % 6}", ERZEUGT / f"bande_{i % 6}.jpg", rauheit=0.45)
+        teile.append(tafel("werbung", [(x + 3, 0.205, 0.1), (x - 3, 0.205, 0.1),
+                                       (x - 3, 0.205, 1.1), (x + 3, 0.205, 1.1)], mat,
+                           uv=((0, 0), (1, 0), (1, 1), (0, 1))))
+    # Dach: leicht geneigt, auf Stützen hinten, vorn auskragend.
+    dach_h = hoch + 4.0
+    bm = bmesh.new()
+    d = [bm.verts.new(p) for p in ((-laenge / 2 - 0.6, hinten - 0.5, dach_h), (laenge / 2 + 0.6, hinten - 0.5, dach_h),
+                                   (laenge / 2 + 0.6, 1.2, dach_h - 0.9), (-laenge / 2 - 0.6, 1.2, dach_h - 0.9))]
+    bm.faces.new(d)
+    dach = g.objekt_aus(bm, "dach", [dach_mat])
+    mod = dach.modifiers.new("dicke", "SOLIDIFY")
+    mod.thickness = 0.25
+    g.modifikator_anwenden(dach, mod)
+    teile.append(dach)
+    for x in range(-int(laenge / 2), int(laenge / 2) + 1, 10):
+        teile.append(kasten("stuetze", (x, hinten - 0.25, dach_h / 2), (0.3, 0.3, dach_h), stahl))
+        # Schräger Träger unter dem Dach nach vorn.
+        traeger = kasten("traeger", (0, 0, 0), (0.18, -hinten + 1.8, 0.3), stahl)
+        traeger.data.transform(Matrix.Rotation(math.atan2(0.9, -hinten + 1.7), 4, "X"))
+        traeger.data.transform(Matrix.Translation((x, (hinten + 1.2) / 2, dach_h - 0.6)))
+        teile.append(traeger)
+    for tl in teile:
+        tl.data.transform(Matrix.Translation((0, -hinten / 2, 0)))
+    return teile
+
+
+def boxengebaeude(garagen: int = 8, breite_garage: float = 6.0, tiefe: float = 14.0):
+    """Boxengebäude an Start und Ziel: Garagen unten, Glasband oben, Schild.
+
+    Offene Tore zeigen einen dunklen Innenraum mit Werkbank, geschlossene ein
+    Rolltor aus Wellblech. Darüber Nummern je Box, oben das Band mit dem
+    Streckennamen und eine Dachterrasse mit Geländer.
+    """
+    laenge = garagen * breite_garage
+    rng = random.Random(11)
+    putz = wand("putz")
+    beton = wand("betonwand")
+    wellblech = wand("wellblech")
+    dunkel = farbe("box_innen", (34, 36, 40), 0.8)
+    boden = farbe("box_boden", (120, 122, 126), 0.6)
+    scheibe = farbe("box_scheibe", (40, 58, 74), 0.08, 0.1)
+    stahl = farbe("box_stahl", (190, 194, 200), 0.35, 0.8)
+    rot = farbe("box_rot", (196, 28, 34), 0.45)
+    werk = farbe("box_werkbank", (200, 60, 30), 0.5)
+    schild = tex_mat("boxenschild", ERZEUGT / "boxenschild.jpg", rauheit=0.4)
+    nummern = tex_mat("garagennummern", ERZEUGT / "garagennummern.jpg", rauheit=0.5)
+    teile = []
+    tor_h, og_h = 4.6, 3.6
+    front = tiefe / 2
+    # Hauptkörper bis zur Rückwand der Garagen, Decke über den Garagen.
+    hinten_y, innen_y = -tiefe / 2, front - 3.2
+    korpus = kasten("korpus", (0, (hinten_y + innen_y) / 2, (tor_h + og_h) / 2),
+                    (laenge, innen_y - hinten_y, tor_h + og_h), putz)
+    uv_kasten(korpus, 3.0)
+    teile.append(korpus)
+    teile.append(kasten("decke", (0, front - 1.6, tor_h + 0.1), (laenge, 3.2, 0.2), beton))
+    teile.append(kasten("og_boden", (0, front - 2.2, tor_h + og_h / 2), (laenge, 2.0, og_h), putz))
+    for i in range(garagen):
+        x = -laenge / 2 + breite_garage * (i + 0.5)
+        # Pfeiler zwischen den Toren.
+        pf = kasten("pfeiler", (x - breite_garage / 2 + 0.25, front - 0.5, tor_h / 2), (0.5, 1.0, tor_h), beton)
+        uv_kasten(pf, 2.0)
+        teile.append(pf)
+        offen = rng.random() < 0.6
+        # Nische: dunkler Innenraum 3 m tief.
+        teile.append(kasten("nische_boden", (x, front - 1.6, 0.02), (breite_garage - 0.5, 3.0, 0.04), boden))
+        if offen:
+            teile.append(kasten("nische", (x, front - 3.1, tor_h / 2), (breite_garage - 0.5, 0.1, tor_h), dunkel))
+            teile.append(kasten("werkbank", (x + rng.uniform(-1.5, 1.5), front - 2.7, 0.5), (1.8, 0.6, 1.0), werk))
+            teile.append(kasten("reifen", (x - 2.0, front - 2.6, 0.35), (0.7, 0.7, 0.7),
+                                farbe("box_reifen", (20, 20, 22), 0.9)))
+            hoehe_tor = tor_h * rng.uniform(0.0, 0.2)
+        else:
+            hoehe_tor = tor_h
+        if hoehe_tor > 0.05:
+            tor = kasten("rolltor", (x, front - 0.2, tor_h - hoehe_tor / 2), (breite_garage - 0.5, 0.08, hoehe_tor),
+                         wellblech)
+            uv_kasten(tor, 2.0)
+            teile.append(tor)
+        # Nummer über dem Tor.
+        u0, u1 = i / 8.0, (i + 1) / 8.0
+        teile.append(tafel("nummer", [(x + 0.6, front + 0.01, tor_h + 0.05), (x - 0.6, front + 0.01, tor_h + 0.05),
+                                      (x - 0.6, front + 0.01, tor_h + 0.65), (x + 0.6, front + 0.01, tor_h + 0.65)],
+                           nummern, uv=((u0, 0), (u1, 0), (u1, 1), (u0, 1))))
+    pf = kasten("pfeiler", (laenge / 2 - 0.25, front - 0.5, tor_h / 2), (0.5, 1.0, tor_h), beton)
+    uv_kasten(pf, 2.0)
+    teile.append(pf)
+    # Sturz über den Toren, rote Kante.
+    teile.append(kasten("sturz", (0, front - 0.45, tor_h + 0.35), (laenge, 0.9, 0.7), rot))
+    # Obergeschoss: Glasband, etwas zurückgesetzt, mit Pfosten.
+    teile.append(kasten("glasband", (0, front - 1.2, tor_h + 0.7 + (og_h - 0.7) / 2),
+                        (laenge - 0.4, 0.1, og_h - 0.9), scheibe))
+    for x in range(int(-laenge / 2), int(laenge / 2) + 1, 3):
+        teile.append(kasten("pfosten", (x, front - 1.15, tor_h + 0.7 + (og_h - 0.7) / 2), (0.1, 0.12, og_h - 0.9),
+                            stahl))
+    # Dach mit Überstand und Schildband vorn.
+    dach_h = tor_h + og_h
+    teile.append(kasten("dach", (0, 0.2, dach_h + 0.2), (laenge + 1.0, tiefe + 0.4, 0.4), beton))
+    teile.append(kasten("schildtraeger", (0, front + 0.35, dach_h + 0.75), (laenge, 0.15, 1.4), stahl))
+    teile.append(tafel("schild", [(laenge / 2 - 1, front + 0.44, dach_h + 0.1), (-laenge / 2 + 1, front + 0.44, dach_h + 0.1),
+                                  (-laenge / 2 + 1, front + 0.44, dach_h + 1.4), (laenge / 2 - 1, front + 0.44, dach_h + 1.4)],
+                       schild, uv=((0, 0), (1, 0), (1, 1), (0, 1))))
+    # Geländer der Dachterrasse.
+    for y in (-tiefe / 2 + 0.3,):
+        teile.append(kasten("gelaender", (0, y, dach_h + 1.4), (laenge, 0.06, 0.06), stahl))
+    for x in (-laenge / 2 + 0.3, laenge / 2 - 0.3):
+        teile.append(kasten("gelaender", (x, 0, dach_h + 1.4), (0.06, tiefe - 0.6, 0.06), stahl))
+    # Vorplatz aus Beton vor den Garagen — die Boxengasse.
+    vorplatz = kasten("vorplatz", (0, front + 4.0, 0.03), (laenge + 4.0, 8.0, 0.06), beton)
+    uv_kasten(vorplatz, 3.0)
+    teile.append(vorplatz)
+    # Drei Hütchen vor der ersten Box.
+    for k in range(3):
+        teile += huetchen_einzeln((-laenge / 2 + 2.0 + k * 1.2, front + 1.6, 0))
+    return teile
+
+
+def huetchen_einzeln(pos):
+    orange = farbe("huetchen_orange", (240, 90, 20), 0.55)
+    weiss = farbe("huetchen_reflex", (240, 240, 236), 0.3)
+    schwarz = farbe("huetchen_fuss", (22, 22, 24), 0.8)
+    x, y, z = pos
+    teile = [kasten("fuss", (x, y, z + 0.015), (0.38, 0.38, 0.03), schwarz)]
+    kegel = zylinder("kegel", (x, y, z + 0.03 + 0.35), 0.16, 0.025, 0.7, orange, 10, kappen=False)
+    for p in kegel.data.polygons:
+        p.use_smooth = True
+    teile.append(kegel)
+    for h0, h1 in ((0.30, 0.40), (0.48, 0.55)):
+        r0 = 0.16 - (0.16 - 0.025) * h0 / 0.7 + 0.004
+        r1 = 0.16 - (0.16 - 0.025) * h1 / 0.7 + 0.004
+        band = zylinder("band", (x, y, z + 0.03 + (h0 + h1) / 2), r0, r1, h1 - h0, weiss, 10, kappen=False)
+        for p in band.data.polygons:
+            p.use_smooth = True
+        teile.append(band)
+    return teile
+
+
+def huetchen_gruppe():
+    """Drei Hütchen in einer Reihe entlang lokal X."""
+    teile = []
+    for k in range(3):
+        teile += huetchen_einzeln(((k - 1) * 1.1, 0.0, 0.0))
+    return teile
+
+
+def postenhaus():
+    """Streckenposten: kleines Häuschen mit Fenstern rundum, Schild und Flaggenhalter."""
+    weiss = farbe("posten_weiss", (236, 236, 232), 0.6)
+    orange = farbe("posten_orange", (236, 110, 20), 0.5)
+    scheibe = farbe("posten_scheibe", (40, 56, 70), 0.08, 0.1)
+    stahl = farbe("posten_stahl", (150, 154, 160), 0.4, 0.8)
+    gelb = farbe("posten_flagge_gelb", (250, 210, 20), 0.7)
+    schild = tex_mat("postenschild", ERZEUGT / "postenschild.jpg", rauheit=0.5)
+    b, t_, h = 2.4, 2.0, 2.5
+    teile = [kasten("sockel", (0, 0, 0.15), (b + 0.3, t_ + 0.3, 0.3), wand("betonwand")),
+             kasten("wand", (0, 0, 0.3 + h / 2), (b, t_, h), weiss),
+             kasten("streifen", (0, 0, 0.3 + 0.9), (b + 0.02, t_ + 0.02, 0.18), orange),
+             kasten("dach", (0, 0.15, 0.3 + h + 0.1), (b + 0.6, t_ + 0.8, 0.2), orange)]
+    # Fensterband vorn und an den Seiten.
+    teile.append(kasten("fenster_vorn", (0, t_ / 2 + 0.01, 0.3 + 1.75), (b - 0.4, 0.02, 0.9), scheibe))
+    for x in (-b / 2 - 0.01, b / 2 + 0.01):
+        teile.append(kasten("fenster_seite", (x, 0.1, 0.3 + 1.75), (0.02, t_ - 0.6, 0.9), scheibe))
+    teile.append(tafel("schild", [(0.45, t_ / 2 + 0.03, 0.45), (-0.45, t_ / 2 + 0.03, 0.45),
+                                  (-0.45, t_ / 2 + 0.03, 1.1), (0.45, t_ / 2 + 0.03, 1.1)], schild,
+                       uv=((0, 0), (1, 0), (1, 1), (0, 1))))
+    # Stange mit gerollter gelber Flagge neben dem Häuschen.
+    teile.append(zylinder("stange", (b / 2 + 0.4, t_ / 2 - 0.1, 1.3), 0.025, 0.025, 2.6, stahl, 6))
+    teile.append(zylinder("flagge", (b / 2 + 0.4, t_ / 2 - 0.1, 2.25), 0.06, 0.06, 0.7, gelb, 6))
+    return teile
+
+
+def fangzaun_feld(laenge: float = 4.0, hoehe: float = 3.4, knick: float = 0.8):
+    """Ein Feld Fangzaun entlang lokal X: Pfosten links, Maschendraht mit
+    Alphamaske, oben zur Strecke (+Y) abgeknickt, Rohre oben und unten.
+
+    Die Felder werden lückenlos aneinandergesetzt (``platzierung.kette_setzen``);
+    der Pfosten am rechten Ende gehört schon zum nächsten Feld.
+    """
+    netz = tex_mat("fangzaun", ERZEUGT / "fangzaun.png", maske=True, rauheit=0.45, metallic=0.7)
+    stahl = farbe("fangzaun_stahl", (120, 124, 130), 0.4, 0.8)
+    beton = farbe("fangzaun_fuss", (150, 150, 146), 0.9)
+    h = laenge / 2
+    teile = [tafel("netz", [(-h, 0, 0.1), (h, 0, 0.1), (h, 0, hoehe), (-h, 0, hoehe)], netz,
+                   uv=((0, 0.1), (laenge, 0.1), (laenge, hoehe), (0, hoehe))),
+             tafel("netz_knick", [(-h, 0, hoehe), (h, 0, hoehe), (h, knick * 0.8, hoehe + knick * 0.6),
+                                  (-h, knick * 0.8, hoehe + knick * 0.6)], netz,
+                   uv=((0, 0), (laenge, 0), (laenge, knick), (0, knick)))]
+    pfosten = zylinder("pfosten", (-h, -0.06, hoehe / 2), 0.055, 0.055, hoehe, stahl, 8)
+    teile.append(pfosten)
+    arm = zylinder("arm", (0, 0, 0), 0.045, 0.045, knick, stahl, 6)
+    arm.data.transform(Matrix.Rotation(-math.atan2(0.8, 0.6), 4, "X"))
+    arm.data.transform(Matrix.Translation((-h, knick * 0.4 - 0.03, hoehe + knick * 0.3)))
+    teile.append(arm)
+    for z in (0.12, hoehe):
+        teile.append(zylinder("rohr", (0, -0.03, z), 0.03, 0.03, laenge, stahl, 6, achse="X"))
+    teile.append(kasten("fuss", (-h, -0.06, 0.05), (0.3, 0.3, 0.14), beton))
+    return teile
+
+
+def flaggenmasten(anzahl: int = 3, abstand: float = 3.0, hoehe: float = 8.0):
+    """Masten mit wehenden Flaggen der erfundenen Marken, entlang lokal X."""
+    stahl = farbe("mast_stahl", (210, 212, 216), 0.3, 0.8)
+    beton = farbe("mast_fuss", (150, 150, 146), 0.9)
+    teile = []
+    for k in range(anzahl):
+        x = (k - (anzahl - 1) / 2) * abstand
+        teile.append(zylinder("mast", (x, 0, hoehe / 2), 0.07, 0.045, hoehe, stahl, 8))
+        teile.append(kasten("fuss", (x, 0, 0.1), (0.5, 0.5, 0.2), beton))
+        teile.append(zylinder("knauf", (x, 0, hoehe + 0.05), 0.08, 0.08, 0.1, stahl, 8))
+        mat = tex_mat(f"flagge_{k % 4}", ERZEUGT / f"flagge_{k % 4}.jpg", rauheit=0.8)
+        # Flagge weht nach +X, leicht gewellt; zweiseitig durch die
+        # Normalenumkehr im Shader.
+        bm = bmesh.new()
+        uvl = bm.loops.layers.uv.verify()
+        spalten = 8
+        fl_b, fl_h = 2.4, 1.5
+        oben = hoehe - 0.15
+        reihe = []
+        for s in range(spalten + 1):
+            u = s / spalten
+            welle = math.sin(u * math.pi * 2.2 + k) * 0.18 * u
+            px = x + 0.08 + u * fl_b
+            reihe.append((bm.verts.new((px, welle, oben - fl_h - 0.1 * u)), bm.verts.new((px, welle, oben)), u))
+        for s in range(spalten):
+            a0, a1, ua = reihe[s]
+            b0, b1, ub = reihe[s + 1]
+            f = bm.faces.new((a0, b0, b1, a1))
+            for l, w in zip(f.loops, ((ua, 0), (ub, 0), (ub, 1), (ua, 1))):
+                l[uvl].uv = w
+        fl = g.objekt_aus(bm, "flagge", [mat])
+        for p in fl.data.polygons:
+            p.use_smooth = True
+        teile.append(fl)
+    return teile
+
+
+def kameraturm(hoehe: float = 6.0):
+    """TV-Kameraturm: Gerüst mit Streben, Plattform mit Geländer, Kamera auf
+    Stativ unter einem Sonnendach. Die Kamera schaut zur Strecke (+Y)."""
+    gerust = farbe("turm_geruest", (170, 174, 180), 0.4, 0.8)
+    holz = wand("holz")
+    schwarz = farbe("kamera_schwarz", (26, 26, 30), 0.35, 0.2)
+    linse = farbe("kamera_linse", (20, 30, 50), 0.05, 0.4)
+    plane = farbe("turm_plane", (30, 60, 150), 0.7)
+    schild = tex_mat("tvschild", ERZEUGT / "tvschild.jpg", rauheit=0.5)
+    s = 0.9
+    teile = []
+    for x in (-s, s):
+        for y in (-s, s):
+            teile.append(kasten("bein", (x, y, hoehe / 2), (0.08, 0.08, hoehe), gerust))
+    for z in (1.5, 3.0, 4.5):
+        for (m, g_) in (((0, -s, z), (2 * s, 0.05, 0.05)), ((0, s, z), (2 * s, 0.05, 0.05)),
+                        ((-s, 0, z), (0.05, 2 * s, 0.05)), ((s, 0, z), (0.05, 2 * s, 0.05))):
+            teile.append(kasten("riegel", m, g_, gerust))
+    for x in (-s, s):
+        strebe = kasten("strebe", (0, 0, 0), (0.04, 0.04, math.hypot(2 * s, hoehe)), gerust)
+        strebe.data.transform(Matrix.Rotation(math.atan2(2 * s, hoehe), 4, "X"))
+        strebe.data.transform(Matrix.Translation((x, 0, hoehe / 2)))
+        teile.append(strebe)
+    boden = kasten("plattform", (0, 0, hoehe + 0.05), (2 * s + 0.6, 2 * s + 0.6, 0.1), holz)
+    uv_kasten(boden, 1.5)
+    teile.append(boden)
+    for (m, g_) in (((0, -s - 0.3, hoehe + 1.05), (2 * s + 0.6, 0.05, 0.05)),
+                    ((-s - 0.3, 0, hoehe + 1.05), (0.05, 2 * s + 0.6, 0.05)),
+                    ((s + 0.3, 0, hoehe + 1.05), (0.05, 2 * s + 0.6, 0.05))):
+        teile.append(kasten("gelaender", m, g_, gerust))
+    for x in (-s - 0.3, s + 0.3):
+        for y in (-s - 0.3, s + 0.3):
+            teile.append(kasten("gel_pfosten", (x, y, hoehe + 0.55), (0.05, 0.05, 1.0), gerust))
+    teile.append(tafel("tv", [(0.5, s + 0.31, hoehe - 0.7), (-0.5, s + 0.31, hoehe - 0.7),
+                              (-0.5, s + 0.31, hoehe - 0.2), (0.5, s + 0.31, hoehe - 0.2)], schild,
+                       uv=((0, 0), (1, 0), (1, 1), (0, 1))))
+    # Stativ und Kamera.
+    for w in (0.0, 2.1, 4.2):
+        bein = zylinder("stativ", (0, 0, 0), 0.02, 0.02, 1.3, schwarz, 5)
+        bein.data.transform(Matrix.Rotation(0.3, 4, "X"))
+        bein.data.transform(Matrix.Rotation(w, 4, "Z"))
+        bein.data.transform(Matrix.Translation((0.2 * math.sin(w), -0.2 * math.cos(w), hoehe + 0.72)))
+        teile.append(bein)
+    teile.append(kasten("kamera", (0, 0.1, hoehe + 1.5), (0.35, 0.7, 0.4), schwarz))
+    teile.append(zylinder("objektiv", (0, 0.6, hoehe + 1.5), 0.13, 0.11, 0.4, linse, 12, achse="Y"))
+    teile.append(zylinder("sucher", (0.24, -0.1, hoehe + 1.55), 0.06, 0.06, 0.2, schwarz, 8, achse="Y"))
+    # Sonnendach auf vier Stangen.
+    for x in (-s, s):
+        for y in (-s, s):
+            teile.append(kasten("dachstange", (x, y, hoehe + 1.3), (0.04, 0.04, 2.5), gerust))
+    teile.append(kasten("sonnendach", (0, 0, hoehe + 2.6), (2 * s + 0.4, 2 * s + 0.4, 0.06), plane))
+    return teile
+
+
+def _strecke_fertig(fertig, schluessel, teile, max_abstand_m=None, **kw):
+    """``fertig`` plus Sichtgrenze im Katalog (Kleinteile enden früher)."""
+    fertig(schluessel, teile, **kw)
+    if max_abstand_m is not None and schluessel in KATALOG:
+        KATALOG[schluessel]["max_abstand_m"] = max_abstand_m
+        g.json_schreiben(ZIEL / "katalog.json", dict(sorted(KATALOG.items())))
+
+
+# ---------------------------------------------------------------------------
 # Kulisse
 # ---------------------------------------------------------------------------
 
@@ -923,6 +1307,24 @@ def alle_bauen(nur: set[str] | None, vorschau: Path | None) -> None:
         fertig("gemeinsam/startbruecke", startbruecke(), radius_m=2.0)
     if soll("gemeinsam/tribuene"):
         fertig("gemeinsam/tribuene", tribuene(), radius_m=16.0)
+
+    # --- Streckenobjekte (Strang S) ------------------------------------------
+    if soll("strecke/tribuene"):
+        _strecke_fertig(fertig, "strecke/tribuene", tribuene_publikum(), radius_m=16.0)
+    if soll("strecke/tribuene_klein"):
+        _strecke_fertig(fertig, "strecke/tribuene_klein", tribuene_publikum(14.0, 6, seed=5), radius_m=8.0)
+    if soll("strecke/boxengebaeude"):
+        _strecke_fertig(fertig, "strecke/boxengebaeude", boxengebaeude(), radius_m=24.0)
+    if soll("strecke/postenhaus"):
+        _strecke_fertig(fertig, "strecke/postenhaus", postenhaus(), radius_m=1.8, max_abstand_m=450.0)
+    if soll("strecke/fangzaun"):
+        _strecke_fertig(fertig, "strecke/fangzaun", fangzaun_feld(), radius_m=2.0, max_abstand_m=250.0)
+    if soll("strecke/huetchen"):
+        _strecke_fertig(fertig, "strecke/huetchen", huetchen_gruppe(), radius_m=1.8, max_abstand_m=160.0)
+    if soll("strecke/flaggenmasten"):
+        _strecke_fertig(fertig, "strecke/flaggenmasten", flaggenmasten(), radius_m=4.5)
+    if soll("strecke/kameraturm"):
+        _strecke_fertig(fertig, "strecke/kameraturm", kameraturm(), radius_m=1.6)
 
     # --- Bäume ----------------------------------------------------------------
     for i, (h, r) in enumerate(((12.0, 3.2), (9.0, 2.6), (15.0, 3.6))):

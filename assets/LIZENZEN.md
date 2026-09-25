@@ -57,6 +57,8 @@ trotzdem).
 * `rinde` ← `bark_brown_02` — https://polyhaven.com/a/bark_brown_02
 * `felswand` ← `rock_face_03` — https://polyhaven.com/a/rock_face_03
 * `sandstein` ← `red_sandstone_wall` — https://polyhaven.com/a/red_sandstone_wall
+* `kies` ← `gravel_floor_03` — https://polyhaven.com/a/gravel_floor_03
+* `kies_grob` ← `rocky_gravel` — https://polyhaven.com/a/rocky_gravel
 
 ## Himmel (HDRI)
 

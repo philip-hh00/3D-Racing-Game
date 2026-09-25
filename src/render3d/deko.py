@@ -24,14 +24,15 @@ from pathlib import Path
 
 import numpy as np
 
-from . import mesh, shader
+from . import grafik, mesh, shader
 
 try:                                             # pragma: no cover - Importpfad
     import moderngl
 except ImportError:                              # pragma: no cover
     moderngl = None
 
-#: Ab hier wird gar nicht mehr gezeichnet (außer Kulisse).
+#: Ab hier wird gar nicht mehr gezeichnet (außer Kulisse), wenn die
+#: Grafikstufe nichts sagt; sonst gilt ``grafik.aktuell().sichtweite_m``.
 SICHTWEITE_M = 700.0
 #: Schatten werfen nur Objekte in diesem Umkreis um den Blickpunkt.
 SCHATTEN_RADIUS_M = 110.0
@@ -116,6 +117,8 @@ class _Dekomodell:
     name: str
     stufen: list
     lod_abstand: float
+    #: Kleinteile (Hütchen, Publikum) enden früher als die Sichtweite.
+    max_abstand: float
     schatten: bool
     kulisse: bool
     pos: np.ndarray
@@ -186,6 +189,7 @@ class Dekozeichner:
                             float(eintrag.get("hoehe_m", 2.0)) * 0.5) * skala
         self.modelle.append(_Dekomodell(
             name=name, stufen=stufen, lod_abstand=float(eintrag.get("lod_abstand_m", 1e9)),
+            max_abstand=float(eintrag.get("max_abstand_m", 1e9)),
             schatten=bool(eintrag.get("schatten", True)),
             kulisse=name in self._kulisse or not eintrag.get("schatten", True),
             pos=pos, matrizen=instanzmatrizen(pos, gier, skala), radius=radius))
@@ -225,7 +229,8 @@ class Dekozeichner:
             else:
                 auswahl = self._sichtbar(mvp, m.pos, m.radius)
                 if not m.kulisse:
-                    auswahl &= d < SICHTWEITE_M
+                    sicht = float(getattr(grafik.aktuell(), "sichtweite_m", SICHTWEITE_M))
+                    auswahl &= d < min(sicht, m.max_abstand)
             if not auswahl.any():
                 continue
             if len(m.stufen) > 1:
