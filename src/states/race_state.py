@@ -475,6 +475,8 @@ class RaceState(BaseState):
         self.camera = self._kameras[0]
         self._staende = []
         self._ghost_letzte_pos = None
+        # Ab hier bis zum Countdown ein einziger Ladebildschirm (ladeanzeige.py).
+        self._ladeanzeige_starten()
         self._szene_aufbauen()
 
         # Erst hier: der Klang braucht _humans, und das steht ein paar Zeilen
@@ -544,6 +546,8 @@ class RaceState(BaseState):
                     self._takeover_lines[_ck] = self._build_racing_line_for(_hp.config, _hard)
                 except Exception:
                     pass
+            self._lade_melden("uebernahme", (self._humans.index(_hp) + 1) / len(self._humans))
+        self._ladeanzeige_beenden()
 
         # Online: tell the server we're done loading. The countdown stays frozen
         # until the server has heard this from everyone and broadcasts RACE_GO.
@@ -575,12 +579,8 @@ class RaceState(BaseState):
             tk = ghost.track_key(self._track_path)
 
             if not ghost.exists(tk):
-                from src.core import display
-                screen = display.virtual_surface()
-                self._open_loading_video()
-
                 def _ghost_progress(pct):
-                    self._render_loading(screen, tr("Generiere Ghost-Seed..."), pct, 100, 0, 1)
+                    self._lade_melden("ghost", pct / 100.0)
 
                 seed_data = ghost.generate_seed_ghost(
                     self._track_path, progress_callback=_ghost_progress)
@@ -594,9 +594,7 @@ class RaceState(BaseState):
                     self._original_ghost_sectors = list(seed_data.sectors)
                     self._original_ghost_lap_time = seed_data.lap_time
                     self._original_ghost_driver = seed_data.driver
-
-                self._render_loading(screen, tr("Fertig!"), 99, 100, 0, 1)
-                self._close_loading_video()
+                self._lade_melden("ghost", 1.0)
 
         if not self.track or not self.ai_vehicles:
             self._line_geo = None
@@ -606,26 +604,22 @@ class RaceState(BaseState):
             # schon im Rennen.
             if self._online:
                 self._open_loading_video()
+                self._ladevideo_behalten = True
             return
 
         center = self.track.centerline
         if not center or len(center) < 3:
             center = [(wp.x, wp.y) for wp in self.track.waypoints]
 
-        from src.core import display
-        screen = display.virtual_surface()
         total = len(self.ai_vehicles)
-        self._open_loading_video()
 
         for car_idx, ai in enumerate(self.ai_vehicles):
             diff = ai.controller.difficulty
             margin = getattr(diff, "wall_margin", 24.0)
             adjusted_margin = margin + max(0.0, (ai.config.height_px - 48.0) * 0.5)
 
-            car_name = getattr(ai.config, "name", f"Car {car_idx + 1}")
-
-            def _progress(it, max_it, _cn=car_name, _ci=car_idx):
-                self._render_loading(screen, _cn, _ci, total, it, max_it)
+            def _progress(it, max_it, _ci=car_idx):
+                self._lade_melden("linien", (_ci + it / max(1, max_it)) / total)
 
             geo = compute_racing_line_optimized(
                 center, self.track.track_width,
@@ -650,9 +644,7 @@ class RaceState(BaseState):
             ai.controller.racing_line = SolvedRacingLine(
                 geo.offsets, profile, geo.signed_curvature, geo.points
             )
-
-        self._render_loading(screen, tr("Fertig!"), total - 1, total, 1, 1)
-        self._close_loading_video()
+            self._lade_melden("linien", (car_idx + 1) / total)
 
     def _open_loading_video(self) -> None:
         """Open the submenu's video for the loading screen (best-effort)."""
@@ -660,6 +652,8 @@ class RaceState(BaseState):
         from src.core import race_setup
         stem = "Mehrspieler_Lokal" if race_setup.current().is_multiplayer else "Einzelspieler"
         path = os.path.join("data", "menu", f"{stem}.mp4")
+        if getattr(self, "_load_video", None) is not None:
+            return                      # läuft schon (ein Ladebildschirm, ein Video)
         self._load_video = None
         if os.path.isfile(path):
             from src.ui.video_player import VideoPlayer
@@ -756,16 +750,59 @@ class RaceState(BaseState):
             *[rv for rv in self._remote_vehicles if getattr(rv, "bereit", False)],
         ]
 
-    def _render_loading(self, screen: pygame.Surface, car_name: str,
-                        car_idx: int, total_cars: int,
-                        iteration: int, max_iterations: int) -> None:
-        """Draw the pre-race loading screen: submenu video + progress bar."""
+    # ------------------------------------------------------------------
+    # Der eine Ladebildschirm vor dem Rennen (siehe src/states/ladeanzeige.py)
+    # ------------------------------------------------------------------
+
+    def _ladeanzeige_starten(self) -> None:
+        """Abschnitte und Gewichte für dieses Rennen festlegen, Video öffnen.
+
+        Die Gewichte sind grobe Dauern: die Welt aufbauen zwei bis vier
+        Sekunden, eine Ideallinie je KI-Auto eine halbe bis eine Sekunde, der
+        Seed-Ghost nur auf einer Strecke ohne Ghost.
+        """
+        from src.core import display, race_setup
+        from src.states.ladeanzeige import Ladeanzeige
+        ghost_fehlt = False
+        if race_setup.current().mode == "Zeitfahren":
+            from src.core import ghost
+            ghost_fehlt = not ghost.exists(ghost.track_key(self._track_path))
+        ki = len(self.ai_vehicles) if self.track else 0
+        abschnitte = [
+            ("strecke", 3.0 if display.kontext() is not None else 0.0),
+            ("ghost", 2.0 if ghost_fehlt else 0.0),
+            ("linien", 0.7 * ki),
+            ("uebernahme", 0.4 * len(self._humans)),
+        ]
+        self._ladevideo_behalten = False
+        self._open_loading_video()
+        self._ladeanzeige = Ladeanzeige(abschnitte, self._lade_zeichnen)
+        self._ladeanzeige.melden("strecke", 0.0, sofort=True)
+
+    def _lade_melden(self, abschnitt: str, anteil: float) -> None:
+        anzeige = getattr(self, "_ladeanzeige", None)
+        if anzeige is not None:
+            anzeige.melden(abschnitt, anteil)
+
+    def _ladeanzeige_beenden(self) -> None:
+        anzeige = getattr(self, "_ladeanzeige", None)
+        if anzeige is not None:
+            anzeige.fertig()
+        self._ladeanzeige = None
+        # Ein Gast wartet danach noch auf die anderen — vor demselben Video.
+        if not getattr(self, "_ladevideo_behalten", False):
+            self._close_loading_video()
+
+    def _lade_zeichnen(self, stand: float, text: str) -> None:
+        """Ein Bild des Ladebildschirms: Video, Streckenname, Prozent, Balken."""
         from src.core import display
 
         # Der Ladebildschirm laeuft ausserhalb der Bildschleife des Spiels und
         # zeigt sich selbst. Er muss das Bild deshalb selbst anfangen und
         # abschliessen, sonst steht am Ende nichts auf dem Schirm.
+        pygame.event.pump()
         display.bild_beginnen()
+        screen = display.virtual_surface()
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
 
         # Background: the same looping video as the submenu we came from.
@@ -781,24 +818,30 @@ class RaceState(BaseState):
             theme.draw_background(screen)
             screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
 
-        overall = (car_idx * max_iterations + iteration) / max(1, total_cars * max_iterations)
-        pct = int(overall * 100)
-
-        theme.text(screen, tr("Lädt …  {p} %").format(p=pct), theme.TITLE, theme.ACCENT, (cx, cy - 80), center=True)
+        name = getattr(self.track, "name", "") if getattr(self, "track", None) else ""
+        if name:
+            theme.text(screen, name, theme.TITLE, theme.TEXT, (cx, cy - 200), center=True)
+        stand = max(0.0, min(1.0, stand))
+        theme.text(screen, tr("Lädt …  {p} %").format(p=int(stand * 100)), theme.TITLE,
+                   theme.ACCENT, (cx, cy - 80), center=True)
 
         bar_w, bar_h = 620, 30
         bx, by = cx - bar_w // 2, cy + 10
         pygame.draw.rect(screen, (40, 44, 56), (bx, by, bar_w, bar_h), border_radius=8)
-        fill_w = int(bar_w * overall)
+        fill_w = int(bar_w * stand)
         if fill_w > 0:
             pygame.draw.rect(screen, theme.ACCENT, (bx, by, fill_w, bar_h), border_radius=8)
         pygame.draw.rect(screen, theme.BORDER, (bx, by, bar_w, bar_h), 2, border_radius=8)
 
-        theme.text(screen, tr("Rennen wird vorbereitet"), theme.HINT, theme.TEXT_DIM,
-                   (cx, by + 56), center=True)
-
+        theme.text(screen, tr(text), theme.HINT, theme.TEXT_DIM, (cx, by + 56), center=True)
         display.bild_abschliessen()
-        pygame.event.pump()
+
+    def _render_loading(self, screen: pygame.Surface, car_name: str,
+                        car_idx: int, total_cars: int,
+                        iteration: int, max_iterations: int) -> None:
+        """Für das Fahrzeuglabor (DevState): derselbe Bildschirm, eigener Stand."""
+        overall = (car_idx * max_iterations + iteration) / max(1, total_cars * max_iterations)
+        self._lade_zeichnen(overall, "Rennen wird vorbereitet")
 
     @staticmethod
     def _gitter_bauen(kwargs: dict, start_positions: list, setup) -> list[int]:
@@ -2180,8 +2223,10 @@ class RaceState(BaseState):
             # Laden in Schritten, dazwischen der Ladebildschirm: alles liegt
             # lokal, aber bei tausend Bäumen und acht Autos dauert es doch
             # ein, zwei Sekunden, und ein stehendes Fenster wirkt abgestürzt.
-            for anteil, text in szene.aufbauen():
-                self._ladebild(anteil, text, strecke.get("name", ""))
+            # Die Texte der Schritte nennen Modelle und Dateien — die bleiben
+            # intern, der Spieler sieht „Strecke wird aufgebaut".
+            for anteil, _text in szene.aufbauen():
+                self._lade_melden("strecke", anteil)
             self.szene = szene
         except Exception as fehler:
             # Ein Fehler in der Darstellung darf kein Rennen kosten. Die
@@ -2190,27 +2235,6 @@ class RaceState(BaseState):
             traceback.print_exc()
             print(f"[RaceState] 3D-Szene nicht aufgebaut: {fehler}")
             self.szene = None
-
-    def _ladebild(self, anteil: float, text: str, streckenname: str) -> None:
-        """Ein Bild des Ladebildschirms: Streckenname, Balken, was gerade lädt."""
-        from src.core import display
-        pygame.event.pump()
-        display.bild_beginnen()
-        flaeche = display.virtual_surface()
-        b, h = flaeche.get_size()
-        flaeche.fill(theme.BG_DARK + (255,))
-        theme.text(flaeche, streckenname or tr("Rennen"), theme.TITLE, theme.TEXT,
-                   (b // 2, h // 2 - 120), center=True)
-        theme.text(flaeche, tr("Strecke wird geladen …"), theme.BODY, theme.TEXT_DIM,
-                   (b // 2, h // 2 - 40), center=True)
-        balken = pygame.Rect(b // 2 - 400, h // 2 + 20, 800, 22)
-        pygame.draw.rect(flaeche, theme.PANEL_LIGHT, balken, border_radius=11)
-        voll = balken.copy()
-        voll.width = max(22, int(balken.width * max(0.0, min(1.0, anteil))))
-        pygame.draw.rect(flaeche, theme.ACCENT, voll, border_radius=11)
-        theme.text(flaeche, text, theme.HINT, theme.TEXT_FAINT,
-                   (b // 2, h // 2 + 80), center=True)
-        display.bild_abschliessen()
 
     def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
         """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.
