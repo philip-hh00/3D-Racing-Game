@@ -422,6 +422,51 @@ vec3 gelaende_basis(vec3 p, vec3 n) {
 }
 /* === Strang W: Gelaende (Ende) ========================================== */
 
+/* === Strang W2: Gelaendeschatten (Anfang, licht.Gelaendesicht) ===========
+   Die Sonnensichtkarte: je Texel die Hoehe, ab der ein Punkt die Sonne
+   sieht (r), und der Abstand zum Verdecker (g). Das Raster ist nach der
+   Sonne gedreht; die Weltposition kommt ueber zwei Skalarprodukte hinein.
+   Eine ferne Karte ueber das ganze Gelaende, eine feine ueber das Gitter um
+   die Strecke, zum Rand der feinen hin weich ineinander. Gilt fuer alles,
+   was mit diesem Shader gezeichnet wird: Boden, Strecke, Deko, Autos -
+   wer hoeher steht als die Grenze, steht in der Sonne. */
+uniform float sicht_an;          // 0 aus, 1 nur fern, 2 fern und nah
+uniform sampler2D sicht_fern;
+uniform sampler2D sicht_nah;
+uniform vec2  sicht_achse;       // waagerecht zur Sonne, normiert
+uniform vec4  sicht_fern_raster; // u0, v0, 1/Laenge u, 1/Laenge v
+uniform vec4  sicht_nah_raster;
+uniform vec3  sicht_weich;       // Mindestbreite fern, nah (m, senkrecht); Halbschatten (tan)
+
+float sicht_probe(sampler2D karte, vec2 uv, float z, float mindest) {
+    vec2 gt = texture(karte, uv).rg;
+    float breite = max(mindest, gt.y * sicht_weich.z);
+    float s = clamp(0.5 + (z - gt.x) / breite, 0.0, 1.0);
+    return s * s * (3.0 - 2.0 * s);
+}
+
+float gelaende_sicht(vec3 p) {
+    if (sicht_an < 0.5) return 1.0;
+    vec2 q = vec2(dot(p.xy, sicht_achse), dot(p.xy, vec2(-sicht_achse.y, sicht_achse.x)));
+    // Erst die feine Karte; wer ganz in ihr liegt, braucht die ferne nicht.
+    float nah = 0.0;
+    float licht_nah = 1.0;
+    if (sicht_an > 1.5) {
+        vec2 uv_nah = (q - sicht_nah_raster.xy) * sicht_nah_raster.zw;
+        vec2 r = min(uv_nah, 1.0 - uv_nah);
+        nah = smoothstep(0.0, 0.05, min(r.x, r.y));
+        if (nah > 0.0) licht_nah = sicht_probe(sicht_nah, uv_nah, p.z, sicht_weich.y);
+        if (nah >= 1.0) return licht_nah;
+    }
+    vec2 uv = (q - sicht_fern_raster.xy) * sicht_fern_raster.zw;
+    vec2 rand = min(uv, 1.0 - uv);
+    // Hinter dem letzten Ring gibt es kein Gelaende mehr: dort Sonne.
+    float licht = mix(1.0, sicht_probe(sicht_fern, uv, p.z, sicht_weich.x),
+                      smoothstep(0.0, 0.01, min(rand.x, rand.y)));
+    return mix(licht, licht_nah, nah);
+}
+/* === Strang W2: Gelaendeschatten (Ende) ================================= */
+
 void main() {
     vec2 tuv = uv * uv_skala;
     vec4 textur = texture(basisfarbe, tuv);
@@ -449,7 +494,7 @@ void main() {
 
     float n_dot_v = max(dot(N, V), 1e-4);
     float n_dot_l = max(dot(N, L), 0.0);
-    float schatten = sonnenlicht(N, L);
+    float schatten = sonnenlicht(N, L) * gelaende_sicht(welt_position);  // Strang W2
 
     vec3 f0 = mix(vec3(0.04), basis, metallic);
 
@@ -657,6 +702,7 @@ def _vorgaben(p) -> None:
         ("sonne_farbe", SONNE_FARBE), ("himmel_mips", 8.0),
         ("himmel_helligkeit", 1.0), ("nebel_farbe", HIMMEL_HORIZONT),
         ("nebel_dichte", 0.0), ("nebel_faktor", 1.0),
+        ("sicht_an", 0.0), ("sicht_fern", 12), ("sicht_nah", 13),   # Strang W2
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

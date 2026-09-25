@@ -53,6 +53,8 @@ def _grafik_regler() -> list[tuple[str, str, list[tuple[object, str]]]]:
          [(v, f"{int(v)} m") for v in (500.0, 700.0, 900.0, 1100.0, 1600.0, 2000.0, 2400.0)]),
         ("gras", tr("Gras"), [(0, aus), (1, tr("Dünn")), (2, tr("Dicht"))]),
         ("gelaende_detail", tr("Geländedetail"), [(0, tr("Grob")), (1, tr("Mittel")), (2, tr("Fein"))]),
+        ("gelaende_schatten", tr("Geländeschatten"),
+         [(0, aus), (1, tr("Grob")), (2, tr("Mittel")), (3, tr("Fein"))]),
         ("strecken_details", tr("Streckendetails"), [(0, aus), (1, tr("Einige")), (2, tr("Alle"))]),
         ("reifenspuren", tr("Reifenspuren"), [(False, aus), (True, an)]),
         ("fahrzeug_lod_m", tr("Autos vereinfacht ab"),
@@ -285,8 +287,9 @@ class SettingsPage(Page):
 
 
     # -- Grafik ------------------------------------------------------------
-    #: Zweite Spalte der Video-Seite: Stufe und je Feld ein Regler.
-    GRAFIK_X, GRAFIK_Y, GRAFIK_ZEILE, GRAFIK_ABSTAND = 1120, 250, 50, 6
+    #: Zweite Spalte der Video-Seite: Stufe und je Feld ein Regler. Die
+    #: letzte Zeile muss über dem SPEICHERN-Knopf enden (vierzehn Zeilen).
+    GRAFIK_X, GRAFIK_Y, GRAFIK_ZEILE, GRAFIK_ABSTAND = 1120, 250, 46, 4
 
     def _grafik_werte(self) -> dict:
         """Die Grafikwerte, wie sie gerade gelten würden (mit Ungespeichertem)."""

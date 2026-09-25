@@ -676,10 +676,11 @@ def grasfarben(gras, keim: int, boden=None, spalten: int = 8, zeilen: int = 16) 
 #: Karte reicht 150 m um den Blickpunkt. Ein Hang darin beschattet sich
 #: selbst, derselbe Hang einen Schritt weiter draußen nicht — an der
 #: Kartengrenze läuft eine harte, gerade Kante quer über den Berg, und sie
-#: wandert mit dem Auto. Die Hänge schattiert der Sonnenwinkel ohnehin
-#: weich (abgewandte Seiten dunkel); Schatten *empfängt* das Gelände weiter
-#: von Bäumen, Häusern und Autos. Wer es wieder einschaltet, braucht erst
-#: eine Karte mit Kaskaden.
+#: wandert mit dem Auto. Den Schatten der Berge und Hügel wirft stattdessen
+#: die Sonnensichtkarte (:class:`licht.Gelaendesicht`, einmal beim Laden
+#: über das ganze Gelände gerechnet); sie liest die Höhen über
+#: :meth:`Gelaendezeichner.hoehen_vao`. Schatten *empfängt* das Gelände aus
+#: der Karte weiter von Bäumen, Häusern und Autos.
 GELAENDE_WIRFT_SCHATTEN = False
 
 #: Textureinheiten der drei Bodenschichten (0–3 sind vergeben, siehe shader.py).
@@ -769,6 +770,12 @@ class Gelaendezeichner:
         shader.setzen(programm, "alpha_schwelle", 0.0)
         shader.matrix_setzen(programm, "modell", np.eye(4))
         self.vao_schatten.render()
+
+    def hoehen_vao(self, programm):
+        """Das ganze Netz, nur Positionen, für ``programm`` — die
+        Sonnensichtkarte zeichnet damit die Höhen (Aufrufer gibt frei)."""
+        return self.ctx.vertex_array(programm, [(self.puffer[0], "3f", "in_position")],
+                                     self.puffer[3])
 
     def freigeben(self) -> None:
         for ding in [self.vao, self.vao_schatten, *self.puffer]:

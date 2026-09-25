@@ -566,6 +566,8 @@ class Rennszene:
         self.gelaendezeichner = None
         self.graszeichner = None
         self.fernwald = None
+        #: Schatten der Berge (Strang W2): Sonnensichtkarte, siehe licht.py.
+        self.gelaendesicht = None
         self._radplaetze: dict = {}
         #: Belichtung des Themas; angewendet in der Nachbearbeitung.
         self.belichtung = 1.0
@@ -611,6 +613,7 @@ class Rennszene:
 
         yield 0.08, "Gelände"
         self._gelaende_bauen()
+        self._gelaendesicht_bauen()
 
         yield 0.1, "Strecke"
         self._strecke_hochladen()
@@ -821,6 +824,23 @@ class Rennszene:
                     self.ctx, self.programm_instanz, feld, t.gras, gel.keim,
                     gelaende.GRAS_WEITE_M.get(stufe, 60.0), boden)
 
+    def _gelaendesicht_bauen(self) -> None:
+        """Die Sonnensichtkarte des Geländes (Strang W2): Schatten der Berge.
+
+        Einmal beim Laden, nach der Grafikstufe; ohne Gelände oder auf 0 keine.
+        Scheitert sie am Treiber, fährt das Rennen ohne Geländeschatten.
+        """
+        stufe = int(getattr(grafik.aktuell(), "gelaende_schatten", 0))
+        if self.gelaendezeichner is None or stufe <= 0:
+            return
+        from . import licht
+        try:
+            self.gelaendesicht = licht.Gelaendesicht(self.ctx, self.gelaendezeichner, self.gelaende,
+                                                     self.himmel.sonne, stufe)
+        except Exception as fehler:                  # pragma: no cover - Treiber
+            print(f"[rennszene] Keine Geländeschatten: {fehler}")
+            self.gelaendesicht = None
+
     def _modellgrenzen(self, t) -> dict:
         """Grundriss der großen Rand- und Hausmodelle, ``(x_min, x_max, y_min, y_max)``.
 
@@ -931,6 +951,9 @@ class Rennszene:
             karte.binden(3)
         else:
             self._leere_tiefe.use(3)
+        if self.gelaendesicht is not None:                # Strang W2
+            self.gelaendesicht.setzen((self.programm, self.programm_instanz),
+                                      an=einstellung.gelaende_schatten > 0)
 
         # Deckendes von nah nach fern: was verdeckt ist, verwirft der
         # Tiefentest, bevor der teure Fragment-Shader läuft. In der
@@ -1160,10 +1183,10 @@ class Rennszene:
         if getattr(self, "deko", None) is not None:
             self.deko.freigeben()
         for ding in (getattr(self, "gelaendezeichner", None), getattr(self, "graszeichner", None),
-                     getattr(self, "fernwald", None)):
+                     getattr(self, "fernwald", None), getattr(self, "gelaendesicht", None)):
             if ding is not None:
                 ding.freigeben()
-        self.gelaendezeichner = self.graszeichner = self.fernwald = None
+        self.gelaendezeichner = self.graszeichner = self.fernwald = self.gelaendesicht = None
         if getattr(self, "speicher", None) is not None:
             self.speicher.freigeben()
         for ding in (getattr(self, "himmel", None), getattr(self, "schattenkarte", None)):

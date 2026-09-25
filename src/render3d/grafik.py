@@ -52,6 +52,10 @@ class Grafik:
     #: Ab welchem Abstand, Meter, ein Auto mit seinem LOD1 fährt
     #: (``<key>_lod1.glb``: halb so viele Dreiecke, weniger Aufrufe).
     fahrzeug_lod_m: float = 60.0
+    #: Schatten der Berge und Hügel (Sonnensichtkarte, beim Laden gerechnet):
+    #: 0 aus, 1 grob (nur über das ganze Gelände), 2 mittel, 3 fein (dazu
+    #: eine feine Karte um die Strecke). Kostet Ladezeit, kaum Bildzeit.
+    gelaende_schatten: int = 3
 
 
 STUFEN: dict[str, Grafik] = {
@@ -59,12 +63,12 @@ STUFEN: dict[str, Grafik] = {
                       bloom=False, kantenglaettung="fxaa", deko_dichte=0.4,
                       sichtweite_m=700.0, gras=0, gelaende_detail=0,
                       strecken_details=0, reifenspuren=False,
-                      fahrzeug_lod_m=20.0),
+                      fahrzeug_lod_m=20.0, gelaende_schatten=1),
     "mittel": Grafik(stufe="mittel", aufloesung_skala=1.0, schatten_px=2048, ssao=0,
                      bloom=True, kantenglaettung="fxaa", deko_dichte=0.7,
                      sichtweite_m=1100.0, gras=1, gelaende_detail=1,
                      strecken_details=1, reifenspuren=True,
-                     fahrzeug_lod_m=35.0),
+                     fahrzeug_lod_m=35.0, gelaende_schatten=2),
     "hoch": Grafik(),
     "ultra": Grafik(stufe="ultra", ssao=2, deko_dichte=1.0, sichtweite_m=2400.0,
                     fahrzeug_lod_m=120.0),
