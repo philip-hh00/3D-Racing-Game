@@ -3,7 +3,7 @@
   "quelle": "tools/blender/fahrzeug_bauen.py",
   "laenge_m": 4.4,
   "breite_m": 2.16,
-  "hoehe_m": 1.5129,
+  "hoehe_m": 1.5106,
   "raddurchmesser_m": 0.65,
   "radstand_m": 2.674,
   "achsen": {
@@ -69,5 +69,5 @@
     237,
     239
   ],
-  "dreiecke_karosserie": 65986
+  "dreiecke_karosserie": 67281
 }
