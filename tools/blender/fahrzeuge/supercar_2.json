@@ -331,7 +331,13 @@
  ],
  "spiegel": {
   "u": 0.645,
-  "v": 0.995
+  "v": 0.995,
+  "z_m": 0.84,
+  "groesse": [
+   0.13,
+   0.24,
+   0.13
+  ]
  },
  "kabine": {
   "dach": [
@@ -741,20 +747,40 @@
    "n_min": 0.3,
    "punkte": [
     [
-     0.3,
-     0.42
+     0.44,
+     0.45
     ],
     [
-     0.44,
-     0.44
+     0.445,
+     0.62
     ],
     [
      0.43,
-     0.74
+     0.75
+    ],
+    [
+     0.4,
+     0.77
+    ],
+    [
+     0.35,
+     0.72
+    ],
+    [
+     0.31,
+     0.66
+    ],
+    [
+     0.3,
+     0.6
     ],
     [
      0.32,
-     0.78
+     0.54
+    ],
+    [
+     0.37,
+     0.47
     ]
    ],
    "stufen": [
@@ -868,29 +894,67 @@
     ]
    ],
    "leuchte": {
-    "tiefe_m": 0.022,
+    "tiefe_m": 0.026,
     "rand_m": 0.004,
     "abdeckung": "klarglas",
     "led": [
      {
       "verlauf": "aussen",
-      "abstand_m": 0.005,
+      "abstand_m": 0.006,
       "breite_m": 0.01,
       "hoehe_m": 0.005
      },
      {
-      "verlauf": "vorn",
-      "abstand_m": 0.005,
-      "breite_m": 0.006
+      "verlauf": "unten",
+      "abstand_m": 0.007,
+      "breite_m": 0.006,
+      "hoehe_m": 0.004
      }
     ],
     "projektoren": {
+     "ansicht": "vorn",
      "anzahl": 2,
-     "radius_m": 0.02,
+     "radius_m": 0.023,
      "lage": 0.5,
-     "rand_anteil": 0.3
+     "rand_anteil": 0.4
     }
-   }
+   },
+   "oder": [
+    {
+     "ansicht": "vorn",
+     "n_min": 0.1,
+     "u": [
+      0.86,
+      1.2
+     ],
+     "punkte": [
+      [
+       0.34,
+       0.5
+      ],
+      [
+       0.76,
+       0.705
+      ],
+      [
+       0.785,
+       0.63
+      ],
+      [
+       0.78,
+       0.59
+      ],
+      [
+       0.4,
+       0.4
+      ],
+      [
+       0.34,
+       0.43
+      ]
+     ]
+    }
+   ]
   },
   {
    "ansicht": "vorn",
@@ -1345,7 +1409,7 @@
    "art": "geschlitzt"
   },
   "spiegel": {
-   "art": "stiel",
+   "art": "fuss",
    "kappe_mat": "lack",
    "fuss_mat": "carbon",
    "schlank": 0.95
