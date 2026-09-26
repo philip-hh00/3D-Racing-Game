@@ -16,9 +16,11 @@ nah beieinander liegen, bleibt der Streifen dazwischen frei.
 """
 from __future__ import annotations
 
+import json
 import math
 import zlib
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -108,10 +110,12 @@ class _Belegung:
     def __init__(self, zelle_m: float = 8.0) -> None:
         self.zelle = zelle_m
         self.raster: dict[tuple[int, int], list[tuple[float, float, float]]] = {}
+        #: Größter gespeicherter Radius: so weit muss eine Abfrage suchen.
+        self.max_r = 0.0
 
     def frei(self, x: float, y: float, r: float) -> bool:
         cx, cy = int(math.floor(x / self.zelle)), int(math.floor(y / self.zelle))
-        reichweite = int(math.ceil((r + 12.0) / self.zelle))
+        reichweite = int(math.ceil((r + self.max_r) / self.zelle))
         for i in range(cx - reichweite, cx + reichweite + 1):
             for j in range(cy - reichweite, cy + reichweite + 1):
                 for (ox, oy, orad) in self.raster.get((i, j), ()):
@@ -122,6 +126,167 @@ class _Belegung:
     def belegen(self, x: float, y: float, r: float) -> None:
         schluessel = (int(math.floor(x / self.zelle)), int(math.floor(y / self.zelle)))
         self.raster.setdefault(schluessel, []).append((x, y, r))
+        self.max_r = max(self.max_r, float(r))
+
+    def frei_rechteck(self, x: float, y: float, gier: float,
+                      x0: float, x1: float, y0: float, y1: float) -> bool:
+        """Trifft das gedrehte Rechteck (Modellraum, wie ein Grundriss) keinen Kreis?"""
+        c, s = math.cos(gier), math.sin(gier)
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        hx, hy = (x1 - x0) / 2, (y1 - y0) / 2
+        wx, wy = x + c * mx - s * my, y + s * mx + c * my
+        cx, cy = int(math.floor(wx / self.zelle)), int(math.floor(wy / self.zelle))
+        reichweite = int(math.ceil((math.hypot(hx, hy) + self.max_r) / self.zelle))
+        for i in range(cx - reichweite, cx + reichweite + 1):
+            for j in range(cy - reichweite, cy + reichweite + 1):
+                for (ox, oy, orad) in self.raster.get((i, j), ()):
+                    dx, dy = ox - wx, oy - wy
+                    lx, ly = abs(c * dx + s * dy), abs(-s * dx + c * dy)
+                    if math.hypot(max(lx - hx, 0.0), max(ly - hy, 0.0)) < orad:
+                        return False
+        return True
+
+    def rechteck_belegen(self, x: float, y: float, gier: float,
+                         x0: float, x1: float, y0: float, y1: float) -> None:
+        """Ein Rechteck mit Kreisen auslegen — ein einziger Kreis um eine 52 m
+        lange Box sperrte eine Fläche, die dreimal so groß ist wie sie."""
+        c, s = math.cos(gier), math.sin(gier)
+        schritt = max(min(x1 - x0, y1 - y0), 1.0)
+        nx = max(1, int(math.ceil((x1 - x0) / schritt)))
+        ny = max(1, int(math.ceil((y1 - y0) / schritt)))
+        sx, sy = (x1 - x0) / nx, (y1 - y0) / ny
+        r = math.hypot(sx, sy) / 2
+        for i in range(nx):
+            for j in range(ny):
+                lx, ly = x0 + (i + 0.5) * sx, y0 + (j + 0.5) * sy
+                self.belegen(x + c * lx - s * ly, y + s * lx + c * ly, r)
+
+
+# ---------------------------------------------------------------------------
+# Grundrisse: die harte Grenze zur Fahrbahn
+# ---------------------------------------------------------------------------
+
+#: Kein Grundriss kommt der Kante **irgendeines** Streckenstücks näher als
+#: das: dort steht die Begrenzung (bis 0,65 m), dahinter etwas Luft. Gilt für
+#: alles außer der Startbrücke, die über die eigene Fahrbahn spannt.
+KANTE_FREI_M = 1.0
+#: Mindestabstand des Grundrisses für alles, was nicht bewusst an der Kante
+#: steht: Bäume (mit Krone), Häuser, Tribünen, Boxengebäude samt Vorplatz.
+ABSTAND_M = 2.0
+#: Kulisse (Skyline, Windräder) bleibt mit ihrem ganzen Grundriss so weit weg.
+KULISSE_FREI_M = 60.0
+#: Tribüne und Boxengebäude, die an ihrer Stelle keinen Platz haben, suchen
+#: so weit vor und hinter ihrer Stelle nach einer anderen, geraden.
+START_SUCHE_M = 400.0
+#: Gerade ist, wo der Kurvenradius über die Länge des Objekts nirgends darunter liegt.
+GERADE_R_M = 150.0
+
+#: Der Katalog der Umgebungsmodelle mit den Grundrissen. Ausnahme von der
+#: Regel „keine Dateien außerhalb der übergebenen Pfade“: wer ``platzieren``
+#: keinen Katalog gibt, bekommt den mitgelieferten — ohne ihn stünde die
+#: Garantie „nichts auf der Fahrbahn“ auf den groben Radien der Themen.
+KATALOG_PFAD = Path(__file__).resolve().parents[2] / "assets" / "umgebung" / "katalog.json"
+_katalog_speicher: dict = {}
+
+
+def standardkatalog() -> dict:
+    if "katalog" not in _katalog_speicher:
+        try:
+            with open(KATALOG_PFAD, encoding="utf-8") as fh:
+                _katalog_speicher["katalog"] = json.load(fh)
+        except (OSError, ValueError):
+            _katalog_speicher["katalog"] = {}
+    return _katalog_speicher["katalog"]
+
+
+@dataclass(frozen=True)
+class Grundriss:
+    """Die Fläche eines Modells am Boden, im Modellraum bei Skala 1 (Meter).
+
+    Ein Rechteck ``x0..x1 × y0..y1`` aus ``katalog.json`` (``grundriss_m``);
+    fehlt es dort, ein Kreis mit ``radius_m`` um den Ursprung (``kreis``).
+    """
+
+    x0: float
+    x1: float
+    y0: float
+    y1: float
+    kreis: bool = False
+
+    @classmethod
+    def aus_katalog(cls, eintrag: dict | None, ersatz_radius_m: float) -> "Grundriss":
+        eintrag = eintrag or {}
+        g = eintrag.get("grundriss_m")
+        if g is not None and len(g) == 4:
+            return cls(*(float(v) for v in g))
+        r = float(eintrag.get("radius_m", ersatz_radius_m))
+        return cls(-r, r, -r, r, kreis=True)
+
+    @property
+    def umkreis(self) -> float:
+        """Radius um den Ursprung, der die ganze Fläche einschließt."""
+        if self.kreis:
+            return self.x1
+        return math.hypot(max(abs(self.x0), abs(self.x1)), max(abs(self.y0), abs(self.y1)))
+
+    def skaliert(self, skala: float) -> tuple[float, float, float, float]:
+        s = float(skala)
+        return self.x0 * s, self.x1 * s, self.y0 * s, self.y1 * s
+
+    def abstand(self, fb: track_mesh.Fahrbahnabstand, x: float, y: float, gier: float,
+                skala: float, alle: bool = False) -> float:
+        """Kürzester Abstand zur Fahrbahnkante der ganzen Strecke (siehe
+        :meth:`track_mesh.Fahrbahnabstand.rechteck`); ``alle``: auf jede Entfernung exakt."""
+        if self.kreis:
+            r = self.x1 * float(skala)
+            if alle:
+                return float(abstand_zur_linie(np.array([[x, y]]), fb.linie)[0]) - fb.halbbreite - r
+            return fb.kreis(x, y, r)
+        return fb.rechteck(x, y, gier, *self.skaliert(skala), alle=alle)
+
+
+def grundrisse(thema: Thema, katalog: dict | None = None) -> dict:
+    """Modellname → :class:`Grundriss` für alles, was ``thema`` braucht."""
+    katalog = standardkatalog() if katalog is None else katalog
+    ergebnis = {STARTBRUECKE: Grundriss.aus_katalog(katalog.get(STARTBRUECKE), 14.0)}
+    for art in [*thema.rand, *thema.deko, *thema.kulisse]:
+        # Ohne Katalogeintrag: der Platzbedarf aus dem Thema; die Kulisse
+        # hat dort statt eines Radius ihren Ring und bekommt 100 m.
+        ersatz = 100.0 if isinstance(art, Kulisse) else float(art.radius_m)
+        for name in art.modell.split("|"):
+            ergebnis.setdefault(name, Grundriss.aus_katalog(katalog.get(name), ersatz))
+    return ergebnis
+
+
+def _grundriss(tafel: dict | None, modell: str, ersatz_radius_m: float) -> Grundriss:
+    if tafel and modell in tafel:
+        return tafel[modell]
+    return Grundriss.aus_katalog(None, ersatz_radius_m)
+
+
+def pflichtabstand(art: Randart, gr: Grundriss) -> float:
+    """So nah darf der Grundriss eines Randobjekts der Fahrbahn kommen.
+
+    Ein Randobjekt hält zur **ganzen** Strecke den Abstand, den es zur eigenen
+    Kante haben soll — seinen ``abstand_m`` minus die Tiefe nach vorn und
+    0,8 m für enge Kurven, in denen die Enden eines langen Objekts innen
+    näher an die Kante rücken. Verlangt werden aber höchstens
+    :data:`ABSTAND_M` (Tribüne und Boxen dürfen näher, als sie sollen, nur
+    nicht näher als das) und mindestens :data:`KANTE_FREI_M` (Banden und
+    Reifenstapel stehen bewusst an der Kante, aber nie auf der Begrenzung).
+    """
+    if art.seite == "auslauf":
+        return KANTE_FREI_M
+    vorn = (gr.y1 if not gr.kreis and not art.drehung_grad else gr.umkreis) * art.skala
+    return float(min(max(art.abstand_m - vorn - 0.8, KANTE_FREI_M), ABSTAND_M))
+
+
+def _gerade(linie: np.ndarray, laenge_m: float) -> np.ndarray:
+    """Je Punkt: liegt ein Objekt dieser Länge dort auf einer Geraden?"""
+    seg = np.linalg.norm(np.roll(linie, -1, axis=0) - linie, axis=1)
+    fenster = int(math.ceil((laenge_m / 2 + 5.0) / max(float(seg.mean()), 1e-3)))
+    gerade = _kruemmungsradius(linie) >= GERADE_R_M
+    return track_mesh._ring_schrumpfen(gerade, fenster)
 
 
 def _ausrichtung_zur_strecke(richtung_zur_strecke: np.ndarray) -> float:
@@ -149,11 +314,20 @@ def _scheitel(linie: np.ndarray, grenze_m: float) -> list[int]:
 def rand_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
                 belegung: _Belegung, rng, start_index: int = 0,
                 sperre: _Belegung | None = None,
-                auslauf_breite_m: float = 0.0) -> list[Platzierung]:
+                auslauf_breite_m: float = 0.0,
+                fb: track_mesh.Fahrbahnabstand | None = None,
+                grundrisse: dict | None = None) -> list[Platzierung]:
     """Randobjekte einer Art. ``sperre``: Flächen, auf denen nichts stehen
-    darf, was weiter als drei Meter von der Kante weg steht (Kiesbetten)."""
+    darf, was weiter als drei Meter von der Kante weg steht (Kiesbetten).
+
+    Jedes Objekt hält mit seinem Grundriss :func:`pflichtabstand` zur
+    Fahrbahn der ganzen Strecke; wo das nicht geht, entfällt es.
+    """
+    if fb is None:
+        fb = track_mesh.Fahrbahnabstand(linie, halbbreite)
     if art.art == "kette":
-        return kette_setzen(art, linie, halbbreite, belegung, rng, start_index, auslauf_breite_m)
+        return kette_setzen(art, linie, halbbreite, belegung, rng, start_index, auslauf_breite_m,
+                            fb=fb, grundrisse=grundrisse)
     ergebnis = []
     t = _tangenten(linie)
     links = np.stack([-t[:, 1], t[:, 0]], axis=1)
@@ -167,9 +341,9 @@ def rand_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
     links_innen = innerhalb(probe, linie)
 
     if art.art == "start":
-        ziel = (bogen[start_index % len(linie)] + art.versatz_m) % gesamt
-        indizes = [int(np.argmin(_ringabstand(bogen, ziel, gesamt)))]
-    elif art.art == "scheitel":
+        return _start_setzen(art, linie, halbbreite, belegung, rng, start_index, sperre,
+                             fb, grundrisse, links, links_innen, bogen, gesamt)
+    if art.art == "scheitel":
         indizes = _scheitel(linie, ENGE_KURVE_M * 1.4)
     elif art.art == "kurven":
         radius = _kruemmungsradius(linie)
@@ -182,7 +356,7 @@ def rand_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
     else:
         schritte = np.arange(rng.uniform(0, art.je_m), gesamt, art.je_m)
         indizes = [int(np.searchsorted(bogen, s, side="right") - 1) for s in schritte]
-    if art.bereich_m > 0 and art.art != "start":
+    if art.bereich_m > 0:
         nah = _ringabstand(bogen, bogen[start_index % len(linie)], gesamt) <= art.bereich_m
         indizes = [i for i in indizes if nah[i]]
 
@@ -197,27 +371,81 @@ def rand_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
             nach_links = links_innen[i] == (seite == "innen")
             n = links[i] if nach_links else -links[i]
             pos = linie[i] + n * abstand
-            # In engen Kurven läge der Punkt innen womöglich auf der Strecke.
-            if abstand_zur_linie(pos[None], linie)[0] < abstand - 0.5:
-                continue
             r = art.radius_m * art.skala
-            # Was an der Startlinie steht, kommt zuerst und hat dort Vorrang;
-            # der grobe Kreis einer langen Tribüne träfe sonst die Startbrücke.
-            if art.art != "start" and not belegung.frei(pos[0], pos[1], r):
+            if not belegung.frei(pos[0], pos[1], r):
                 continue
-            if (sperre is not None and art.art != "start" and art.abstand_m >= 3.0
+            if (sperre is not None and art.abstand_m >= 3.0
                     and not sperre.frei(pos[0], pos[1], r * 0.5)):
                 continue
-            belegung.belegen(pos[0], pos[1], r)
+            modell = _modell(art.modell, rng)
             gier = _ausrichtung_zur_strecke(-n) + math.radians(art.drehung_grad)
-            ergebnis.append(Platzierung(_modell(art.modell, rng), float(pos[0]), float(pos[1]),
-                                        gier, art.skala))
+            # Die harte Grenze: der Grundriss gegen die ganze Strecke. In
+            # engen Kurven innen oder neben einem anderen Stück fällt es weg.
+            gr = _grundriss(grundrisse, modell, art.radius_m)
+            if gr.abstand(fb, pos[0], pos[1], gier, art.skala) < pflichtabstand(art, gr):
+                continue
+            belegung.belegen(pos[0], pos[1], r)
+            ergebnis.append(Platzierung(modell, float(pos[0]), float(pos[1]), gier, art.skala))
     return ergebnis
+
+
+def _start_setzen(art: Randart, linie: np.ndarray, halbbreite: float, belegung: _Belegung,
+                  rng, start_index: int, sperre: _Belegung | None,
+                  fb: track_mesh.Fahrbahnabstand, grundrisse: dict | None,
+                  links: np.ndarray, links_innen: np.ndarray, bogen: np.ndarray,
+                  gesamt: float) -> list[Platzierung]:
+    """Ein Einzelstück an der Startlinie (Tribüne, Boxengebäude, Fahnen).
+
+    Zuerst an seiner Stelle (``versatz_m`` hinter der Linie, ``abstand_m``
+    vor der Kante). Passt der Grundriss dort nicht — auf eigenen Strecken
+    führt oft ein anderes Stück dicht vorbei —, rückt es erst nach außen,
+    dann an eine andere **gerade** Stelle nahe der Linie, zuletzt auf die
+    andere Seite. Findet sich nichts, entfällt es.
+    """
+    n_pkt = len(linie)
+    modell = _modell(art.modell, rng)
+    gr = _grundriss(grundrisse, modell, art.radius_m)
+    pflicht = pflichtabstand(art, gr)
+    x0, x1, y0, y1 = gr.skaliert(art.skala)
+    ziel = (bogen[start_index % n_pkt] + art.versatz_m) % gesamt
+    schritt = max(float(gesamt / n_pkt), 4.0)
+    versaetze = [0.0]
+    for k in range(1, int(START_SUCHE_M / schritt) + 1):
+        versaetze += [k * schritt, -k * schritt]
+    idx = np.array([int(np.argmin(_ringabstand(bogen, (ziel + v) % gesamt, gesamt)))
+                    for v in versaetze])
+    gerade = _gerade(linie, x1 - x0)
+    wunsch = "innen" if art.seite == "innen" else "aussen"
+    for seite in (wunsch, "innen" if wunsch == "aussen" else "aussen"):
+        for zusatz in (0.0, 3.0, 6.0, 10.0):
+            nach_links = links_innen[idx] == (seite == "innen")
+            n = np.where(nach_links[:, None], links[idx], -links[idx])
+            pos = linie[idx] + n * (halbbreite + art.abstand_m + zusatz)
+            # Billige Vorprüfung: liegt schon die Mitte zu nah, braucht es kein Rechteck.
+            mitte_frei = fb.kante(pos) >= pflicht
+            for k in np.flatnonzero(mitte_frei):
+                # Die eigene Stelle darf krumm sein (so steht es auf den
+                # mitgelieferten Strecken); ausweichen nur auf Geraden.
+                if k > 0 and not gerade[idx[k]]:
+                    continue
+                gier = _ausrichtung_zur_strecke(-n[k]) + math.radians(art.drehung_grad)
+                px, py = float(pos[k, 0]), float(pos[k, 1])
+                if gr.abstand(fb, px, py, gier, art.skala) < pflicht:
+                    continue
+                if not belegung.frei_rechteck(px, py, gier, x0, x1, y0, y1):
+                    continue
+                if sperre is not None and not sperre.frei_rechteck(px, py, gier, x0, x1, y0, y1):
+                    continue
+                belegung.rechteck_belegen(px, py, gier, x0, x1, y0, y1)
+                return [Platzierung(modell, px, py, gier, art.skala)]
+    return []
 
 
 def kette_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
                  belegung: _Belegung, rng, start_index: int = 0,
-                 auslauf_breite_m: float = 0.0) -> list[Platzierung]:
+                 auslauf_breite_m: float = 0.0,
+                 fb: track_mesh.Fahrbahnabstand | None = None,
+                 grundrisse: dict | None = None) -> list[Platzierung]:
     """Glieder lückenlos aneinander, etwa Fangzaunfelder von ``je_m`` Länge.
 
     Gelegt wird entlang der **versetzten** Linie im Abstand ``abstand_m`` von
@@ -226,7 +454,10 @@ def kette_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
     klafften dort auseinander. Jedes Glied spannt von Stützpunkt zu
     Stützpunkt (lokal +X), die Vorderseite (+Y) zeigt zur Strecke. Mit
     ``seite = "auslauf"`` folgt die Kette dem äußeren Rand der Kiesbetten.
+    Ein Glied, dessen Grundriss einem Streckenstück zu nah kommt, entfällt.
     """
+    if fb is None:
+        fb = track_mesh.Fahrbahnabstand(linie, halbbreite)
     t = _tangenten(linie)
     links = np.stack([-t[:, 1], t[:, 0]], axis=1)
     n = len(linie)
@@ -254,7 +485,7 @@ def kette_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
     ergebnis = []
     for pkt, maske in zuege:
         # Wo die versetzte Linie einem anderen Stück zu nah kommt: Lücke.
-        maske = maske & (abstand_zur_linie(pkt, linie) > halbbreite + min(art.abstand_m, 2.0) - 0.3)
+        maske = maske & (fb.kante(pkt) > min(art.abstand_m, 2.0) - 0.3)
         for start, anzahl in track_mesh._laeufe(maske):
             geschlossen = anzahl >= n
             idx = np.arange(n) if geschlossen else np.arange(start, start + anzahl) % n
@@ -276,14 +507,30 @@ def kette_setzen(art: Randart, linie: np.ndarray, halbbreite: float,
                 zur_strecke = linie[i] - mitte
                 if -math.sin(gier) * zur_strecke[0] + math.cos(gier) * zur_strecke[1] < 0:
                     gier += math.pi
+                modell = _modell(art.modell, rng)
+                gr = _grundriss(grundrisse, modell, art.radius_m)
+                if gr.abstand(fb, float(mitte[0]), float(mitte[1]), gier, art.skala) \
+                        < pflichtabstand(art, gr):
+                    continue
                 belegung.belegen(float(mitte[0]), float(mitte[1]), art.radius_m)
-                ergebnis.append(Platzierung(_modell(art.modell, rng), float(mitte[0]), float(mitte[1]),
+                ergebnis.append(Platzierung(modell, float(mitte[0]), float(mitte[1]),
                                             gier, art.skala))
     return ergebnis
 
 
 def deko_setzen(art: Dekoart, linie: np.ndarray, halbbreite: float,
-                belegung: _Belegung, rng) -> list[Platzierung]:
+                belegung: _Belegung, rng,
+                fb: track_mesh.Fahrbahnabstand | None = None,
+                grundrisse: dict | None = None) -> list[Platzierung]:
+    """Verstreute Objekte im Band ``abstand_m`` (Mitte zur Kante).
+
+    Dazu die harte Grenze: der **Grundriss** (Haus samt Dach, Baum samt
+    Krone) bleibt :data:`ABSTAND_M` von der Fahrbahn der ganzen Strecke weg.
+    Die Mitte allein reichte nicht — ein 30 m breiter Wohnblock 24 m von der
+    Kante ragte sonst bis an die Leitplanke.
+    """
+    if fb is None:
+        fb = track_mesh.Fahrbahnabstand(linie, halbbreite)
     rand = art.abstand_m[1] + halbbreite
     lo = linie.min(axis=0) - rand
     hi = linie.max(axis=0) + rand
@@ -298,35 +545,92 @@ def deko_setzen(art: Dekoart, linie: np.ndarray, halbbreite: float,
     anteil = ok.mean() if len(ok) else 0.0
     ziel = int(round(flaeche_ha * anteil * art.dichte_je_ha))
     ergebnis = []
-    for (x, y) in p[ok]:
+    for (x, y), k in zip(p[ok], kante[ok]):
         if len(ergebnis) >= ziel:
             break
         s = float(rng.uniform(*art.skala))
         r = art.radius_m * s
         if not belegung.frei(x, y, r):
             continue
-        belegung.belegen(x, y, r)
         if art.drehen:
             gier = float(rng.uniform(0, 2 * math.pi))
         else:
             i = int(np.argmin(((linie - (x, y)) ** 2).sum(axis=1)))
             gier = _ausrichtung_zur_strecke(linie[i] - (x, y))
-        ergebnis.append(Platzierung(_modell(art.modell, rng), float(x), float(y), gier, s))
+        modell = _modell(art.modell, rng)
+        gr = _grundriss(grundrisse, modell, art.radius_m)
+        # Weit genug weg, dass nicht einmal der Umkreis reicht: kein Rechteck nötig.
+        if k - gr.umkreis * s < ABSTAND_M and gr.abstand(fb, x, y, gier, s) < ABSTAND_M:
+            continue
+        belegung.belegen(x, y, r)
+        ergebnis.append(Platzierung(modell, float(x), float(y), gier, s))
     return ergebnis
 
 
-def kulisse_setzen(art: Kulisse, linie: np.ndarray, rng) -> list[Platzierung]:
-    mitte = (linie.min(axis=0) + linie.max(axis=0)) / 2
-    ausdehnung = float(np.linalg.norm(linie.max(axis=0) - linie.min(axis=0))) / 2
+def _rundrechteck(lo: np.ndarray, hi: np.ndarray, abstand: float, anteil: float) -> tuple:
+    """Punkt und Normale auf dem Rand des um ``abstand`` erweiterten Rechtecks,
+    ``anteil`` 0..1 entlang seines Umfangs (gegen den Uhrzeigersinn, ab rechts Mitte)."""
+    hx, hy = (hi - lo) / 2
+    mx, my = (hi + lo) / 2
+    viertel = math.pi / 2 * abstand
+    stuecke = [("seite", 2 * hy, (1, 0)), ("ecke", viertel, (1, 1)),
+               ("seite", 2 * hx, (0, 1)), ("ecke", viertel, (-1, 1)),
+               ("seite", 2 * hy, (-1, 0)), ("ecke", viertel, (-1, -1)),
+               ("seite", 2 * hx, (0, -1)), ("ecke", viertel, (1, -1))]
+    umfang = sum(laenge for _, laenge, _ in stuecke)
+    # Beginn in der Mitte der rechten Seite.
+    rest = (anteil * umfang + hy) % umfang
+    for art, laenge, (ax, ay) in stuecke:
+        if rest <= laenge or art == "ecke" and (ax, ay) == (1, -1):
+            break
+        rest -= laenge
+    f = min(rest / max(laenge, 1e-9), 1.0)
+    if art == "seite":
+        if ax:                                   # rechts/links: y läuft
+            y = -hy + 2 * hy * f if ax > 0 else hy - 2 * hy * f
+            return np.array([mx + ax * (hx + abstand), my + y]), np.array([ax, 0.0])
+        x = hx - 2 * hx * f if ay > 0 else -hx + 2 * hx * f
+        return np.array([mx + x, my + ay * (hy + abstand)]), np.array([0.0, ay])
+    # Ecke: Viertelkreis um die Rechteckecke.
+    start = {(1, 1): 0.0, (-1, 1): 0.5, (-1, -1): 1.0, (1, -1): 1.5}[(ax, ay)] * math.pi
+    w = start + f * math.pi / 2
+    normale = np.array([math.cos(w), math.sin(w)])
+    return np.array([mx + ax * hx, my + ay * hy]) + normale * abstand, normale
+
+
+def kulisse_setzen(art: Kulisse, linie: np.ndarray, rng,
+                   fb: track_mesh.Fahrbahnabstand | None = None,
+                   grundrisse: dict | None = None) -> list[Platzierung]:
+    """Ferne Objekte auf einem Ring um das **Rechteck** der Strecke.
+
+    Früher ein Kreis um die Mitte mit der halben Diagonale: bei einer langen,
+    schmalen Strecke standen die Objekte an den Längsseiten dann über einen
+    Kilometer weit weg, an den Enden dicht dran. Jetzt ``radius_m`` vom
+    Rechteck, gleichmäßig über den Umfang verteilt; auf großen Strecken
+    entsprechend mehr. Der Grundriss bleibt :data:`KULISSE_FREI_M` von der
+    Fahrbahn weg — reicht es nicht, rückt das Objekt weiter hinaus.
+    """
+    lo, hi = linie.min(axis=0), linie.max(axis=0)
+    r_mittel = float(np.mean(art.radius_m))
+    umfang = 2 * float((hi - lo).sum()) + 2 * math.pi * r_mittel
+    anzahl = int(round(art.anzahl * min(max(umfang / (2 * math.pi * (r_mittel + 250.0)), 1.0), 3.0)))
     ergebnis = []
-    for k in range(art.anzahl):
-        w = 2 * math.pi * (k + rng.uniform(-0.3, 0.3)) / art.anzahl
-        r = ausdehnung + float(rng.uniform(*art.radius_m))
-        x, y = mitte + r * np.array([math.cos(w), math.sin(w)])
-        # Die lange Seite zur Strecke — ein Bergrücken, keine Bergspitze von vorn.
-        gier = w + math.pi / 2 + float(rng.uniform(-0.3, 0.3))
-        ergebnis.append(Platzierung(_modell(art.modell, rng), float(x), float(y), gier,
-                                    float(rng.uniform(*art.skala))))
+    for k in range(anzahl):
+        anteil = (k + rng.uniform(-0.3, 0.3)) / anzahl
+        r = float(rng.uniform(*art.radius_m))
+        dreh = float(rng.uniform(-0.3, 0.3))
+        modell = _modell(art.modell, rng)
+        skala = float(rng.uniform(*art.skala))
+        gr = _grundriss(grundrisse, modell, 100.0)
+        for _versuch in range(8):
+            pos, normale = _rundrechteck(lo, hi, r, anteil)
+            # Die lange Seite zur Strecke — ein Bergrücken, keine Bergspitze von vorn.
+            gier = math.atan2(normale[1], normale[0]) + math.pi / 2 + dreh
+            if fb is None or gr.abstand(fb, float(pos[0]), float(pos[1]), gier, skala,
+                                        alle=True) >= KULISSE_FREI_M:
+                ergebnis.append(Platzierung(modell, float(pos[0]), float(pos[1]), gier, skala))
+                break
+            r += 40.0
     return ergebnis
 
 
@@ -352,11 +656,22 @@ def startbruecke(linie: np.ndarray, halbbreite: float, belegung: _Belegung) -> P
 
 
 def platzieren(mittellinie_m: np.ndarray, halbbreite_m: float, thema: Thema,
-               name: str, start_index: int = 0, details: int | None = None) -> list[Platzierung]:
-    """Alles, was um diese Strecke herum steht."""
+               name: str, start_index: int = 0, details: int | None = None,
+               katalog: dict | None = None) -> list[Platzierung]:
+    """Alles, was um diese Strecke herum steht.
+
+    **Die Garantie:** jeder Grundriss (``katalog``, sonst
+    :func:`standardkatalog`) hält Abstand zur Fahrbahn der ganzen Strecke —
+    Deko, Tribüne und Boxen :data:`ABSTAND_M`, Randobjekte
+    :func:`pflichtabstand`, die Kulisse :data:`KULISSE_FREI_M`. Nur die
+    Startbrücke spannt über die Fahrbahn. Was nicht passt, rückt aus oder
+    entfällt.
+    """
     linie = np.asarray(mittellinie_m, dtype=np.float64)[:, :2]
     rng = np.random.default_rng(keim(name))
     belegung = _Belegung()
+    fb = track_mesh.Fahrbahnabstand(linie, halbbreite_m)
+    tafel = grundrisse(thema, katalog)
     ergebnis: list[Platzierung] = [startbruecke(linie, halbbreite_m, belegung)]
     # Streckenobjekte nach Grafikstufe; Kiesbetten bleiben frei (Strang S).
     if details is None:
@@ -371,14 +686,14 @@ def platzieren(mittellinie_m: np.ndarray, halbbreite_m: float, thema: Thema,
         if getattr(art, "detail", 0) > details:
             continue
         ergebnis += rand_setzen(art, linie, halbbreite_m, belegung, rng, start_index,
-                                sperre=sperre, auslauf_breite_m=auslauf_m)
+                                sperre=sperre, auslauf_breite_m=auslauf_m, fb=fb, grundrisse=tafel)
     for liste in sperre.raster.values():
         for (x, y, r) in liste:
             belegung.belegen(x, y, r)
     for art in sorted(thema.deko, key=lambda a: -a.radius_m):
-        ergebnis += deko_setzen(art, linie, halbbreite_m, belegung, rng)
+        ergebnis += deko_setzen(art, linie, halbbreite_m, belegung, rng, fb=fb, grundrisse=tafel)
     for art in thema.kulisse:
-        ergebnis += kulisse_setzen(art, linie, rng)
+        ergebnis += kulisse_setzen(art, linie, rng, fb=fb, grundrisse=tafel)
     return ergebnis
 
 

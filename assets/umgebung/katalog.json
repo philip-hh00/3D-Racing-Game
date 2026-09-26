@@ -3,31 +3,61 @@
     "radius_m": 12.4,
     "hoehe_m": 13.8,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -10.0,
+      10.0,
+      -6.0,
+      6.0
+    ]
   },
   "city/backstein_2": {
     "radius_m": 8.68,
     "hoehe_m": 13.86,
     "dreiecke": 34,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -7.5,
+      7.5,
+      -6.5,
+      6.5
+    ]
   },
   "city/buero_turm_1": {
     "radius_m": 16.12,
     "hoehe_m": 74.4,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -13.0,
+      13.0,
+      -13.0,
+      13.0
+    ]
   },
   "city/buero_turm_2": {
     "radius_m": 18.6,
     "hoehe_m": 48.2,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -11.0,
+      11.0,
+      -15.0,
+      15.0
+    ]
   },
   "city/buero_turm_3": {
     "radius_m": 18.6,
     "hoehe_m": 99.6,
     "dreiecke": 120,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -15.0,
+      15.0,
+      -12.0,
+      12.0
+    ]
   },
   "city/hydrant": {
     "radius_m": 0.11,
@@ -36,7 +66,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 300
+    "dreiecke_lod1": 300,
+    "grundriss_m": [
+      -0.13,
+      0.13,
+      -0.15,
+      0.15
+    ]
   },
   "city/laterne": {
     "radius_m": 0.44,
@@ -45,7 +81,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 492
+    "dreiecke_lod1": 492,
+    "grundriss_m": [
+      -0.55,
+      0.55,
+      -0.3,
+      0.3
+    ]
   },
   "city/muelltonne": {
     "radius_m": 0.27,
@@ -54,13 +96,25 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 300
+    "dreiecke_lod1": 300,
+    "grundriss_m": [
+      -0.34,
+      0.34,
+      -0.31,
+      0.31
+    ]
   },
   "city/skyline": {
     "radius_m": 100,
     "hoehe_m": 134.6,
     "dreiecke": 588,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -90.0,
+      80.5,
+      -45.08,
+      47.41
+    ]
   },
   "city/stromkasten": {
     "radius_m": 0.24,
@@ -69,25 +123,49 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 300
+    "dreiecke_lod1": 300,
+    "grundriss_m": [
+      -0.31,
+      0.31,
+      -0.25,
+      0.26
+    ]
   },
   "city/wohnblock_1": {
     "radius_m": 14.88,
     "hoehe_m": 20.0,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -12.0,
+      12.0,
+      -7.0,
+      7.0
+    ]
   },
   "city/wohnblock_2": {
     "radius_m": 18.6,
     "hoehe_m": 16.9,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -15.0,
+      15.0,
+      -6.0,
+      6.0
+    ]
   },
   "city/wohnblock_3": {
     "radius_m": 11.16,
     "hoehe_m": 26.2,
     "dreiecke": 96,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -9.0,
+      9.0,
+      -8.0,
+      8.0
+    ]
   },
   "desert/fels_1": {
     "radius_m": 2.62,
@@ -96,7 +174,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 499
+    "dreiecke_lod1": 499,
+    "grundriss_m": [
+      -3.27,
+      3.29,
+      -1.61,
+      1.61
+    ]
   },
   "desert/fels_2": {
     "radius_m": 1.9,
@@ -105,25 +189,49 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 400
+    "dreiecke_lod1": 400,
+    "grundriss_m": [
+      -2.4,
+      2.38,
+      -1.3,
+      1.3
+    ]
   },
   "desert/kaktus_1": {
     "radius_m": 1.2,
     "hoehe_m": 6.5,
     "dreiecke": 2152,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -0.83,
+      0.35,
+      -0.35,
+      0.92
+    ]
   },
   "desert/kaktus_2": {
     "radius_m": 1.2,
     "hoehe_m": 4.5,
     "dreiecke": 1716,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -0.88,
+      0.74,
+      -0.41,
+      0.75
+    ]
   },
   "desert/kaktus_3": {
     "radius_m": 1.2,
     "hoehe_m": 8.0,
     "dreiecke": 2156,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -0.46,
+      0.38,
+      -0.38,
+      1.09
+    ]
   },
   "desert/klippe": {
     "radius_m": 46.36,
@@ -132,7 +240,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 2999
+    "dreiecke_lod1": 2999,
+    "grundriss_m": [
+      -57.95,
+      57.96,
+      -30.7,
+      30.74
+    ]
   },
   "desert/koecherbaum_1": {
     "radius_m": 0.96,
@@ -141,7 +255,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 899
+    "dreiecke_lod1": 899,
+    "grundriss_m": [
+      -1.2,
+      1.2,
+      -0.99,
+      0.99
+    ]
   },
   "desert/koecherbaum_2": {
     "radius_m": 0.9,
@@ -150,19 +270,37 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 699
+    "dreiecke_lod1": 699,
+    "grundriss_m": [
+      -1.12,
+      1.12,
+      -1.13,
+      1.14
+    ]
   },
   "desert/lehmhaus_1": {
     "radius_m": 5.58,
     "hoehe_m": 4.8,
     "dreiecke": 108,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -4.5,
+      4.5,
+      -3.5,
+      3.5
+    ]
   },
   "desert/lehmhaus_2": {
     "radius_m": 8.06,
     "hoehe_m": 7.8,
     "dreiecke": 108,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -6.5,
+      6.5,
+      -4.0,
+      4.0
+    ]
   },
   "desert/steppenbusch": {
     "radius_m": 0.69,
@@ -171,13 +309,25 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 693
+    "dreiecke_lod1": 693,
+    "grundriss_m": [
+      -0.72,
+      0.7,
+      -0.86,
+      0.86
+    ]
   },
   "desert/tafelberg": {
     "radius_m": 152.0,
     "hoehe_m": 112.32,
     "dreiecke": 8192,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -190.0,
+      190.0,
+      -130.0,
+      130.0
+    ]
   },
   "desert/toter_stamm": {
     "radius_m": 0.16,
@@ -186,49 +336,97 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 300
+    "dreiecke_lod1": 300,
+    "grundriss_m": [
+      -0.21,
+      0.21,
+      -0.18,
+      0.18
+    ]
   },
   "forest/waldhuegel": {
     "radius_m": 240.0,
     "hoehe_m": 86.9,
     "dreiecke": 9746,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -300.0,
+      300.0,
+      -160.0,
+      160.0
+    ]
   },
   "gemeinsam/bande_0": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/bande_1": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/bande_2": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/bande_3": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/bande_4": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/bande_5": {
     "radius_m": 3.1,
     "hoehe_m": 1.25,
     "dreiecke": 38,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.0,
+      3.0,
+      -0.41,
+      0.1
+    ]
   },
   "gemeinsam/betonblock": {
     "radius_m": 0.59,
@@ -237,7 +435,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 200
+    "dreiecke_lod1": 200,
+    "grundriss_m": [
+      -0.74,
+      0.74,
+      -0.21,
+      0.21
+    ]
   },
   "gemeinsam/reifenstapel": {
     "radius_m": 1.0,
@@ -246,37 +450,73 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 12
+    "dreiecke_lod1": 12,
+    "grundriss_m": [
+      -1.03,
+      1.03,
+      -0.42,
+      0.42
+    ]
   },
   "gemeinsam/startbruecke": {
     "radius_m": 2.0,
     "hoehe_m": 9.05,
     "dreiecke": 916,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -14.2,
+      14.2,
+      -0.7,
+      0.7
+    ]
   },
   "gemeinsam/tribuene": {
     "radius_m": 16.0,
     "hoehe_m": 9.32,
     "dreiecke": 9564,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -18.5,
+      18.5,
+      -5.5,
+      5.5
+    ]
   },
   "mountain/almhuette": {
     "radius_m": 7.44,
     "hoehe_m": 9.22,
     "dreiecke": 46,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -6.5,
+      6.5,
+      -5.0,
+      5.0
+    ]
   },
   "mountain/schneeberg_1": {
     "radius_m": 360.0,
     "hoehe_m": 291.6,
     "dreiecke": 8192,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -450.0,
+      450.0,
+      -210.0,
+      210.0
+    ]
   },
   "mountain/schneeberg_2": {
     "radius_m": 280.0,
     "hoehe_m": 231.0,
     "dreiecke": 8192,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -350.0,
+      350.0,
+      -190.0,
+      190.0
+    ]
   },
   "natur/baumstumpf": {
     "radius_m": 0.83,
@@ -285,19 +525,37 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 399
+    "dreiecke_lod1": 399,
+    "grundriss_m": [
+      -0.93,
+      0.93,
+      -1.04,
+      1.04
+    ]
   },
   "natur/busch_1": {
     "radius_m": 1.2,
     "hoehe_m": 1.9,
     "dreiecke": 52,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -1.94,
+      1.84,
+      -1.92,
+      1.27
+    ]
   },
   "natur/busch_2": {
     "radius_m": 0.8,
     "hoehe_m": 1.21,
     "dreiecke": 52,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -1.3,
+      1.17,
+      -1.28,
+      1.27
+    ]
   },
   "natur/farn": {
     "radius_m": 0.34,
@@ -306,7 +564,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 299
+    "dreiecke_lod1": 299,
+    "grundriss_m": [
+      -0.39,
+      0.39,
+      -0.43,
+      0.43
+    ]
   },
   "natur/felsbrocken": {
     "radius_m": 1.54,
@@ -315,7 +579,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 400
+    "dreiecke_lod1": 400,
+    "grundriss_m": [
+      -1.02,
+      1.01,
+      -1.93,
+      1.93
+    ]
   },
   "natur/findling": {
     "radius_m": 1.61,
@@ -324,13 +594,25 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 500
+    "dreiecke_lod1": 500,
+    "grundriss_m": [
+      -1.42,
+      1.41,
+      -2.02,
+      2.02
+    ]
   },
   "natur/holzhuette": {
     "radius_m": 4.96,
     "hoehe_m": 5.28,
     "dreiecke": 34,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -4.5,
+      4.5,
+      -3.5,
+      3.5
+    ]
   },
   "natur/laubbaum_1": {
     "radius_m": 2.04,
@@ -339,7 +621,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 134
+    "dreiecke_lod1": 134,
+    "grundriss_m": [
+      -5.32,
+      5.15,
+      -4.82,
+      5.04
+    ]
   },
   "natur/laubbaum_2": {
     "radius_m": 1.56,
@@ -348,7 +636,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 134
+    "dreiecke_lod1": 134,
+    "grundriss_m": [
+      -3.86,
+      3.98,
+      -3.85,
+      3.93
+    ]
   },
   "natur/laubbaum_3": {
     "radius_m": 2.52,
@@ -357,7 +651,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 134
+    "dreiecke_lod1": 134,
+    "grundriss_m": [
+      -6.12,
+      6.21,
+      -6.2,
+      6.56
+    ]
   },
   "natur/moosfels_1": {
     "radius_m": 2.42,
@@ -366,7 +666,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 400
+    "dreiecke_lod1": 400,
+    "grundriss_m": [
+      -2.01,
+      2.02,
+      -3.04,
+      3.02
+    ]
   },
   "natur/moosfels_2": {
     "radius_m": 1.52,
@@ -375,7 +681,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 400
+    "dreiecke_lod1": 400,
+    "grundriss_m": [
+      -1.9,
+      1.9,
+      -1.87,
+      1.87
+    ]
   },
   "natur/stein": {
     "radius_m": 0.82,
@@ -384,7 +696,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 300
+    "dreiecke_lod1": 300,
+    "grundriss_m": [
+      -1.02,
+      1.03,
+      -0.63,
+      0.63
+    ]
   },
   "natur/tanne_1": {
     "radius_m": 1.92,
@@ -393,7 +711,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 148
+    "dreiecke_lod1": 148,
+    "grundriss_m": [
+      -4.16,
+      4.08,
+      -4.34,
+      3.89
+    ]
   },
   "natur/tanne_2": {
     "radius_m": 1.56,
@@ -402,7 +726,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 116
+    "dreiecke_lod1": 116,
+    "grundriss_m": [
+      -3.35,
+      3.41,
+      -3.29,
+      3.44
+    ]
   },
   "natur/tanne_3": {
     "radius_m": 2.16,
@@ -411,7 +741,13 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 70,
-    "dreiecke_lod1": 180
+    "dreiecke_lod1": 180,
+    "grundriss_m": [
+      -4.62,
+      4.52,
+      -4.5,
+      4.33
+    ]
   },
   "natur/totholz": {
     "radius_m": 1.95,
@@ -420,93 +756,183 @@
     "schatten": true,
     "lod1": true,
     "lod_abstand_m": 60,
-    "dreiecke_lod1": 400
+    "dreiecke_lod1": 400,
+    "grundriss_m": [
+      -2.44,
+      2.44,
+      -0.23,
+      0.23
+    ]
   },
   "plains/bauernhaus": {
     "radius_m": 8.68,
     "hoehe_m": 10.0,
     "dreiecke": 34,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -7.5,
+      7.5,
+      -5.5,
+      5.5
+    ]
   },
   "plains/heuballen": {
     "radius_m": 0.9,
     "hoehe_m": 1.4,
     "dreiecke": 76,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -0.7,
+      0.7,
+      -0.61,
+      0.61
+    ]
   },
   "plains/huegel": {
     "radius_m": 280.0,
     "hoehe_m": 62.6,
     "dreiecke": 8612,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -350.0,
+      350.0,
+      -180.0,
+      180.0
+    ]
   },
   "plains/scheune": {
     "radius_m": 11,
     "hoehe_m": 11.38,
     "dreiecke": 34,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -8.5,
+      8.5,
+      -6.0,
+      6.0
+    ]
   },
   "plains/windrad": {
     "radius_m": 6,
     "hoehe_m": 117.54,
     "dreiecke": 108,
-    "schatten": false
+    "schatten": false,
+    "grundriss_m": [
+      -2.56,
+      3.8,
+      -26.42,
+      37.24
+    ]
   },
   "plains/zaun": {
     "radius_m": 2.0,
     "hoehe_m": 1.2,
     "dreiecke": 60,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -2.06,
+      2.06,
+      -0.06,
+      0.06
+    ]
   },
   "strecke/boxengebaeude": {
     "radius_m": 24.0,
     "hoehe_m": 9.65,
     "dreiecke": 1050,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -26.0,
+      26.0,
+      -7.0,
+      15.0
+    ]
   },
   "strecke/fangzaun": {
     "radius_m": 2.0,
     "hoehe_m": 3.92,
     "dreiecke": 104,
     "schatten": true,
-    "max_abstand_m": 250.0
+    "max_abstand_m": 250.0,
+    "grundriss_m": [
+      -2.16,
+      2.0,
+      -0.22,
+      0.64
+    ]
   },
   "strecke/flaggenmasten": {
     "radius_m": 4.5,
     "hoehe_m": 8.1,
     "dreiecke": 300,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -3.25,
+      5.49,
+      -0.25,
+      0.25
+    ]
   },
   "strecke/huetchen": {
     "radius_m": 1.8,
     "hoehe_m": 0.73,
     "dreiecke": 216,
     "schatten": true,
-    "max_abstand_m": 160.0
+    "max_abstand_m": 160.0,
+    "grundriss_m": [
+      -1.29,
+      1.29,
+      -0.19,
+      0.19
+    ]
   },
   "strecke/kameraturm": {
     "radius_m": 1.6,
     "hoehe_m": 8.63,
     "dreiecke": 518,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -1.23,
+      1.23,
+      -1.23,
+      1.23
+    ]
   },
   "strecke/postenhaus": {
     "radius_m": 1.8,
     "hoehe_m": 3.0,
     "dreiecke": 126,
     "schatten": true,
-    "max_abstand_m": 450.0
+    "max_abstand_m": 450.0,
+    "grundriss_m": [
+      -1.5,
+      1.66,
+      -1.25,
+      1.55
+    ]
   },
   "strecke/tribuene": {
     "radius_m": 16.0,
     "hoehe_m": 8.7,
     "dreiecke": 1068,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -15.61,
+      15.61,
+      -4.35,
+      5.32
+    ]
   },
   "strecke/tribuene_klein": {
     "radius_m": 8.0,
     "hoehe_m": 7.2,
     "dreiecke": 480,
-    "schatten": true
+    "schatten": true,
+    "grundriss_m": [
+      -7.6,
+      7.6,
+      -3.09,
+      4.04
+    ]
   }
 }

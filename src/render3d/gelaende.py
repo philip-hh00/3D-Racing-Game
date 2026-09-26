@@ -68,6 +68,17 @@ GITTER_RAND_M = 320.0
 #: Rasterweite der Abstandskarte zur Fahrbahnkante.
 ABSTAND_RASTER_M = 4.0
 
+#: Randstreifen samt Begrenzung: bis hierher ab der Kante ist der
+#: gezeichnete Boden exakt 0 — auf jeder Strecke, auch neben einem anderen Stück.
+RANDSTREIFEN_M = 3.0
+#: Der schmalste Korridor, der das garantiert: Randstreifen, dazu die
+#: Diagonale der gröbsten Gitterzelle im Kern (5 m auf Stufe 0) und der
+#: Fehler der Abstandskarte (unter 0,5 m neben der Kante).
+KORRIDOR_MIN_M = RANDSTREIFEN_M + max(d["fein_m"] for d in DETAIL.values()) * math.sqrt(2) + 1.0
+#: So steil darf die nahe Zone höchstens über dem Korridorrand ansteigen
+#: (Hülle, 0,6 ≈ 31 Grad), gemessen zur nächsten Kante der ganzen Strecke.
+NAH_HANG_MAX = 0.6
+
 
 # ---------------------------------------------------------------------------
 # Rauschen
@@ -204,8 +215,11 @@ def korridor_m(art, rand_arten=(), auslauf_m: float = 0.0) -> float:
     mit etwas Luft auf dem Flachen stehen, ebenso der Auslauf (Kies) außen
     an den Kurven. Einzelstücke wie die Tribüne
     bekommen stattdessen eine eigene ebene Stelle.
+
+    Nie schmaler als :data:`KORRIDOR_MIN_M`: sonst hätte ein Dreieck des
+    gezeichneten Bodens über dem Randstreifen eine Ecke, die schon ansteigt.
     """
-    breite = max(float(art.korridor_m), float(auslauf_m) + 4.0)
+    breite = max(float(art.korridor_m), float(auslauf_m) + 4.0, KORRIDOR_MIN_M)
     for r in rand_arten:
         if getattr(r, "art", "reihe") == "start":
             continue
@@ -293,7 +307,8 @@ class Gelaende:
         y = np.asarray(y, dtype=np.float64)
         a = self.art
         x, y = np.broadcast_arrays(x, y)
-        nah = glatt(self.korridor, self.korridor + a.anstieg_m, self.kantenabstand(x, y))
+        kante = self.kantenabstand(x, y)
+        nah = glatt(self.korridor, self.korridor + a.anstieg_m, kante)
         h = np.zeros(x.shape)
         rechteck = self.rechteckabstand(x, y)
         zonen = (("nah", None), ("fern", a.fern_ab_m), ("horizont", a.horizont_ab_m))
@@ -304,15 +319,22 @@ class Gelaende:
             lam = max(float(getattr(a, f"{zone}_wellenlaenge_m")), 1.0)
             art = getattr(a, f"{zone}_art")
             if ab is None:
-                h = h + hoehe * form(art, x / lam, y / lam, self.keim + 1009 * k)
+                # Die nahe Zone wächst höchstens mit NAH_HANG_MAX über dem
+                # Korridorrand — weich gedeckelt (tanh), damit kein Knick
+                # entsteht. So bleibt ein enges Innenfeld (zwei Stücke, die
+                # nah nebeneinander liegen) flach und verdeckt nichts; ins
+                # große Innenfeld passt ein ganzer Hügel.
+                deckel = NAH_HANG_MAX * np.maximum(kante - self.korridor, 0.0) + 1e-9
+                roh = hoehe * form(art, x / lam, y / lam, self.keim + 1009 * k) * nah
+                h = h + deckel * np.tanh(roh / deckel)
                 continue
             # Ferne Zonen nur dort rechnen, wo sie etwas beitragen.
             maske = glatt(ab, ab * 1.7 + 60.0, rechteck)
             wo = maske > 0
             if not wo.any():
                 continue
-            h[wo] += hoehe * maske[wo] * form(art, x[wo] / lam, y[wo] / lam, self.keim + 1009 * k)
-        h = h * nah
+            h[wo] += (hoehe * maske[wo] * nah[wo]
+                      * form(art, x[wo] / lam, y[wo] / lam, self.keim + 1009 * k))
         if ebnen:
             for e in self._ebnungen:
                 w = 1.0 - glatt(e.r, e.r + e.abfall, np.hypot(x - e.x, y - e.y))
@@ -436,7 +458,9 @@ class Gelaende:
             rho_rand = np.minimum(halb[0] / np.maximum(np.abs(cw), 1e-9),
                                   halb[1] / np.maximum(np.abs(sw), 1e-9))
         rho_mittel = float(rho_rand.mean())
-        delta_max = AUSSEN_M - float(rho_rand.max())
+        # Eine eigene Strecke kann größer sein als der Horizont: dann reichen
+        # die Ringe trotzdem ein Stück hinaus, statt ins Gitter zu fallen.
+        delta_max = max(AUSSEN_M - float(rho_rand.max()), 3 * self.detail["grob_m"], 600.0)
         deltas = []
         dlt = self.detail["grob_m"]
         while dlt < delta_max:

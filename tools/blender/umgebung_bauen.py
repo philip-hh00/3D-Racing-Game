@@ -255,7 +255,14 @@ def exportieren(schluessel: str, objekte, lod1=None, lod_abstand_m: float = 80.0
     h = max(v.z for v in vs)
     g.glb_schreiben(ZIEL / f"{schluessel}.glb", [ob])
     eintrag = {"radius_m": round(radius_m if radius_m else b / 2 * 0.8, 2),
-               "hoehe_m": round(h, 2), "dreiecke": g.dreiecke(ob), "schatten": schatten}
+               "hoehe_m": round(h, 2), "dreiecke": g.dreiecke(ob), "schatten": schatten,
+               # Grundriss am Boden, Modellraum [x_min, x_max, y_min, y_max]:
+               # damit prüft die Platzierung, dass nichts auf die Fahrbahn ragt
+               # (für ältere Modelle ergänzt tools/katalog_grundrisse.py).
+               "grundriss_m": [math.floor(min(v.x for v in vs) * 100) / 100,
+                               math.ceil(max(v.x for v in vs) * 100) / 100,
+                               math.floor(min(v.y for v in vs) * 100) / 100,
+                               math.ceil(max(v.y for v in vs) * 100) / 100]}
     if lod1 is not None:
         lob = g.verbinden([o for o in lod1 if o is not None], ob.name + "_lod1")
         g.glb_schreiben(ZIEL / f"{schluessel}_lod1.glb", [lob])

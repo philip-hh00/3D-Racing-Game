@@ -127,6 +127,21 @@ Ursprung mittig am Boden. Objekte, die zur Strecke ausgerichtet werden, zeigen
 mit ihrer Vorderseite nach **+Y**. Laub-Materialien enden auf `_maske` und
 werden ausgestanzt statt gemischt. Platzbedarf, Höhe und LOD-Abstand stehen in
 `assets/umgebung/katalog.json`.
+Dort steht auch der **Grundriss** jedes Modells, `grundriss_m: [x_min, x_max,
+y_min, y_max]` im Modellraum (Skala 1); `umgebung_bauen.py` schreibt ihn mit,
+`tools/katalog_grundrisse.py` ergänzt ihn für ältere Modelle.
+
+**Nichts auf der Fahrbahn — auf jeder Strecke.** Eigene Strecken aus dem
+Editor führen oft acht Meter neben sich selbst vorbei. Deshalb misst alles,
+was um die Strecke herum entsteht, gegen die Fahrbahn der **ganzen**
+Strecke (`track_mesh.Fahrbahnabstand`, exakt, alle Abschnitte), nie nur
+gegen das nächste Stück und nie nur mit dem Mittelpunkt: die Platzierung
+mit dem Grundriss (`platzierung.KANTE_FREI_M`, `ABSTAND_M`,
+`KULISSE_FREI_M`), die Kiesbetten (`track_mesh.KIES_FREI_M`), das Gras,
+das Gelände (flach bis `gelaende.KORRIDOR_MIN_M`, nahe Hügel höchstens
+`NAH_HANG_MAX` steil). Wer etwas Neues neben die Strecke stellt, prüft es
+ebenso; `tests/test_render3d_eigene_strecken.py` baut dafür echte
+Kachelstrecken.
 
 **Themen** (`data/themen/<name>.json`) sagen, was um eine Strecke steht; die
 Strecke wählt ihr Thema über `background_texture`. Platziert wird zufällig,

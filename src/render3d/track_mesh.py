@@ -636,16 +636,27 @@ def auslauf_breiten(mittellinie_m: np.ndarray, halbe_breite_m: float,
     Außen an Kurven unter ``AUSLAUF_R_M``, vom Kurveneingang bis weit hinter
     den Ausgang (dorthin trägt es ein Auto), linsenförmig aus- und
     einlaufend. Wo ein anderes Stück der Strecke nah vorbeiführt, wird die
-    Zone schmaler — sie darf nie bis an die Nachbarfahrbahn reichen.
+    Zone schmaler — sie darf nie bis an die Nachbarfahrbahn reichen: jeder
+    Punkt des Kiesbetts bleibt :data:`KIES_FREI_M` von der Kante jedes anderen
+    Stücks weg, nachgeprüft gegen die ganze Mittellinie (auf eigenen Strecken
+    liegen Geraden oft nur acht Meter nebeneinander).
+
+    Das Ergebnis wird für dieselbe Strecke zwischengespeichert: Platzierung,
+    Gras, Zaun und Netz fragen es jeweils.
     """
     linie = np.asarray(mittellinie_m, dtype=np.float64)
     n = len(linie)
     if n < 5 or breite_m <= 0:
         return np.zeros(n), np.zeros(n)
+    schluessel = (hash(linie.tobytes()), n, float(halbe_breite_m), float(breite_m))
+    if schluessel in _AUSLAUF_SPEICHER:
+        links, rechts = _AUSLAUF_SPEICHER[schluessel]
+        return links.copy(), rechts.copy()
     t, links = _tangenten_und_links(linie)
     seg = np.linalg.norm(np.roll(linie, -1, axis=0) - linie, axis=1)
     schritt = float(seg.mean()) if n else 1.0
     kr = _ring_glaetten(kruemmung(linie), 2)
+    fb = Fahrbahnabstand(linie, halbe_breite_m, reichweite_m=halbe_breite_m + breite_m + 8.0)
     ergebnis = []
     for seite in (1.0, -1.0):                       # links, rechts
         # Außen links liegt in einer Rechtskurve.
@@ -667,20 +678,217 @@ def auslauf_breiten(mittellinie_m: np.ndarray, halbe_breite_m: float,
             kante = linie[kandidaten] + seite * links[kandidaten] * halbe_breite_m
             aussen = seite * links[kandidaten]
             for e in np.arange(1.0, breite_m + 3.01, 1.0):
-                p = kante + aussen * e
-                abst = _abstand_zur_linie(p, linie)
                 # Am eigenen Stück wächst der Abstand mit e; fällt er darunter,
                 # kommt ein anderes Streckenstück näher.
-                zu_nah = abst < halbe_breite_m + min(e, 4.0) - 0.3
+                zu_nah = fb.kante(kante + aussen * e) < min(e, 4.0) - 0.3
                 grenze = np.where(zu_nah, np.maximum(e - 3.0, 0.0), np.inf)
                 frei[kandidaten] = np.minimum(frei[kandidaten], grenze)
         breite = np.minimum(ziel, frei)
         # Sprünge aus dem Tasten weich machen, ohne irgendwo breiter zu werden.
         for _ in range(2):
             breite = np.minimum(breite, _ring_glaetten(breite, 3))
+        breite = _kies_nachpruefen(breite, linie, seite * links, halbe_breite_m, fb)
+        for _ in range(2):
+            breite = np.minimum(breite, _ring_glaetten(breite, 3))
         breite[breite < 1.2] = 0.0
         ergebnis.append(breite)
+    if len(_AUSLAUF_SPEICHER) > 8:
+        _AUSLAUF_SPEICHER.clear()
+    _AUSLAUF_SPEICHER[schluessel] = (ergebnis[0].copy(), ergebnis[1].copy())
     return ergebnis[0], ergebnis[1]
+
+
+_AUSLAUF_SPEICHER: dict = {}
+
+
+def _kies_nachpruefen(breite: np.ndarray, linie: np.ndarray, aussen: np.ndarray,
+                      halbe_breite_m: float, fb: "Fahrbahnabstand") -> np.ndarray:
+    """Die harte Grenze: das Kiesbett nach außen abtasten und dort kürzen, wo es
+    einem **anderen** Stück der Strecke näher als :data:`KIES_FREI_M` kommt.
+
+    Gemessen wird gegen die ganze Mittellinie ohne die 30 m davor und dahinter
+    — außen an einer Kurve biegt die eigene Strecke weg, auf 30 m kommt sie
+    nicht zurück (der engste Radius des Editors ist 16 m). Abgetastet in
+    halben Metern und am Rand selbst; ein Viertelmeter Luft deckt ab, was
+    zwischen zwei Tastpunkten liegt.
+    """
+    breite = breite.copy()
+    idx = np.flatnonzero(breite > 0)
+    if len(idx) == 0:
+        return breite
+    seg = np.linalg.norm(np.roll(linie, -1, axis=0) - linie, axis=1)
+    fenster = int(math.ceil(30.0 / max(float(seg.mean()), 1e-3)))
+    kante = linie[idx] + aussen[idx] * halbe_breite_m
+    for e in np.arange(0.0, float(breite.max()) + 0.51, 0.5):
+        tief = np.minimum(e, breite[idx])
+        andere = fb.kante(kante + aussen[idx] * tief[:, None], eigen=idx, fenster=fenster)
+        zu_nah = andere < KIES_FREI_M + 0.25
+        breite[idx] = np.where(zu_nah, np.minimum(breite[idx], np.maximum(tief - 0.5, 0.0)), breite[idx])
+    return breite
+
+
+#: So weit ab der Fahrbahnkante steht die Begrenzung (Leitplanke, Mauer,
+#: Reifenwand, siehe ``begrenzung.PROFILE``: höchstens 0,62 m).
+BEGRENZUNG_M: float = 0.65
+
+#: Kiesbetten bleiben so weit von der Kante jedes **anderen** Streckenstücks
+#: weg — hinter dessen Begrenzung, mit Luft.
+KIES_FREI_M: float = 2.0
+
+
+class Fahrbahnabstand:
+    """Abstand zur Fahrbahnkante der **ganzen** Strecke, exakt und schnell.
+
+    Die Grundlage aller Garantien „nichts auf der Fahrbahn“: Platzierung,
+    Kiesbetten, Gras und Gelände fragen hier. Gerechnet wird gegen jeden
+    Abschnitt der Mittellinie (keine Rasterung, keine ausgedünnte Linie), aber
+    nur gegen die in der Nähe: jede Zelle eines Rasters (``zelle_m``) kennt
+    alle Abschnitte, die ihr näher als ``reichweite_m`` kommen. Damit ist ein
+    Ergebnis bis ``reichweite_m - halbbreite`` exakt; was weiter weg ist,
+    liefert mindestens diesen Wert (oft ``inf``) — für eine Prüfung „frei ab
+    x Metern“ genügt das, solange x darunter liegt.
+
+    Negativ heißt: auf der Fahrbahn.
+    """
+
+    def __init__(self, mittellinie_m: np.ndarray, halbe_breite_m: float,
+                 reichweite_m: float | None = None, zelle_m: float = 4.0) -> None:
+        linie = np.asarray(mittellinie_m, dtype=np.float64)[:, :2]
+        self.linie = linie
+        self.halbbreite = float(halbe_breite_m)
+        self.reichweite = float(reichweite_m if reichweite_m is not None
+                                else self.halbbreite + 8.0)
+        self.zelle = float(zelle_m)
+        self.a = linie
+        self.b = np.roll(linie, -1, axis=0)
+        r, z = self.reichweite, self.zelle
+        self.lo = linie.min(axis=0) - r - z
+        hi = linie.max(axis=0) + r + z
+        self.n = np.maximum(np.ceil((hi - self.lo) / z).astype(np.int64), 1)
+        seg_lo = np.floor((np.minimum(self.a, self.b) - r - self.lo) / z).astype(np.int64)
+        seg_hi = np.floor((np.maximum(self.a, self.b) + r - self.lo) / z).astype(np.int64)
+        seg_lo = np.clip(seg_lo, 0, self.n - 1)
+        seg_hi = np.clip(seg_hi, 0, self.n - 1)
+        breite = seg_hi[:, 0] - seg_lo[:, 0] + 1
+        hoehe = seg_hi[:, 1] - seg_lo[:, 1] + 1
+        anzahl = breite * hoehe
+        seg = np.repeat(np.arange(len(linie)), anzahl)
+        k = np.arange(int(anzahl.sum())) - np.repeat(np.cumsum(anzahl) - anzahl, anzahl)
+        ix = seg_lo[seg, 0] + k % breite[seg]
+        iy = seg_lo[seg, 1] + k // breite[seg]
+        zelle = iy * self.n[0] + ix
+        ordnung = np.argsort(zelle, kind="stable")
+        self._seg = seg[ordnung]
+        self._start = np.searchsorted(zelle[ordnung], np.arange(self.n[0] * self.n[1] + 1))
+
+    # -- Punkte ------------------------------------------------------------
+    def kante(self, punkte, eigen=None, fenster: int = 0) -> np.ndarray:
+        """Abstand zur Fahrbahnkante je Punkt (exakt bis ``reichweite - halbbreite``).
+
+        ``eigen``: je Punkt ein Index der Mittellinie; dann zählen die
+        Abschnitte bis ``fenster`` Punkte davor und dahinter nicht — gemessen
+        wird nur zu den **anderen** Stücken der Strecke.
+        """
+        p = np.asarray(punkte, dtype=np.float64).reshape(-1, 2)
+        ergebnis = np.full(len(p), np.inf)
+        if len(p) == 0:
+            return ergebnis
+        c = np.floor((p - self.lo) / self.zelle).astype(np.int64)
+        drin = (c[:, 0] >= 0) & (c[:, 1] >= 0) & (c[:, 0] < self.n[0]) & (c[:, 1] < self.n[1])
+        wo = np.flatnonzero(drin)
+        zelle = c[wo, 1] * self.n[0] + c[wo, 0]
+        von, bis = self._start[zelle], self._start[zelle + 1]
+        anzahl = bis - von
+        mit = anzahl > 0
+        wo, von, anzahl = wo[mit], von[mit], anzahl[mit]
+        if len(wo) == 0:
+            return ergebnis
+        # Alle Paare (Punkt, Abschnitt in seiner Zelle) auf einmal.
+        punkt = np.repeat(np.arange(len(wo)), anzahl)
+        versatz = np.cumsum(anzahl) - anzahl
+        seg = self._seg[np.repeat(von, anzahl) + np.arange(int(anzahl.sum())) - np.repeat(versatz, anzahl)]
+        q = p[wo][punkt]
+        a, ab = self.a[seg], self.b[seg] - self.a[seg]
+        t = np.clip(((q - a) * ab).sum(axis=1) / np.maximum((ab * ab).sum(axis=1), 1e-12), 0.0, 1.0)
+        d = np.hypot(*(q - a - t[:, None] * ab).T)
+        if eigen is not None:
+            n = len(self.a)
+            abst = np.abs(seg - np.asarray(eigen, dtype=np.int64)[wo][punkt]) % n
+            d[np.minimum(abst, n - abst) <= fenster] = np.inf
+        ergebnis[wo] = np.minimum.reduceat(d, versatz)
+        return ergebnis - self.halbbreite
+
+    # -- Rechtecke ---------------------------------------------------------
+    def _abschnitte_bei(self, lo: np.ndarray, hi: np.ndarray) -> np.ndarray:
+        """Alle Abschnitte, die dem Kasten ``lo``–``hi`` näher als die Reichweite kommen."""
+        c0 = np.clip(np.floor((lo - self.lo) / self.zelle).astype(np.int64), 0, self.n - 1)
+        c1 = np.clip(np.floor((hi - self.lo) / self.zelle).astype(np.int64), 0, self.n - 1)
+        if (hi < self.lo).any() or (lo > self.lo + self.n * self.zelle).any():
+            return np.zeros(0, dtype=np.int64)
+        stuecke = []
+        for j in range(c0[1], c1[1] + 1):
+            # Eine Zeile von Zellen liegt im Verzeichnis am Stück.
+            zeile = j * self.n[0]
+            stuecke.append(self._seg[self._start[zeile + c0[0]]:self._start[zeile + c1[0] + 1]])
+        return np.unique(np.concatenate(stuecke)) if stuecke else np.zeros(0, dtype=np.int64)
+
+    def rechteck(self, x: float, y: float, gier: float,
+                 x0: float, x1: float, y0: float, y1: float, alle: bool = False) -> float:
+        """Kürzester Abstand eines gedrehten Rechtecks zur Fahrbahnkante.
+
+        Das Rechteck ``x0..x1 × y0..y1`` liegt im Modellraum; das Modell steht
+        bei ``(x, y)`` und ist um ``gier`` gedreht (wie eine Platzierung).
+        Exakt bis zur Reichweite, negativ, wenn es die Fahrbahn schneidet.
+        ``alle``: gegen jeden Abschnitt rechnen, exakt auf jede Entfernung
+        (für die wenigen großen Kulissen weit draußen).
+        """
+        c, s = math.cos(gier), math.sin(gier)
+        ecken = np.array([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], dtype=np.float64)
+        welt = np.column_stack([x + c * ecken[:, 0] - s * ecken[:, 1],
+                                y + s * ecken[:, 0] + c * ecken[:, 1]])
+        seg = (np.arange(len(self.a)) if alle
+               else self._abschnitte_bei(welt.min(axis=0), welt.max(axis=0)))
+        if len(seg) == 0:
+            return math.inf
+        # Abschnitte ins Rechteck-System: Mitte im Ursprung, Achsen parallel.
+        mx, my = (x0 + x1) / 2, (y0 + y1) / 2
+        hx, hy = (x1 - x0) / 2, (y1 - y0) / 2
+
+        def lokal(p):
+            dx, dy = p[:, 0] - x, p[:, 1] - y
+            return np.column_stack([c * dx + s * dy - mx, -s * dx + c * dy - my])
+
+        a, b = lokal(self.a[seg]), lokal(self.b[seg])
+        return float(_abschnitt_kasten_abstand(a, b, hx, hy).min()) - self.halbbreite
+
+    def kreis(self, x: float, y: float, r: float) -> float:
+        """Kürzester Abstand eines Kreises zur Fahrbahnkante."""
+        return float(self.kante(np.array([[x, y]]))[0]) - r
+
+
+def _abschnitt_kasten_abstand(a: np.ndarray, b: np.ndarray, hx: float, hy: float) -> np.ndarray:
+    """Abstand je Abschnitt ``a``–``b`` zum Kasten ``|x| <= hx, |y| <= hy`` (0: schneidet).
+
+    Zwei konvexe Formen, die sich nicht schneiden, kommen sich an einer Ecke
+    der einen am nächsten: Endpunkte zum Kasten, Kastenecken zum Abschnitt.
+    Ob sie sich schneiden, sagt der Trennachsentest (x, y, Normale des Abschnitts).
+    """
+    def punkt_kasten(p):
+        return np.hypot(np.maximum(np.abs(p[:, 0]) - hx, 0.0), np.maximum(np.abs(p[:, 1]) - hy, 0.0))
+
+    ab = b - a
+    laenge2 = np.maximum((ab * ab).sum(axis=1), 1e-12)
+    d = np.minimum(punkt_kasten(a), punkt_kasten(b))
+    for ex, ey in ((hx, hy), (-hx, hy), (hx, -hy), (-hx, -hy)):
+        e = np.array([ex, ey])
+        t = np.clip(((e - a) * ab).sum(axis=1) / laenge2, 0.0, 1.0)
+        d = np.minimum(d, np.hypot(*(e - a - t[:, None] * ab).T))
+    normale = np.column_stack([-ab[:, 1], ab[:, 0]])
+    schneidet = ((np.minimum(a[:, 0], b[:, 0]) <= hx) & (np.maximum(a[:, 0], b[:, 0]) >= -hx)
+                 & (np.minimum(a[:, 1], b[:, 1]) <= hy) & (np.maximum(a[:, 1], b[:, 1]) >= -hy)
+                 & (np.abs((normale * a).sum(axis=1))
+                    <= hx * np.abs(normale[:, 0]) + hy * np.abs(normale[:, 1])))
+    return np.where(schneidet, 0.0, d)
 
 
 def _abstand_zur_linie(punkte: np.ndarray, linie: np.ndarray, block: int = 2048) -> np.ndarray:

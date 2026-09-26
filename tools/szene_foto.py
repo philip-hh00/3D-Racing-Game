@@ -6,6 +6,11 @@ der Verfolgerkamera in eine PNG-Datei. Zum Prüfen von Assets und Licht::
 
     .venv\\Scripts\\python.exe tools\\szene_foto.py gp --ziel foto.png
     .venv\\Scripts\\python.exe tools\\szene_foto.py desert --fahrzeuge supercar,drifter --abstand 9
+    .venv\\Scripts\\python.exe tools\\szene_foto.py pfad\\zu\\eigene.json --thema Forest --bei 300
+
+Statt eines Namens aus ``data/tracks`` geht ein Pfad zu einer Streckendatei
+(eigene Strecken liegen unter ``data/tracks/custom``); ``--thema`` ersetzt
+ihr Thema, ``--bei`` stellt ein einzelnes Auto an eine Stelle der Strecke.
 
 Gemessen wird dabei auch die Zeit je Bild (Mittel über 30 Bilder), damit man
 sieht, was ein neues Asset kostet.
@@ -34,7 +39,10 @@ ALLE = ["rookie", "rookie_2", "rookie_3", "limousine", "limousine_2", "limousine
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("strecke")
+    ap.add_argument("strecke", help="Name in data/tracks oder Pfad zu einer Streckendatei")
+    ap.add_argument("--thema", default="", help="Thema statt background_texture der Strecke")
+    ap.add_argument("--bei", type=float, default=None,
+                    help="ein Auto so viele Meter nach der Ziellinie statt der Startaufstellung")
     ap.add_argument("--ziel", default="szene.png")
     ap.add_argument("--fahrzeuge", default="")
     ap.add_argument("--modelle", default=str(WURZEL / "assets" / "vehicles"))
@@ -55,7 +63,12 @@ def main() -> int:
 
     import moderngl
     ctx = moderngl.create_standalone_context()
-    strecke = json.loads((WURZEL / "data" / "tracks" / f"{args.strecke}.json").read_text(encoding="utf-8"))
+    pfad = Path(args.strecke)
+    if not (pfad.suffix == ".json" and pfad.is_file()):
+        pfad = WURZEL / "data" / "tracks" / f"{args.strecke}.json"
+    strecke = json.loads(pfad.read_text(encoding="utf-8"))
+    if args.thema:
+        strecke["background_texture"] = args.thema
     netz = track_mesh.bauen(strecke)
     th = thema.laden(WURZEL / "data" / "themen", thema.thema_der_strecke(strecke))
     t0 = time.perf_counter()
@@ -68,6 +81,9 @@ def main() -> int:
     ladezeit = time.perf_counter() - t0
 
     starts = strecke.get("start_positions", [])[: len(fahrzeuge)]
+    if args.bei is not None:
+        (x, y), gier = netz.punkt_bei(args.bei)
+        starts = [{"x": x / M_PER_PX, "y": y / M_PER_PX, "angle": math.degrees(gier)}]
     staende = []
     for i, (s, key) in enumerate(zip(starts, fahrzeuge)):
         pos = np.array([s["x"] * M_PER_PX, s["y"] * M_PER_PX, 0.0])
@@ -96,7 +112,7 @@ def main() -> int:
     from PIL import Image
     roh = fbo.read(components=3)
     Image.frombytes("RGB", (args.breite, args.hoehe), roh).transpose(Image.FLIP_TOP_BOTTOM).save(args.ziel)
-    print(f"{args.strecke} ({args.stufe}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
+    print(f"{pfad.stem} ({args.stufe}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
           f"Bild {np.median(zeiten[1:]) * 1000:.1f} ms (Median)")
     szene.freigeben()
     return 0
