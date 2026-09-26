@@ -2266,6 +2266,7 @@ class RaceState(BaseState):
             lack=lackwerte(getattr(fahrzeug, "lack", None)),
             nick_rad=nick, wank_rad=wank,
             schlupf_vorn=vorn, schlupf_hinten=hinten,
+            bremse=float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
         )
 
     def _reifenschlupf(self, kennung: int, fahrzeug) -> tuple[float, float]:

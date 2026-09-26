@@ -128,6 +128,8 @@ class Fahrzeugstand:
     #: ``reifenspuren.reifenschlupf``) — daraus werden Spuren und Rauch.
     schlupf_vorn: float = 0.0
     schlupf_hinten: float = 0.0
+    #: Bremspedal 0..1 — das Material ``bremslicht`` leuchtet danach auf.
+    bremse: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -428,10 +430,28 @@ def _maske_hochladen(ctx, maske: np.ndarray):
 # Ein Fahrzeug zeichnen — geteilt von Rennszene und Werkstattvorschau
 # ---------------------------------------------------------------------------
 
-def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None) -> None:
-    """Material setzen; ``lack`` und ``lack2`` bekommen die Lackierung."""
+#: Bremslicht: so viel der Emission aus dem Modell leuchtet ungebremst (das
+#: Segment glimmt wie ein Schlusslicht mit) und so viel bei voller Bremse.
+BREMSLICHT_AUS = 0.25
+BREMSLICHT_VOLL = 3.0
+
+
+def bremslicht_emission(emission, bremse: float) -> tuple[float, float, float]:
+    """Emission des Materials ``bremslicht`` bei Pedalstellung ``bremse`` (0..1)."""
+    b = min(1.0, max(0.0, float(bremse)))
+    faktor = BREMSLICHT_AUS + (BREMSLICHT_VOLL - BREMSLICHT_AUS) * b
+    return tuple(float(c) * faktor for c in emission)
+
+
+def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None,
+                         bremse: float = 0.0) -> None:
+    """Material setzen; ``lack`` und ``lack2`` bekommen die Lackierung,
+    ``bremslicht`` leuchtet nach dem Bremspedal."""
     material_setzen(p, hm)
     name = hm.daten.name
+    if name == "bremslicht":
+        shader.setzen(p, "emission", bremslicht_emission(hm.daten.emission, bremse))
+        return
     if name in ("lack", "lack2"):
         shader.setzen(p, "klarlack", 1.0)
         if lack is not None:
@@ -475,7 +495,8 @@ def _zeichenplan(modell: mesh.Modell) -> dict:
 
 
 def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
-                           lack: Lackwerte | None, durchsichtig) -> None:
+                           lack: Lackwerte | None, durchsichtig,
+                           bremse: float = 0.0) -> None:
     """Alle Teile eines Fahrzeugs an ihren Matrizen zeichnen.
 
     ``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles.
@@ -504,7 +525,7 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                 continue
             if not material_gesetzt:
                 if hm is not None:
-                    lack_material_setzen(p, hm, lack)
+                    lack_material_setzen(p, hm, lack, bremse)
                 material_gesetzt = True
             if name != zuletzt:
                 b = bytes_je_teil.get(name)
@@ -1156,7 +1177,7 @@ class Rennszene:
         shader.setzen(p, "uv_skala", 1.0)
 
         fahrzeugteile_zeichnen(p, modell, self._teilmatrizen(stand, fahrzeugmodell),
-                               stand.lack, durchsichtig)
+                               stand.lack, durchsichtig, stand.bremse)
 
         self.ctx.depth_mask = True
         if stand.entfaerbt or durchsichtig:

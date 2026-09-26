@@ -151,3 +151,15 @@ def test_schattenflaeche_ist_mittig():
     ecken = schatten.grundflaeche(4.0, 2.0)
     assert ecken[:, 0].mean() == pytest.approx(0.0)
     assert ecken[:, 1].mean() == pytest.approx(0.0)
+
+
+def test_bremslicht_leuchtet_beim_bremsen_auf():
+    """Das Material ``bremslicht`` glimmt ungebremst und strahlt voll gebremst."""
+    from src.render3d import rennszene
+    grund = (0.8, 0.02, 0.02)
+    aus = rennszene.bremslicht_emission(grund, 0.0)
+    voll = rennszene.bremslicht_emission(grund, 1.0)
+    assert 0.0 < aus[0] < grund[0] < voll[0]
+    assert rennszene.bremslicht_emission(grund, 7.0) == voll
+    assert rennszene.Fahrzeugstand(kennung=1, schluessel="rookie",
+                                   pos_m=None, gierwinkel_rad=0.0).bremse == 0.0
