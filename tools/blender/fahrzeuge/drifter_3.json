@@ -626,7 +626,15 @@
    "endplatte_m": [
     0.1,
     0.05
-   ]
+   ],
+   "schrift": {
+    "text": "DRIFT",
+    "hoehe_m": 0.19,
+    "lage": 0.5,
+    "oben": "hinten",
+    "kursiv": 0.3,
+    "fett": 0.012
+   }
   }
  ],
  "zonen": [

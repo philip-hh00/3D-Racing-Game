@@ -583,7 +583,7 @@
   },
   {
    "ansicht": "oben",
-   "mat": "glas",
+   "mat": "motorglas",
    "n_min": 0.3,
    "auf": [
     "carbon"
@@ -1528,6 +1528,20 @@
      ]
     ]
    }
-  ]
+  ],
+  "motor": {
+   "u": [
+    0.2,
+    0.333
+   ],
+   "v": 0.3,
+   "z_m": [
+    0.45,
+    0.88
+   ],
+   "zylinder": 8,
+   "deckel_mat": "carbon",
+   "metall_mat": "bremse"
+  }
  }
 }

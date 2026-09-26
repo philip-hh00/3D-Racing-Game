@@ -436,9 +436,8 @@
     "abdeckung": "klarglas",
     "led": [
      {
-      "ringe": [
-       0.9
-      ],
+      "verlauf": "rand",
+      "abstand_m": 0.005,
       "breite_m": 0.007,
       "hoehe_m": 0.005
      },
@@ -459,8 +458,8 @@
     ],
     "projektoren": {
      "anzahl": 1,
-     "radius_m": 0.02,
-     "lage": 0.5,
+     "radius_m": 0.018,
+     "lage": 0.43,
      "rand_anteil": 0.3
     }
    }

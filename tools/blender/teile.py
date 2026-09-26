@@ -42,6 +42,11 @@ Parameter (alle optional, Maße in Metern, Winkel in Grad)::
                    "neigung_grad": 0 = senkrecht, positiv oben nach hinten),
       "antenne":  {"u": 0.2, "laenge_m": 0.16, "hoehe_m": 0.06, "mat": "lack"}
                    (nur wenn angegeben),
+      "motor":    {"u": [0.2, 0.333], "v": 0.3, "z_m": [0.45, 0.88],
+                   "zylinder": 8, "deckel_mat": "carbon", "metall_mat": "bremse",
+                   "ansaug_mat": "alu", "spulen_mat": "sattel"} (nur wenn
+                   angegeben: V-Motor unter einer gläsernen Abdeckung, dazu
+                   dunkle Wanne; der Innenraum beginnt davor),
       "emblem":   {"form": "sechseck"|"oval"|"delta"|"spuren"|"ein"
                    (Standard je Familie rookie/limousine/supercar/drifter/electric),
                    "groesse_m": 0.07,
@@ -56,16 +61,22 @@ Parameter (alle optional, Maße in Metern, Winkel in Grad)::
 In **Zonen** (``zonen``-Liste der Fahrzeugdatei)::
 
     "leuchte": {"tiefe_m": 0.03 (Gehäusetiefe), "rand_m": 0.005,
-                (``mat`` der Zone ist der Gehäuseboden, dunkel: "kunststoff"),
+                (``mat`` der Zone ist der Gehäuseboden, dunkel: "kunststoff";
+                hinter einer Streuscheibe ist der Boden der rote Reflektor
+                "rueckstrahler", anders mit "boden_mat"),
                 "rand_mat": "zierteil",
                 "abdeckung": "klarglas"|"streuscheibe"|null,
                 "led": {"verlauf": "rand"|"oben"|"unten"|"vorn"|"hinten"|"aussen"|"innen"
                         (folgt dem 3D-Rand der ganzen Leuchte, auch über ``oder``),
                         "abstand_m": 0.008, "breite_m": 0.007, "hoehe_m": 0.004,
+                        (die Leiste sinkt entlang der Leuchtennormale genau so
+                        tief wie der Gehäuseboden, auch am schmalen Ende),
                         "ringe": [0.8, 0.45] (statt verlauf: verkleinerte Umrisse),
                         "quer": [0.35, 0.7] (statt verlauf: Streifen quer),
                         "mat": "licht_vorn"} — auch als Liste mehrerer Leisten,
-                "projektoren": {"anzahl": 2, "radius_m": 0.028, "lage": 0.5,
+                "projektoren": {"anzahl": 2, "radius_m": 0.028, "lage": 0.5
+                                (Anteil quer im Umriss; bei ``spiegeln`` für beide
+                                Seiten von außen gleich weit),
                                 "rand_anteil": 0.22, "art": "projektor"|"reflektor",
                                 "vorhalt": 0.7 (Neigung zur Fahrtrichtung),
                                 "ansicht": Umriss welcher Teilfläche (Standard: der Zone)}}
@@ -93,7 +104,17 @@ Profilflügel ein: ``"woelbung"`` (0.06), ``"dicke"`` (0.12), ``"elemente"``
 (1|2), ``"stuetzen": "schwanenhals"|"sockel"``, ``"endplatte_m"`` [unten,
 oben] Überstand, dazu die alten ``u``, ``v``, ``tiefe_m``, ``hoehe_m``,
 ``anstellung_grad``, ``fuss_m``, ``stuetzen_v``, ``mat``, ``platten_mat``,
-``stuetzen_mat``.
+``stuetzen_mat``. ``"schrift": {"text": "DRIFT", "hoehe_m": 0.2, "lage": 0.5,
+"oben": "hinten"|"vorn", "kursiv": 0.25, "fett": 0.0, "mat": "dekor_weiss",
+"sehne_anteil": 0.42}`` legt einen Schriftzug auf die Oberseite des Blatts
+(nicht in LOD1).
+
+In ``kabine``: ``"fensterstege": [{"punkte": [[u, z], ...], "breite_m": 0.024,
+"mat": "zierteil"}]`` teilen das Seitenfenster (etwa das feste Dreiecksfenster
+hinter der Fondtür ab), ``"verkleidung": true`` baut Dachhimmel und
+Säulenverkleidung, damit man durch die Scheiben nicht in eine hohle Karosserie
+sieht. Die Enden des Lofts schließt ``"kappe_vorn"``/``"kappe_hinten"``:
+``"tangential"`` ohne Knick an der Naht (Standard: flache Kuppel).
 """
 from __future__ import annotations
 
@@ -693,26 +714,44 @@ def _schleife_glaetten(schleife, schritt: float = 0.012, runden: int = 4):
 VERLAUF = {"oben": (0, 0, 1), "unten": (0, 0, -1), "vorn": (1, 0, 0), "hinten": (-1, 0, 0)}
 
 
-def led_am_rand(schleife, led, treffer, boden, mats):
+def led_am_rand(schleife, led, treffer, boden, mats, tiefe=None):
     """LED-Leiste entlang einer Randschleife der Leuchte (abgenommen vor dem
     Vertiefen), um ``abstand_m`` nach innen versetzt und auf den
     Gehäuseboden gesenkt. ``verlauf``: ``rand`` (ganz herum) oder
     eine Richtung — dann nur der längste Teil des Rands, dessen Außenseite
-    dorthin zeigt (``aussen``/``innen``: weg von der bzw. zur Wagenmitte)."""
+    dorthin zeigt (``aussen``/``innen``: weg von der bzw. zur Wagenmitte).
+
+    ``tiefe``: wie tief das Gehäuse vertieft ist. Dann sinkt die Leiste genau
+    so weit, wie ``inset_region`` den Boden verschoben hat — entlang der
+    Normale der Leuchtenfläche am Rand, der Richtung der Vertiefung. Ein
+    Strahl dorthin verfehlt am schmalen, schrägen Ende den Boden (er trifft
+    die Gehäusewand oder nichts), die Leiste bliebe dort auf der Haut stehen
+    und zackte. Ohne ``tiefe`` wird wie früher per Strahl gesenkt.
+    """
     mat = mats[led.get("mat", "licht_vorn")]
     abstand = led.get("abstand_m", 0.008)
     verlauf = led.get("verlauf", "rand")
-    pkt, nrm = [], []
+    pkt, nrm, gueltig = [], [], []
     for ort, nn, innen in schleife:
         p = ort + innen * abstand
-        h = treffer.strahl(p + nn * 0.01, -nn)
-        if h is not None and h[2] in boden and (h[0] - p).length < 0.08:
-            p = h[0]
+        ok = True
+        if tiefe is not None:
+            p = p - nn * tiefe
+            # Liegt dort überhaupt Gehäuseboden? An einer Spitze, die schmaler
+            # ist als Abstand und Leiste, träfe die Leiste Wand oder Lack —
+            # dort endet sie lieber.
+            h = treffer.strahl(p + nn * (tiefe + 0.01), -nn)
+            ok = h is not None and h[2] in boden and (h[0] - p).length < max(0.8 * tiefe, 0.008)
+        else:
+            h = treffer.strahl(p + nn * 0.01, -nn)
+            if h is not None and h[2] in boden and (h[0] - p).length < 0.08:
+                p = h[0]
         pkt.append(p)
         nrm.append(nn)
+        gueltig.append(ok)
     n = len(pkt)
     if verlauf == "rand":
-        wege = [(pkt, nrm, True)]
+        gut = [True] * n
     else:
         if verlauf in ("aussen", "innen"):
             y = sum(o.y for o, _n, _i in schleife) / n
@@ -721,24 +760,17 @@ def led_am_rand(schleife, led, treffer, boden, mats):
         else:
             d3 = Vector(VERLAUF[verlauf])
         gut = [(-innen).dot(d3) > led.get("schwelle", 0.3) for _o, _n, innen in schleife]
-        if all(gut):
-            wege = [(pkt, nrm, True)]
-        elif not any(gut):
-            wege = []
-        else:
-            start = next(i for i in range(n) if not gut[i])
-            best, lauf = [], []
-            for k in range(1, n + 1):
-                i = (start + k) % n
-                if gut[i]:
-                    lauf.append(i)
-                else:
-                    if len(lauf) > len(best):
-                        best = lauf
-                    lauf = []
-            if len(lauf) > len(best):
-                best = lauf
-            wege = [([pkt[i] for i in best], [nrm[i] for i in best], False)] if len(best) >= 2 else []
+        if any(gut) and not all(gut):
+            # Nur der längste zusammenhängende Teil in Richtung ``verlauf``.
+            laeufe = _laeufe(gut)
+            best = set(max(laeufe, key=len))
+            gut = [i in best for i in range(n)]
+    maske = [a and b for a, b in zip(gut, gueltig)]
+    if all(maske):
+        wege = [(pkt, nrm, True)]
+    else:
+        wege = [([pkt[i] for i in lauf], [nrm[i] for i in lauf], False)
+                for lauf in _laeufe(maske) if len(lauf) >= 3]
     teile = []
     for pp, nn, geschlossen in wege:
         ob = band("led", pp, nn, led.get("breite_m", 0.007), led.get("hoehe_m", 0.004), mat,
@@ -746,6 +778,28 @@ def led_am_rand(schleife, led, treffer, boden, mats):
         if ob is not None:
             teile.append(ob)
     return teile
+
+
+def _laeufe(maske) -> list:
+    """Zusammenhängende Läufe (Indexlisten) der wahren Einträge einer
+    geschlossenen Folge; ein Lauf darf über das Ende hinweg weiterlaufen."""
+    n = len(maske)
+    if not any(maske):
+        return []
+    if all(maske):
+        return [list(range(n))]
+    start = next(i for i in range(n) if not maske[i])
+    laeufe, lauf = [], []
+    for k in range(1, n + 1):
+        i = (start + k) % n
+        if maske[i]:
+            lauf.append(i)
+        elif lauf:
+            laeufe.append(lauf)
+            lauf = []
+    if lauf:
+        laeufe.append(lauf)
+    return laeufe
 
 
 def projektor(name, r: float, mats, art: str = "projektor"):
@@ -976,6 +1030,12 @@ def fluegel(d, fo, strahl_fn, mats):
     z_vk = z_ok - 0.02
     blatt, pkt = fluegelblatt("fluegel", prof, x_vk, z_vk, s1, halb, anst, mat)
     teile.append(blatt)
+    if d.get("schrift"):
+        sz = d["schrift"]
+        x_mitte = x_vk - s1 * sz.get("sehne_anteil", 0.42) * math.cos(math.radians(anst))
+        ob = schrift_auf_blatt(sz, pkt, x_mitte, halb, mats)
+        if ob is not None:
+            teile.append(ob)
     z_min = min(p[1] for p in pkt)
     z_max = max(p[1] for p in pkt)
     x_min = min(p[0] for p in pkt)
@@ -1044,6 +1104,77 @@ def fluegel(d, fo, strahl_fn, mats):
     return teile
 
 
+def schriftzug(name, text: str, hoehe: float, mat, kursiv: float = 0.2, fett: float = 0.0):
+    """Flacher Schriftzug (Blenders eingebaute Schrift) in der XY-Ebene,
+    Mitte im Ursprung, Versalhöhe ``hoehe``, Lesen entlang +X."""
+    cu = bpy.data.curves.new(name, "FONT")
+    cu.body = text
+    cu.align_x = "CENTER"
+    cu.align_y = "CENTER"
+    cu.shear = kursiv
+    cu.offset = fett
+    cu.resolution_u = 2
+    hilf = bpy.data.objects.new(name, cu)
+    bpy.context.scene.collection.objects.link(hilf)
+    tiefe = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(hilf.evaluated_get(tiefe))
+    bpy.data.objects.remove(hilf, do_unlink=True)
+    bpy.data.curves.remove(cu)
+    if not me.vertices:
+        return None
+    ys = [v.co.y for v in me.vertices]
+    xs = [v.co.x for v in me.vertices]
+    f = hoehe / max(max(ys) - min(ys), 1e-6)
+    mitte = Vector(((max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2, 0))
+    me.transform(Matrix.Scale(f, 4) @ Matrix.Translation(-mitte))
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    ob.data.materials.append(mat)
+    return ob
+
+
+def schrift_auf_blatt(sz, pkt, x_mitte, halb, mats):
+    """Schriftzug ``sz["text"]`` auf der Oberseite eines Flügelblatts.
+
+    Lesen entlang der Spannweite; ``oben``: wohin die Oberkante der Buchstaben
+    zeigt — ``"hinten"`` (wie im Sprite der Drifter: von oben gesehen quer
+    lesbar, von hinten Kopf) oder ``"vorn"``. ``hoehe_m`` Versalhöhe entlang
+    der Sehne, ``lage`` (0.5) Mitte entlang der Spannweite von rechts nach
+    links, ``kursiv``, ``fett`` (Randversatz der Glyphen), ``mat``.
+    """
+    ob = schriftzug("schrift", sz.get("text", "DRIFT"), sz.get("hoehe_m", 0.2),
+                    mats[sz.get("mat", "dekor_weiss")], sz.get("kursiv", 0.25), sz.get("fett", 0.0))
+    if ob is None:
+        return None
+    # Fein unterteilen, damit die Buchstaben der Wölbung folgen.
+    bm = bmesh.new()
+    bm.from_mesh(ob.data)
+    bmesh.ops.triangulate(bm, faces=bm.faces)
+    for _ in range(6):
+        lang = [e for e in bm.edges if e.calc_length() > 0.02]
+        if not lang:
+            break
+        bmesh.ops.subdivide_edges(bm, edges=lang, cuts=1)
+        bmesh.ops.triangulate(bm, faces=bm.faces)
+    y_mitte = -halb + 2 * halb * sz.get("lage", 0.5)
+    vorzeichen = -1.0 if sz.get("oben", "hinten") == "hinten" else 1.0
+    for v in bm.verts:
+        tx, ty = v.co.x, v.co.y
+        # Lesen von rechts nach links (+Y); Buchstabenoberkante nach -X bzw. +X.
+        x = x_mitte + vorzeichen * ty
+        y = y_mitte + tx * (-vorzeichen)
+        v.co = Vector((x, y, _oberseite(pkt, x) + 0.0015))
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    for f in bm.faces:
+        if f.normal.z < 0:
+            f.normal_flip()
+    bm.to_mesh(ob.data)
+    bm.free()
+    for pol in ob.data.polygons:
+        pol.use_smooth = True
+    return ob
+
+
 def _oberseite(pkt, x):
     """Höchster Punkt des Profils bei x (linear zwischen Profilpunkten)."""
     best = -1e9
@@ -1100,6 +1231,87 @@ def diffusor(d, fo, p, mats):
     for seite in (1, -1):
         umr = [(x_a - 0.02, z_a - 0.004), (x_hinten, z_u - 0.02), (x_hinten, z_e), (x_a - 0.04, z_a + 0.006)]
         teile.append(umriss_extrudieren("finne", umr, 0.012, mat, mitte=seite * (halb + 0.006)))
+    return teile
+
+
+# ---------------------------------------------------------------------------
+# Motor unter der Glasabdeckung
+# ---------------------------------------------------------------------------
+
+def motor(d, fo, mats, einfach: bool = False):
+    """Längs eingebauter V-Motor unter einer gläsernen Motorabdeckung.
+
+    Nur so viel, wie man durch das Glas sieht: eine dunkle Wanne (Boden und
+    Wände, damit der Blick nicht in die hohle Karosserie fällt), zwei
+    Zylinderbänke im V, Nockenwellendeckel aus Carbon mit Zündspulen, eine
+    Ansaugbrücke mit Einzelrohren zu den Bänken und seitliche Carbonblenden.
+
+    ``d``: ``u`` [hinten, vorn] und ``v`` (halbe Breite) des Motorraums,
+    ``z_m`` [Boden, Oberkante], ``zylinder`` 8 oder 12 (Zahl der Rohre und
+    Spulen), ``deckel_mat`` (carbon), ``metall_mat`` (bremse, die Bänke),
+    ``ansaug_mat`` (alu, Brücke und Rohre), ``spulen_mat`` (sattel).
+    ``einfach`` (LOD1): nur Wanne, Bänke und Ansaugbrücke ohne Fasen.
+    """
+    ms = fo.ms
+    u0, u1 = d.get("u", [0.2, 0.33])
+    x0, x1 = ms.x(u0), ms.x(u1)
+    yb = ms.y(d.get("v", 0.3))
+    z0, z1 = d.get("z_m", [0.45, 0.88])
+    deckel = mats[d.get("deckel_mat", "carbon")]
+    metall = mats[d.get("metall_mat", "bremse")]
+    ansaug = mats[d.get("ansaug_mat", "alu")]
+    spulen = mats[d.get("spulen_mat", "sattel")]
+    dunkel = mats["kunststoff"]
+    fase = 0.0 if einfach else 1.0
+    teile = []
+    lg = x1 - x0
+    xm = (x0 + x1) / 2
+    # Wanne: Boden und vier Wände, oben offen.
+    wd = 0.01
+    teile.append(kasten("motorwanne", (xm, 0, z0), (lg + 2 * wd, 2 * yb + 2 * wd, wd), dunkel))
+    for s in (1, -1):
+        teile.append(kasten("motorwanne", (xm, s * yb, (z0 + z1) / 2), (lg, wd, z1 - z0), dunkel))
+    for x in (x0, x1):
+        teile.append(kasten("motorwanne", (x, 0, (z0 + z1) / 2), (wd, 2 * yb, z1 - z0), dunkel))
+    # Zylinderbänke im V (je 30° zur Senkrechten), darauf die Deckel.
+    lm = lg * 0.86
+    h = z1 - z0
+    bank_b = min(0.16, yb * 0.5)
+    for s in (1, -1):
+        # Drehung um X: die Oberseite der linken Bank (s = 1) kippt nach +Y.
+        w = -math.radians(30) * s
+        achse_oben = Vector((0, -math.sin(w), math.cos(w)))
+        achse_quer = Vector((0, math.cos(w), math.sin(w)))
+        mitte = Vector((xm, s * yb * 0.42, z0 + h * 0.52))
+        teile.append(kasten("zylinderbank", mitte, (lm, bank_b, h * 0.42), metall,
+                            fase=0.012 * fase, drehung=(w, 0, 0)))
+        oben = mitte + achse_oben * (h * 0.21 + 0.02)
+        teile.append(kasten("nockendeckel", oben, (lm * 0.97, bank_b * 0.92, 0.045), deckel,
+                            fase=0.015 * fase, drehung=(w, 0, 0)))
+        if einfach:
+            continue
+        # Zündspulen und Einzelrohre der Ansaugbrücke
+        n = d.get("zylinder", 8) // 2
+        for k in range(n):
+            x = xm - lm * 0.4 + lm * 0.8 * (k + 0.5) / n
+            spule = oben + Vector((x - xm, 0, 0)) + achse_oben * 0.03 + achse_quer * (s * bank_b * 0.2)
+            teile.append(kasten("zuendspule", spule, (0.03, 0.045, 0.022), spulen, drehung=(w, 0, 0)))
+            rohr_mitte = Vector((x, s * yb * 0.2, z0 + h * 0.83))
+            rohr = zylinder_y("ansaugrohr", (0, 0, 0), 0.021, yb * 0.26, ansaug, segmente=10)
+            rohr.rotation_euler = (-s * math.radians(28), 0, 0)
+            rohr.location = rohr_mitte
+            g.transform_anwenden(rohr)
+            teile.append(rohr)
+    # Ansaugbrücke in der Mitte, oben ein Carbondeckel.
+    teile.append(kasten("ansaugbruecke", (xm, 0, z0 + h * 0.84), (lm * 0.92, yb * 0.42, h * 0.16), ansaug,
+                        fase=0.02 * fase))
+    if not einfach:
+        teile.append(kasten("ansaugdeckel", (xm, 0, z0 + h * 0.93), (lm * 0.8, yb * 0.3, 0.012), deckel,
+                            fase=0.005))
+        for s in (1, -1):
+            # Seitliche Carbonblenden über den Auspuffkrümmern, schräg nach außen.
+            teile.append(kasten("motorblende", (xm, s * yb * 0.86, z0 + h * 0.72), (lg * 0.94, yb * 0.3, 0.008),
+                                deckel, drehung=(-s * math.radians(35), 0, 0)))
     return teile
 
 

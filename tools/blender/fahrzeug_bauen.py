@@ -79,7 +79,7 @@ RADNAMEN = {"vl": (1, 1), "vr": (1, -1), "hl": (-1, 1), "hr": (-1, -1)}
 #: Materialplätze der Karosserie, in dieser Reihenfolge.
 KAROSSERIE_MATS = ["lack", "lack2", "kunststoff", "glas", "licht_vorn", "scheinwerferglas",
                    "licht_hinten", "blinker", "chrom", "carbon", "zierteil", "dekor_weiss",
-                   "innenraum", "kennzeichen"]
+                   "innenraum", "kennzeichen", "rueckstrahler", "motorglas"]
 
 #: Kennziffern der Querschnittsabschnitte (Flächenattribut ``seg``).
 SEG_BODEN, SEG_SCHWELLER, SEG_FLANKE_U, SEG_FLANKE_O = 0, 1, 2, 3
@@ -190,7 +190,15 @@ def materialien(p):
         "dekor_weiss": g.material("dekor_weiss", (0.93, 0.93, 0.94), 0.0, 0.3, klarlack=1.0),
         # Leuchtenabdeckungen der Teile-Bibliothek (durchsichtig wie "glas").
         "klarglas": g.material("klarglas", (0.55, 0.6, 0.65), 0.0, 0.02, alpha=0.1),
-        "streuscheibe": g.material("streuscheibe", (0.62, 0.02, 0.03), 0.0, 0.05, alpha=0.62),
+        # Rote Streuscheibe: satt, aber durchsichtig genug für den Reflektor dahinter.
+        "streuscheibe": g.material("streuscheibe", (0.72, 0.03, 0.04), 0.0, 0.04, alpha=0.5),
+        # Reflektor im Gehäuse hinter der Streuscheibe: rot verspiegelt, so
+        # spiegelt die Leuchte ohne Licht den Himmel rot statt schwarz zu sein.
+        "rueckstrahler": g.material("rueckstrahler", (0.62, 0.05, 0.05), 0.85, 0.28),
+        # Heller getönte Scheibe über dem Motor: man soll ihn sehen.
+        "motorglas": g.material("motorglas", (0.2, 0.22, 0.25), 0.0, 0.03, alpha=0.35),
+        # Gebürstetes Aluminium (Ansaugbrücke unter der Glasabdeckung).
+        "alu": g.material("alu", (0.8, 0.81, 0.83), 1.0, 0.3),
     }
 
 
@@ -512,8 +520,14 @@ def haut_bauen(fo: Form, p):
         for j in range(r):
             f = bm.faces.new((a[j], a[(j + 1) % r], b[(j + 1) % r], b[j]))
             f[seg] = seg_ring[j]
-    kappe(bm, ringe[-1], +1, buckel_v, SEG_FRONT, seg)
-    kappe(bm, ringe[0], -1, buckel_h, SEG_HECK, seg)
+    if p.get("kappe_vorn") == "tangential":
+        kappe_tangential(bm, ringe[-1], ringe[-2], +1, buckel_v, SEG_FRONT, seg)
+    else:
+        kappe(bm, ringe[-1], +1, buckel_v, SEG_FRONT, seg)
+    if p.get("kappe_hinten") == "tangential":
+        kappe_tangential(bm, ringe[0], ringe[1], -1, buckel_h, SEG_HECK, seg)
+    else:
+        kappe(bm, ringe[0], -1, buckel_h, SEG_HECK, seg)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     i_kunst = KAROSSERIE_MATS.index("kunststoff")
     for f in bm.faces:
@@ -541,6 +555,55 @@ def kappe(bm, ring, richtung: int, buckel: float, kennung: int, seg) -> None:
     n = len(vorher)
     for j in range(n):
         f = bm.faces.new((vorher[j], vorher[(j + 1) % n], mitte))
+        f[seg] = kennung
+
+
+def kappe_tangential(bm, ring, vorher, richtung: int, buckel: float, kennung: int, seg,
+                     ringe: int = 7) -> None:
+    """Ein Ende des Lofts ohne Knick schließen (``kappe_vorn``/``kappe_hinten``:
+    ``"tangential"``).
+
+    ``kappe`` setzt eine Kuppel an den letzten Querschnitt; deren Steigung
+    passt nicht zu der des Lofts, und an der Naht bleibt eine waagerechte
+    Falte quer über die Front. Hier läuft jeder Randpunkt auf einer
+    kubischen Bézierkurve weiter: los in der Richtung, in der der Loft dort
+    ankommt (``vorher`` → ``ring``), am Ende quer zur Längsachse in die
+    Spitze. So geht die Haube stetig gewölbt in die Nase über.
+    """
+    co = [v.co.copy() for v in ring]
+    alt = [v.co.copy() for v in vorher]
+    z0 = min(c.z for c in co)
+    z1 = max(c.z for c in co)
+    zc = z0 + 0.45 * (z1 - z0)
+    spitze = Vector((co[0].x + richtung * buckel, 0.0, zc))
+    kurven = []
+    for c, a in zip(co, alt):
+        t0 = c - a
+        if t0.length < 1e-9:
+            t0 = Vector((richtung, 0.0, 0.0))
+        t0.normalize()
+        # So weit entlang der Loftrichtung, dass die Kurve etwa die halbe
+        # Buckeltiefe nach vorn kommt, höchstens aber bis zur halben Strecke.
+        vor = max(abs(t0.x), 0.25)
+        h = min(0.5 * buckel / vor, 0.5 * (spitze - c).length)
+        p1 = c + t0 * h
+        quer = Vector((0.0, c.y, c.z - zc))
+        p2 = spitze + quer * 0.55
+        kurven.append((c, p1, p2, spitze))
+    zuvor = ring
+    n = len(co)
+    for k in range(1, ringe + 1):
+        t = k / (ringe + 1)
+        s_ = 1 - t
+        neu = [bm.verts.new(s_ ** 3 * a + 3 * s_ * s_ * t * b + 3 * s_ * t * t * c + t ** 3 * d)
+               for a, b, c, d in kurven]
+        for j in range(n):
+            f = bm.faces.new((zuvor[j], zuvor[(j + 1) % n], neu[(j + 1) % n], neu[j]))
+            f[seg] = kennung
+        zuvor = neu
+    mitte = bm.verts.new(spitze)
+    for j in range(n):
+        f = bm.faces.new((zuvor[j], zuvor[(j + 1) % n], mitte))
         f[seg] = kennung
 
 
@@ -766,11 +829,7 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
 
     # Stufen: Rahmen, Vertiefungen, Erhöhungen.
     for nr, z in enumerate(zonen, start=1):
-        stufen = z.get("stufen")
-        if not stufen and z.get("leuchte"):
-            le = z["leuchte"]
-            stufen = [{"dicke": le.get("rand_m", 0.005), "tiefe": -le.get("tiefe_m", 0.03),
-                       "rand": le.get("rand_mat", "zierteil")}]
+        stufen = leuchten_stufen(z) if z.get("leuchte") else z.get("stufen")
         if not stufen:
             continue
         flaechen = [f for f in bm.faces if f[zl] == nr]
@@ -785,6 +844,9 @@ def zonen_anwenden(bm, fo: Form, zonen: list, mats) -> dict:
             for f in erg["faces"]:
                 f.material_index = idx[st.get("rand", "kunststoff")]
                 f[zl] = 0
+        if z.get("leuchte"):
+            for f in flaechen:
+                f.material_index = idx[leuchten_boden(z)]
     return {"deckel": deckel, "raender": raender}
 
 
@@ -882,7 +944,7 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
         le = z.get("leuchte")
         if not le:
             continue
-        boden = {KAROSSERIE_MATS.index(z["mat"])}
+        boden = {KAROSSERIE_MATS.index(z["mat"]), KAROSSERIE_MATS.index(leuchten_boden(z))}
         abdeckung = le.get("abdeckung", "klarglas")
         if abdeckung and deckel.get(nr):
             ob = tb.deckel("leuchtenglas", deckel[nr], mats[abdeckung])
@@ -893,11 +955,15 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
         for led in leds:
             if "ringe" not in led and "quer" not in led:
                 for schleife in raender.get(nr, []):
-                    teile += tb.led_am_rand(schleife, led, treffer, boden, mats)
+                    teile += tb.led_am_rand(schleife, led, treffer, boden, mats,
+                                            tiefe=leuchten_tiefe(z))
         pj = le.get("projektoren")
         for zt in zonen_teilflaechen(z):
             ansicht = zt["ansicht"]
-            for poly in zone_polygone(zt, ms):
+            polys = zone_polygone(zt, ms)
+            for i_poly, poly in enumerate(polys):
+                # Gespiegelte Kopien stehen hinten in der Liste (zone_polygone).
+                gespiegelt = bool(zt.get("spiegeln")) and ansicht != "seite" and i_poly >= len(polys) // 2
                 for links in _zonenseiten(ansicht):
                     def proj(a, b, _l=links, _a=ansicht):
                         return treffer.ansicht(_a, a, b, boden, _l)
@@ -906,8 +972,33 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
                             if "ringe" in led or "quer" in led:
                                 teile += _led_bauen(poly, led, proj, ansicht, mats)
                     if pj and pj.get("ansicht", z["ansicht"]) == ansicht:
-                        teile += _projektoren_bauen(poly, pj, proj, mats)
+                        teile += _projektoren_bauen(poly, pj, proj, mats,
+                                                    gespiegelt and ansicht == "oben")
     return teile
+
+
+def leuchten_stufen(z: dict) -> list:
+    """Die Stufen einer Leuchtenzone: eigene ``stufen`` oder Rand und Gehäuse."""
+    if z.get("stufen"):
+        return z["stufen"]
+    le = z["leuchte"]
+    return [{"dicke": le.get("rand_m", 0.005), "tiefe": -le.get("tiefe_m", 0.03),
+             "rand": le.get("rand_mat", "zierteil")}]
+
+
+def leuchten_tiefe(z: dict) -> float:
+    """Wie tief der Boden einer Leuchte unter der alten Haut liegt."""
+    return max(0.0, -sum(st.get("tiefe", 0.0) for st in leuchten_stufen(z)))
+
+
+def leuchten_boden(z: dict) -> str:
+    """Material des Gehäusebodens. Hinter einer Streuscheibe sitzt ein roter
+    Reflektor (``rueckstrahler``) statt schwarzen Kunststoffs — so wirkt die
+    Leuchte auch ohne Licht wie rotes Glas mit Tiefe, nicht wie ein Loch."""
+    le = z["leuchte"]
+    if "boden_mat" in le:
+        return le["boden_mat"]
+    return "rueckstrahler" if le.get("abdeckung") == "streuscheibe" else z["mat"]
 
 
 def _led_bauen(poly, led, proj, ansicht, mats):
@@ -968,16 +1059,23 @@ def _led_bauen(poly, led, proj, ansicht, mats):
     return teile
 
 
-def _projektoren_bauen(poly, pj, proj, mats):
+def _projektoren_bauen(poly, pj, proj, mats, quer_gespiegelt: bool = False):
+    """Projektoren im Umriss ``poly``. ``lage`` ist der Anteil entlang der
+    zweiten Bildachse; ist diese Achse für ``poly`` gespiegelt (Draufsicht,
+    ``spiegeln``), zählt er von der anderen Seite — sonst säßen die Einsätze
+    links und rechts verschieden weit außen."""
     a0, a1 = min(q[0] for q in poly), max(q[0] for q in poly)
     b0, b1 = min(q[1] for q in poly), max(q[1] for q in poly)
     n = pj.get("anzahl", 2)
     r = pj.get("radius_m", min(0.032, 0.32 * (b1 - b0)))
     rand = pj.get("rand_anteil", 0.22)
+    lage = pj.get("lage", 0.5)
+    if quer_gespiegelt:
+        lage = 1.0 - lage
     teile = []
     for k in range(n):
         a = a0 + (a1 - a0) * (rand + (1 - 2 * rand) * (k + 0.5) / n)
-        b = b0 + (b1 - b0) * pj.get("lage", 0.5)
+        b = b0 + (b1 - b0) * lage
         h = proj(a, b)
         if h is None:
             continue
@@ -1060,6 +1158,11 @@ def glaszonen(p) -> list:
         zonen.append({"ansicht": "seite", "punkte": [[u - breite / 2, 0], [u + breite / 2, 0],
                                                      [u + breite / 2, 3], [u - breite / 2, 3]],
                       "mat": k.get("saeulen", "zierteil"), "auf": ["glas"], "n_min": 0.2})
+    for st in k.get("fensterstege", []):
+        # Schräger Steg im Seitenfenster, etwa vor dem festen Dreiecksfenster
+        # hinter der Fondtür: ein Linienzug (u, z) in der Seitenansicht.
+        zonen.append({"ansicht": "seite", "linie": st.get("breite_m", 0.022), "punkte": st["punkte"],
+                      "mat": st.get("mat", k.get("saeulen", "zierteil")), "auf": ["glas"], "n_min": 0.2})
     if k.get("dach_mat"):
         # Dach in eigener Farbe: alles oberhalb der Scheibenkante, was nicht Glas ist.
         zonen.append({"ansicht": "oben", "punkte": [[0, -1.2], [1, -1.2], [1, 1.2], [0, 1.2]],
@@ -1259,6 +1362,10 @@ def anbauteile(karosserie, fo: Form, p, mats):
     # --- Spoiler ------------------------------------------------------------
     for sp_def in p.get("spoiler", []):
         teile += spoiler(sp_def, karosserie, fo, p, mats)
+
+    # --- Motor unter gläserner Abdeckung ------------------------------------
+    if tp is not None and tp.get("motor"):
+        teile += tb.motor(tp["motor"], fo, mats, einfach=bool(p.get("_lod")))
 
     # --- Scheibenwischer ----------------------------------------------------
     if tp is not None and tp.get("wischer", {}) is not False:
@@ -1529,6 +1636,12 @@ def spoiler(d, karosserie, fo: Form, p, mats):
     return teile
 
 
+def motorraum_ende(p) -> float:
+    """Vorderes Ende (u) eines Motors unter Glas; der Innenraum beginnt davor."""
+    mo = (p.get("teile") or {}).get("motor")
+    return mo["u"][1] + 0.005 if mo else 0.0
+
+
 def innenraum(fo: Form, p, mats):
     """Wanne, Sitze, Armaturenbrett, Lenkrad — sichtbar durch das getönte Glas."""
     ms = fo.ms
@@ -1540,6 +1653,7 @@ def innenraum(fo: Form, p, mats):
     if not frei:
         return teile
     u_hinten, u_vorn = min(frei), max(frei)
+    u_hinten = max(u_hinten, motorraum_ende(p))
     n = 30
     punkte, flaechen = [], []
     for i in range(n + 1):
@@ -2061,8 +2175,10 @@ def lod1_parameter(p: dict) -> dict:
     aber ohne Kleinteile, die aus 25 m Abstand niemand sieht.
 
     Halb so viele Querschnitte, keine Gitter, Lamellen, Projektoren,
-    Fugenrillen, Wischer, Griffe, Embleme, Antenne und Schrift; einfacher
-    Innenraum, glatte Reifen mit 32 Segmenten, Bremse ohne Bohrungen.
+    Fugenrillen, Wischer, Griffe, Embleme, Antenne und Schrift (auch nicht
+    auf dem Flügel); einfacher Innenraum ohne Verkleidung, Motor unter Glas
+    nur als Wanne, Bänke und Ansaugbrücke, glatte Reifen mit 32 Segmenten,
+    Bremse ohne Bohrungen.
     """
     q = json.loads(json.dumps(p))
     q["_lod"] = 1
@@ -2081,6 +2197,8 @@ def lod1_parameter(p: dict) -> dict:
             le["led"] = (leds if isinstance(leds, list) else [leds])[:1]
         zonen.append(z)
     q["zonen"] = zonen
+    for sp_def in q.get("spoiler", []):
+        sp_def.pop("schrift", None)
     tp = q.get("teile")
     if tp is not None:
         tp.update({"reifen": {"profil": "slick", "bloecke": 32,
@@ -2110,6 +2228,12 @@ def modell_bauen(key: str, p: dict):
     for pol in karosserie.data.polygons:
         pol.use_smooth = True
     g.glatt(karosserie, p.get("glatt_grad", 40))
+    if p["kabine"].get("verkleidung") and not p.get("_lod"):
+        erlaubt = {KAROSSERIE_MATS.index(n) for n in
+                   ("lack", "lack2", "zierteil", "carbon", "kunststoff", "chrom")}
+        ob = ti.verkleidung(karosserie, fo, erlaubt, KAROSSERIE_MATS.index("innenraum"))
+        if ob is not None:
+            lamellen.append(ob)
     anbau = anbauteile(karosserie, fo, p, mats) + radlauf_lippen(karosserie, fo, p, mats)
     tp = p.get("teile")
     if tp is not None and tp.get("innenraum", {}) is not False:

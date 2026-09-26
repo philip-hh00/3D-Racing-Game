@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import math
 
+import bmesh
 import bpy
 from mathutils import Matrix
 
@@ -239,6 +240,10 @@ def innenraum(fo, p, ti: dict, mats):
     if not frei:
         return teile
     u_hinten, u_vorn = min(frei), max(frei)
+    motor = (p.get("teile") or {}).get("motor")
+    if motor:
+        # Der Innenraum beginnt vor dem Motorraum (Mittelmotor unter Glas).
+        u_hinten = max(u_hinten, motor["u"][1] + 0.005)
     n = 30
     punkte, flaechen = [], []
     for i in range(n + 1):
@@ -309,3 +314,37 @@ def innenraum(fo, p, ti: dict, mats):
     lr.data.transform(Matrix.Translation((x_a - 0.46, w_a * 0.45, z_a + 0.13)))
     teile.append(lr)
     return teile
+
+
+def verkleidung(karosserie, fo, erlaubt: set, innen_index: int, dicke: float = 0.012):
+    """Dachhimmel und Säulenverkleidung: die Haut des Glashauses (ohne Glas)
+    um ``dicke`` nach innen versetzt, umgedreht, in ``innenraum``.
+
+    Ohne sie ist die Karosserie von innen hohl: durch die Seitenscheibe sieht
+    man die lackierte Rückseite der gegenüberliegenden C-Säule und durch die
+    Heckscheibe hinaus, und die Scheibe wirkt schräg geteilt. ``erlaubt``:
+    Materialplätze der Haut, die verkleidet werden (Lack, Säulen, Rahmen).
+    """
+    bm = bmesh.new()
+    bm.from_mesh(karosserie.data)
+    weg = []
+    for f in bm.faces:
+        c = f.calc_center_median()
+        if f.material_index not in erlaubt or not fo.im_glashaus(c.x, c.y, c.z, rand=0.02):
+            weg.append(f)
+    bmesh.ops.delete(bm, geom=weg, context="FACES")
+    if not bm.faces:
+        bm.free()
+        return None
+    bm.normal_update()
+    versatz = [v.normal.copy() * dicke for v in bm.verts]
+    for v, d in zip(bm.verts, versatz):
+        v.co -= d
+    bmesh.ops.reverse_faces(bm, faces=list(bm.faces))
+    for f in bm.faces:
+        f.material_index = innen_index
+    ob = g.objekt_aus(bm, "verkleidung", list(karosserie.data.materials))
+    for pol in ob.data.polygons:
+        pol.use_smooth = True
+    return ob
+

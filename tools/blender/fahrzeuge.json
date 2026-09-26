@@ -288,6 +288,7 @@
         "dach_woelbung": 0.06,
         "sitzreihen": 2,
         "seitenrahmen": "chrom",
+        "verkleidung": true,
         "dachkante_radius": 0.09,
         "kehle_m": 0.06
       },
