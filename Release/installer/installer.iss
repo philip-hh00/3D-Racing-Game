@@ -52,6 +52,12 @@ DisableProgramGroupPage=yes
 DefaultGroupName={#MyAppName}
 OutputBaseFilename={#MyAppName}_Setup_v{#MyAppVersion}
 SetupIconFile={#Wurzel}data\icon.ico
+; Assistentenbilder im selben Look wie das Spiel-Icon: dunkler Verlauf, das
+; gruene Supercar schraeg von vorn (erzeugt mit tools/blender/icon_bauen.py +
+; tools/icon_zusammensetzen.py). Liegen neben dieser Datei, nicht unter data/ —
+; sie gehoeren nur zum Installer, nicht zum Spiel selbst.
+WizardImageFile=wizard_gross.bmp
+WizardSmallImageFile=wizard_klein.bmp
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppName} {#MyAppVersion}
 Compression=lzma2/max

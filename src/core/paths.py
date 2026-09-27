@@ -51,6 +51,32 @@ def bundle_dir() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def datei_oeffnen(pfad) -> bool:
+    """Eine Datei im Standardprogramm des Systems oeffnen (Lizenztext,
+    Absturzbericht, o.Ae.).
+
+    Dasselbe Muster wie ``src.core.absturz.oeffnen()``, hier verallgemeinert,
+    weil auch ``assets/LIZENZEN.md`` ueber die Info-Seite aufgerufen wird.
+    ``False`` heisst: die Datei fehlt oder das Betriebssystem hat abgelehnt —
+    ein Fehlschlag darf das Menue nicht zum Absturz bringen.
+    """
+    import subprocess
+
+    ziel = Path(pfad)
+    if not ziel.is_file():
+        return False
+    try:
+        if sys.platform == "win32":
+            os.startfile(str(ziel))                  # type: ignore[attr-defined]
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", str(ziel)])
+        else:
+            subprocess.Popen(["xdg-open", str(ziel)])
+        return True
+    except Exception:
+        return False
+
+
 #: Zeichen, die in einem übernommenen Streckennamen erlaubt sind.
 _SAFE_NAME_CHARS = set(
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-.()[]")

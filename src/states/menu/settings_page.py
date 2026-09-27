@@ -119,6 +119,7 @@ class SettingsPage(Page):
         self.is_pause_context = False
         self._issues_rect: pygame.Rect | None = None
         self._crash_rect: pygame.Rect | None = None
+        self._lizenz_rect: pygame.Rect | None = None
 
     @property
     def categories(self) -> list[str]:
@@ -490,6 +491,11 @@ class SettingsPage(Page):
                 from src.core import absturz
                 absturz.oeffnen()
                 return True
+            if (self.categories[self.cat] == "Info" and self._lizenz_rect
+                    and self._lizenz_rect.collidepoint(event.pos)):
+                from src.core import paths
+                paths.datei_oeffnen(paths.bundle_dir() / "assets" / "LIZENZEN.md")
+                return True
             for i, r in enumerate(self._cat_rects()):
                 if r.collidepoint(event.pos):
                     self.cat = i
@@ -777,6 +783,23 @@ class SettingsPage(Page):
             self._crash_rect = None
             theme.text(screen, tr("Kein Absturzbericht vorhanden ({p})").format(
                 p=absturz.pfad()), theme.HINT, theme.TEXT_FAINT, (x, crash_y + 4))
+
+        # Lizenzhinweis fuer die CC0-Assets (Poly Haven) — der Text selbst
+        # steht in assets/LIZENZEN.md und wird mitgepackt (siehe game.spec);
+        # von hier aus ist er fuer einen Spieler ueberhaupt auffindbar.
+        from src.core import paths
+        lizenz_y = crash_y + 44
+        lizenz_label = tr("Lizenzen der Spielassets öffnen")
+        lw = surf_font.size(lizenz_label)[0]
+        lizenz_pfad = paths.bundle_dir() / "assets" / "LIZENZEN.md"
+        if lizenz_pfad.is_file():
+            self._lizenz_rect = pygame.Rect(x, lizenz_y, lw + 8, 34)
+            l_hover = self._lizenz_rect.collidepoint(display.mouse_pos())
+            farbe = theme.ACCENT_HOT if l_hover else theme.ACCENT
+            theme.text(screen, lizenz_label, theme.BODY, farbe, (x, lizenz_y))
+            pygame.draw.line(screen, farbe, (x, lizenz_y + 30), (x + lw, lizenz_y + 30), 1)
+        else:
+            self._lizenz_rect = None
 
     def _draw_controller_info(self, screen: pygame.Surface) -> None:
         """Two controller slots (pad0/pad1) with a vibration identify action."""
