@@ -29,6 +29,7 @@ from src.states.menu.page import Page
 from src.ui import theme
 from src.ui.focus import FocusGroup
 from src.ui.widgets import Button, Stepper
+from src.ui import zeichnen, leinwand
 
 #: Sichtbare Kacheln im Flottenstreifen.
 KACHELN = 7
@@ -716,16 +717,16 @@ class WerkstattPage(Page):
     # -- Buehne ---------------------------------------------------------
     def _buehne_zeichnen(self, screen: pygame.Surface, r: pygame.Rect) -> None:
         theme.panel(screen, r, alpha=215)
-        pygame.draw.rect(screen, (15, 17, 24), r.inflate(-4, -4), border_radius=8)
+        zeichnen.rect(screen, (15, 17, 24), r.inflate(-4, -4), border_radius=8)
         for i in range(14):
             t = i / 13.0
             y = int(r.y + r.height * 0.34 + t * t * r.height * 0.6)
             if y < r.bottom - 8:
-                pygame.draw.line(screen, (26, 29, 38), (r.x + 20, y), (r.right - 20, y), 1)
+                zeichnen.line(screen, (26, 29, 38), (r.x + 20, y), (r.right - 20, y), 1)
         oval = pygame.Rect(0, 0, int(r.width * 0.76), int(r.height * 0.62))
         oval.center = (r.centerx, r.centery + int(r.height * 0.06))
-        pygame.draw.ellipse(screen, (20, 23, 31), oval)
-        pygame.draw.ellipse(screen, (30, 34, 44), oval, 2)
+        zeichnen.ellipse(screen, (20, 23, 31), oval)
+        zeichnen.ellipse(screen, (30, 34, 44), oval, 2)
 
         cfg = self._cfg()
         kenn = self._kennung()
@@ -817,8 +818,8 @@ class WerkstattPage(Page):
         img = gfx.scale(bild, gr)
         if winkel:
             img = pygame.transform.rotate(img, winkel)
-        schatten = pygame.Surface(img.get_size(), pygame.SRCALPHA)
-        pygame.draw.ellipse(schatten, (0, 0, 0, 70),
+        schatten = leinwand.flaeche(img.get_size(), pygame.SRCALPHA)
+        zeichnen.ellipse(schatten, (0, 0, 0, 70),
                             (0, int(img.get_height() * 0.18),
                              img.get_width(), int(img.get_height() * 0.7)))
         screen.blit(schatten, schatten.get_rect(
@@ -827,8 +828,8 @@ class WerkstattPage(Page):
 
     def _pfeilknopf(self, screen, r: pygame.Rect, glyph: str) -> None:
         hover = r.collidepoint(display.mouse_pos())
-        pygame.draw.rect(screen, (46, 50, 62) if hover else (32, 36, 46), r, border_radius=8)
-        pygame.draw.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT,
+        zeichnen.rect(screen, (46, 50, 62) if hover else (32, 36, 46), r, border_radius=8)
+        zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT,
                          r, 2, border_radius=8)
         theme.text(screen, glyph, theme.HEADER,
                    theme.ACCENT_HOT if hover else theme.ACCENT, r.center, center=True)
@@ -904,15 +905,15 @@ class WerkstattPage(Page):
 
     def _farbfeld(self, screen, r: pygame.Rect, rgb, *, gewaehlt: bool,
                   frei: bool = True) -> None:
-        flaeche = pygame.Surface(r.size, pygame.SRCALPHA)
-        pygame.draw.rect(flaeche, (*(rgb if frei else _ausgegraut(rgb)), 255),
+        flaeche = leinwand.flaeche(r.size, pygame.SRCALPHA)
+        zeichnen.rect(flaeche, (*(rgb if frei else _ausgegraut(rgb)), 255),
                          (0, 0, r.width, r.height), border_radius=8)
         screen.blit(flaeche, r.topleft)
         if gewaehlt:
-            pygame.draw.rect(screen, theme.ACCENT_HOT, r.inflate(6, 6), 3, border_radius=10)
+            zeichnen.rect(screen, theme.ACCENT_HOT, r.inflate(6, 6), 3, border_radius=10)
         else:
             hover = r.collidepoint(display.mouse_pos())
-            pygame.draw.rect(screen, theme.BORDER_LIGHT if hover else theme.BORDER,
+            zeichnen.rect(screen, theme.BORDER_LIGHT if hover else theme.BORDER,
                              r, 2 if hover else 1, border_radius=8)
         if not frei:
             self._schloss(screen, (r.right - 22, r.y + 16), 1.4)
@@ -931,11 +932,11 @@ class WerkstattPage(Page):
         hell, dunkel = (232, 236, 244), (12, 14, 20)
         stark = max(2, int(round(2 * skala)))
         buegel = pygame.Rect(x - s + 1, y - s - 1, 2 * s - 2, 2 * s)
-        pygame.draw.arc(screen, dunkel, buegel.inflate(3, 3), 0.0, math.pi, stark + 2)
-        pygame.draw.arc(screen, hell, buegel, 0.0, math.pi, stark)
+        zeichnen.arc(screen, dunkel, buegel.inflate(3, 3), 0.0, math.pi, stark + 2)
+        zeichnen.arc(screen, hell, buegel, 0.0, math.pi, stark)
         koerper = pygame.Rect(x - s - 2, y - 1, 2 * s + 4, int(1.8 * s))
-        pygame.draw.rect(screen, dunkel, koerper.inflate(3, 3), border_radius=3)
-        pygame.draw.rect(screen, hell, koerper, border_radius=3)
+        zeichnen.rect(screen, dunkel, koerper.inflate(3, 3), border_radius=3)
+        zeichnen.rect(screen, hell, koerper, border_radius=3)
 
     # -- Flottenstreifen ------------------------------------------------
     def _streifen_zeichnen(self, screen: pygame.Surface, r: pygame.Rect) -> None:
@@ -992,7 +993,7 @@ class WerkstattPage(Page):
     def _leiste_zeichnen(self, screen: pygame.Surface, r: pygame.Rect) -> None:
         """Bildlaufleiste: wie viel vom Feld man sieht und an welcher Stelle."""
         self._leiste_rect = r
-        pygame.draw.rect(screen, (22, 25, 33), r, border_radius=4)
+        zeichnen.rect(screen, (22, 25, 33), r, border_radius=4)
         anteil = min(1.0, KACHELN / float(len(self.fahrzeuge)))
         daumen = max(24, int(r.width * anteil))
         grenze = self._grenze()
@@ -1000,17 +1001,17 @@ class WerkstattPage(Page):
         x = r.x + int(round(max(0.0, min(1.0, t)) * (r.width - daumen)))
         kasten = pygame.Rect(x, r.y, daumen, r.height)
         hell = self._zieht_leiste or r.inflate(0, 16).collidepoint(display.mouse_pos())
-        pygame.draw.rect(screen, theme.ACCENT_HOT if hell else theme.ACCENT,
+        zeichnen.rect(screen, theme.ACCENT_HOT if hell else theme.ACCENT,
                          kasten, border_radius=4)
 
     def _kachel_zeichnen(self, screen: pygame.Surface, r: pygame.Rect, i: int) -> None:
         key = self.fahrzeuge[i]
         cfg = VehicleFactory.get_config(key)
         gewaehlt = (i == self.index)
-        karte = pygame.Surface(r.size, pygame.SRCALPHA)
+        karte = leinwand.flaeche(r.size, pygame.SRCALPHA)
         karte.fill((60, 45, 20, 225) if gewaehlt else (24, 27, 36, 190))
         screen.blit(karte, r.topleft)
-        pygame.draw.rect(screen, theme.ACCENT if gewaehlt else (46, 50, 62), r,
+        zeichnen.rect(screen, theme.ACCENT if gewaehlt else (46, 50, 62), r,
                          2 if gewaehlt else 1, border_radius=6)
 
         # Die Kachel zeigt den **gespeicherten** Stand, auch beim gerade

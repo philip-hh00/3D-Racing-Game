@@ -116,9 +116,27 @@ def virtual_surface() -> pygame.Surface:
     nichts gezeichnet wird, muss die Welt darunter durchscheinen.
     """
     global _virtual
-    if _virtual is None:
-        _virtual = pygame.Surface((VIRT_W, VIRT_H), pygame.SRCALPHA)
+    from src.ui import leinwand
+    s = _ui_skala()
+    if _virtual is None or getattr(_virtual, "skala", 1.0) != s:
+        # Gerechnet wird immer in VIRT_W × VIRT_H, gezeichnet in der echten
+        # Größe des Bildausschnitts (src/ui/leinwand.py) — sonst ist die
+        # Oberfläche in 1440p oder 4K nur hochgezogen und weich.
+        leinwand.skala_setzen(s)
+        _virtual = leinwand.Flaeche((VIRT_W, VIRT_H), pygame.SRCALPHA, s)
     return _virtual
+
+
+def _ui_skala() -> float:
+    """Bildpunkte je Rasterpunkt der Oberfläche für das aktuelle Fenster.
+
+    Ohne OpenGL-Fenster (Tests, Start) 1. Auf zwei Stellen gerundet, damit
+    ein um einen Bildpunkt gezogenes Fenster nicht jede Schrift neu baut.
+    """
+    if _kontext is None or not _opengl_fenster:
+        return 1.0
+    _x, _y, b, _h = ansichtsfenster(_fenstergroesse())
+    return round(max(0.5, min(3.0, b / VIRT_W)), 2)
 
 
 # ---------------------------------------------------------------------------

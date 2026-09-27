@@ -28,6 +28,7 @@ from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
 from src.states.menu.gp_overview import GPOverview
+from src.ui import zeichnen, leinwand
 
 _ROLE        = "role"
 _HOST_SERVER = "host_server"
@@ -2363,14 +2364,14 @@ class OnlineLobbyPage(Page):
         sie sieht man einer abgeschnittenen Liste nicht an, wie lang sie ist."""
         gesamt = len(self._offer_rows)
         bahn = pygame.Rect(rect.right - 44, rect.y + 74, 8, sichtbar * 44 - 4)
-        pygame.draw.rect(screen, theme.PANEL, bahn, border_radius=4)
-        pygame.draw.rect(screen, theme.BORDER, bahn, 1, border_radius=4)
+        zeichnen.rect(screen, theme.PANEL, bahn, border_radius=4)
+        zeichnen.rect(screen, theme.BORDER, bahn, 1, border_radius=4)
         hoehe = max(30, int(bahn.height * sichtbar / gesamt))
         max_off = self._offer_max_offset()
         anteil = (self._offer_pick_offset / max_off) if max_off else 0.0
         daumen = pygame.Rect(bahn.x, bahn.y + int((bahn.height - hoehe) * anteil),
                              bahn.width, hoehe)
-        pygame.draw.rect(screen, theme.ACCENT, daumen, border_radius=4)
+        zeichnen.rect(screen, theme.ACCENT, daumen, border_radius=4)
         theme.text(screen, f"{self._offer_pick_cursor + 1} / {gesamt}",
                    theme.SMALL, theme.TEXT_FAINT,
                    (rect.right - 24, rect.y + 30), topright=True)
@@ -2514,10 +2515,10 @@ class OnlineLobbyPage(Page):
             return
         sichtbar = min(len(self._offer_rows), _OFFER_PICK_ROWS)
         rect = self._offer_pick_rect(sichtbar)
-        flaeche = pygame.Surface(rect.size, pygame.SRCALPHA)
+        flaeche = leinwand.flaeche(rect.size, pygame.SRCALPHA)
         flaeche.fill((14, 16, 22, 245))
         screen.blit(flaeche, rect.topleft)
-        pygame.draw.rect(screen, theme.ACCENT, rect, 2, border_radius=10)
+        zeichnen.rect(screen, theme.ACCENT, rect, 2, border_radius=10)
 
         theme.text(screen, tr("Welche Strecke anbieten?"), theme.HEADER, theme.ACCENT,
                    (rect.centerx, rect.y + 34), center=True)
@@ -2527,7 +2528,7 @@ class OnlineLobbyPage(Page):
         gewaehlt = self._offer_rows[self._offer_pick_cursor] \
             if 0 <= self._offer_pick_cursor < len(self._offer_rows) else None
         if gewaehlt is not None and gewaehlt.rect.width > 0:
-            pygame.draw.rect(screen, theme.ACCENT,
+            zeichnen.rect(screen, theme.ACCENT,
                              gewaehlt.rect.inflate(10, 8), 2, border_radius=8)
         gruppe.draw(screen)
 
@@ -2843,7 +2844,7 @@ class OnlineLobbyPage(Page):
                 ly += 32
             # AI difficulty is shown per driver in the right-hand roster, so no
             # separate left-side "Schwierigkeit" line for the client.
-            pygame.draw.line(screen, theme.BORDER, (x, 360), (x + 700, 360), 1)
+            zeichnen.line(screen, theme.BORDER, (x, 360), (x + 700, 360), 1)
             self._btn_vehicle_c.draw(screen, focused is self._btn_vehicle_c)
             self._btn_ready_c.draw(screen,   focused is self._btn_ready_c)
             theme.text(screen, tr("Warte auf Host-Start ..."),
@@ -2866,7 +2867,7 @@ class OnlineLobbyPage(Page):
                 srv_txt += f"  ·  {net.ping_ms:.0f} ms"
             theme.text(screen, srv_txt, theme.LABEL, theme.TEXT_DIM,
                        (rx + 850, ry + 4), topright=True)
-        pygame.draw.line(screen, theme.BORDER, (rx, ry + 110), (rx + 850, ry + 110), 1)
+        zeichnen.line(screen, theme.BORDER, (rx, ry + 110), (rx + 850, ry + 110), 1)
 
         # Roster header
         roster_lbl_y = ry + 125
@@ -2886,7 +2887,7 @@ class OnlineLobbyPage(Page):
         if team_mode:
             theme.text(screen, tr("Team"),
                        theme.SMALL, theme.TEXT_FAINT, (rx + _COL_TEAM, col_hdr_y))
-        pygame.draw.line(screen, theme.BORDER,
+        zeichnen.line(screen, theme.BORDER,
                          (rx, col_hdr_y + 22), (rx + 850, col_hdr_y + 22), 1)
 
         # Roster rows
@@ -2932,7 +2933,7 @@ class OnlineLobbyPage(Page):
                 # Highlight own row
                 if is_me:
                     bg_r = pygame.Rect(rx - 4, row_y - 2, 858, _ROW_H + 4)
-                    bg_s = pygame.Surface(bg_r.size, pygame.SRCALPHA)
+                    bg_s = leinwand.flaeche(bg_r.size, pygame.SRCALPHA)
                     bg_s.fill((*theme.PANEL_SEL, 90))
                     screen.blit(bg_s, bg_r.topleft)
 
@@ -2995,7 +2996,7 @@ class OnlineLobbyPage(Page):
         # Horizontal dividers between rows (skip first — col-header line covers it)
         for i in range(1, self._roster_size + 1):
             div_y = _ROW_START_Y + i * _ROW_STRIDE - 4
-            pygame.draw.line(screen, theme.BORDER, (rx, div_y), (rx + 850, div_y), 1)
+            zeichnen.line(screen, theme.BORDER, (rx, div_y), (rx + 850, div_y), 1)
 
         # Balance display (Team-Zeitfahren only) + Ping
         row_after_roster_y = _ROW_START_Y + self._roster_size * _ROW_STRIDE + 14

@@ -19,6 +19,7 @@ import pygame
 from src.ui import theme
 from src.core import display
 from src.core.i18n import tr
+from src.ui import zeichnen, leinwand
 
 
 class _Base:
@@ -96,8 +97,8 @@ class Button(_Base):
         else:
             fill = (44, 38, 18) if self.style == "primary" else (32, 36, 46)
             border, txt = theme.ACCENT if self.style == "primary" else theme.BORDER_LIGHT, theme.TEXT
-        pygame.draw.rect(screen, fill, self.rect, border_radius=8)
-        pygame.draw.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
+        zeichnen.rect(screen, fill, self.rect, border_radius=8)
+        zeichnen.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
         
         lbl_rect = pygame.Rect(self.rect.x + 16, self.rect.y, self.rect.width - 32, self.rect.height)
         theme.text_fit(screen, tr(self.label), theme.BODY, txt, lbl_rect, center=True)
@@ -238,11 +239,11 @@ class Stepper(_Base):
         offen = bool(self.bearbeitet)
         col_border = (theme.ACCENT_HOT if offen else theme.ACCENT) if focused else theme.BORDER
         base = theme.PANEL_SEL if focused else theme.PANEL_LIGHT
-        pygame.draw.rect(screen, base, self.rect, border_radius=8)
+        zeichnen.rect(screen, base, self.rect, border_radius=8)
         # Offen = kraeftigerer Rahmen. Ohne sichtbaren Unterschied waere das
         # eine unsichtbare Umschaltung, und niemand wuesste, warum das D-Pad
         # mal den Wert und mal den Fokus bewegt.
-        pygame.draw.rect(screen, col_border, self.rect, 3 if offen else 2, border_radius=8)
+        zeichnen.rect(screen, col_border, self.rect, 3 if offen else 2, border_radius=8)
         lbl_col = theme.TEXT if self.enabled else theme.DISABLED
 
         left, right = self._arrow_rects()
@@ -277,8 +278,8 @@ class Stepper(_Base):
             if input_mode.is_pad():
                 r = 11
                 mitte = (self.rect.right - r - 3, self.rect.y + r + 3)
-                pygame.draw.circle(screen, theme.PANEL, mitte, r)
-                pygame.draw.circle(screen, theme.ACCENT_HOT, mitte, r, 2)
+                zeichnen.circle(screen, theme.PANEL, mitte, r)
+                zeichnen.circle(screen, theme.ACCENT_HOT, mitte, r, 2)
                 theme.text(screen, "A", theme.HINT, theme.ACCENT_HOT, mitte, center=True)
 
 
@@ -316,8 +317,8 @@ class TextInput(_Base):
         return None
 
     def draw(self, screen, focused=True) -> None:
-        pygame.draw.rect(screen, theme.PANEL_LIGHT, self.rect, border_radius=6)
-        pygame.draw.rect(screen, theme.ACCENT if focused else theme.BORDER,
+        zeichnen.rect(screen, theme.PANEL_LIGHT, self.rect, border_radius=6)
+        zeichnen.rect(screen, theme.ACCENT if focused else theme.BORDER,
                          self.rect, 2, border_radius=6)
         shown = self.text
         if focused and self._cursor_t < 0.5:
@@ -341,7 +342,7 @@ def signal_bars(screen, rect: pygame.Rect, level: int, *, enabled: bool = True) 
     for i in range(3):
         h = int(rect.height * (0.4 + 0.3 * i))
         bar = pygame.Rect(rect.x + i * (bar_w + gap), rect.bottom - h, bar_w, h)
-        pygame.draw.rect(screen, on if i < level else off, bar, border_radius=2)
+        zeichnen.rect(screen, on if i < level else off, bar, border_radius=2)
 
 
 class ServerRow(_Base):
@@ -408,13 +409,13 @@ class ServerRow(_Base):
             fill, border, txt = theme.PANEL_SEL, theme.ACCENT, theme.TEXT
         else:
             fill, border, txt = theme.PANEL_LIGHT, theme.BORDER, theme.TEXT
-        pygame.draw.rect(screen, fill, self.rect, border_radius=8)
-        pygame.draw.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
+        zeichnen.rect(screen, fill, self.rect, border_radius=8)
+        zeichnen.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
 
         # Selection marker — visible without relying on the fill tint alone.
         if self.selected and self.enabled:
             dot = pygame.Rect(self.rect.x + 16, self.rect.centery - 7, 14, 14)
-            pygame.draw.rect(screen, theme.ACCENT, dot, border_radius=7)
+            zeichnen.rect(screen, theme.ACCENT, dot, border_radius=7)
 
         # Feste Spalten statt gerechneter Abstände: die längsten Texte sind
         # "Version veraltet" (150 px) und "Keine Lobbys" (128 px), dafür braucht
@@ -483,7 +484,7 @@ class Dialog:
 
     def draw(self, screen) -> None:
         w, h = screen.get_size()
-        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay = leinwand.flaeche((w, h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
         n = len(self.buttons)
@@ -534,8 +535,8 @@ class Dialog:
             r = pygame.Rect(bx + i * (bw_btn + gap), by, bw_btn, bh_btn)
             self._rects.append((r, action))
             focused = (i == self.focus) or r.collidepoint(mp)
-            pygame.draw.rect(screen, (66, 54, 24) if focused else (34, 38, 48), r, border_radius=8)
-            pygame.draw.rect(screen, theme.ACCENT if focused else theme.BORDER, r, 2, border_radius=8)
+            zeichnen.rect(screen, (66, 54, 24) if focused else (34, 38, 48), r, border_radius=8)
+            zeichnen.rect(screen, theme.ACCENT if focused else theme.BORDER, r, 2, border_radius=8)
             theme.text(screen, tr(label), theme.BODY, theme.TEXT, r.center, center=True)
 
 
@@ -664,9 +665,9 @@ class OnScreenKeyboard:
         rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)
 
         # Translucent background panel
-        surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        surf = leinwand.flaeche((panel_w, panel_h), pygame.SRCALPHA)
         surf.fill((10, 10, 15, 235))
-        pygame.draw.rect(surf, theme.ACCENT, (0, 0, panel_w, panel_h), 2, border_radius=12)
+        zeichnen.rect(surf, theme.ACCENT, (0, 0, panel_w, panel_h), 2, border_radius=12)
         screen.blit(surf, rect.topleft)
 
         r_h = panel_h // len(self.layout)
@@ -689,11 +690,11 @@ class OnScreenKeyboard:
                     bg_color = (35, 38, 48)
                     text_color = (220, 220, 230)
 
-                pygame.draw.rect(screen, bg_color, k_rect, border_radius=6)
+                zeichnen.rect(screen, bg_color, k_rect, border_radius=6)
                 if selected:
-                    pygame.draw.rect(screen, (255, 220, 100), k_rect, 2, border_radius=6)
+                    zeichnen.rect(screen, (255, 220, 100), k_rect, 2, border_radius=6)
                 elif disabled:
-                    pygame.draw.rect(screen, (45, 48, 58), k_rect, 1, border_radius=6)
+                    zeichnen.rect(screen, (45, 48, 58), k_rect, 1, border_radius=6)
 
                 lbl = theme.font(theme.LABEL).render(val, True, text_color)
                 screen.blit(lbl, lbl.get_rect(center=k_rect.center))

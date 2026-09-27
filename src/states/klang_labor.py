@@ -24,6 +24,7 @@ import pygame
 
 from src.core import display, motorklang, sfx
 from src.ui import theme
+from src.ui import zeichnen
 
 #: Ausschnitt der Wellenform. Eine Motorstimme steuert mit rund 0,13 aus; bei
 #: voller Skala wäre die Kurve ein Strich. Der Wert steht in der Beschriftung,
@@ -457,23 +458,23 @@ class KlangLabor:
                    theme.ACCENT if aktiv else theme.TEXT_DIM,
                    (r.right - 30, r.y), topright=True)
         bahn = pygame.Rect(r.x + 30, r.y + 22, r.width - 60, 8)
-        pygame.draw.rect(screen, (30, 33, 44), bahn, border_radius=4)
-        pygame.draw.rect(screen, (52, 56, 70), bahn, 1, border_radius=4)
+        zeichnen.rect(screen, (30, 33, 44), bahn, border_radius=4)
+        zeichnen.rect(screen, (52, 56, 70), bahn, 1, border_radius=4)
         fw = int(bahn.width * max(0.0, min(1.0, anteil)))
         if fw > 0:
-            pygame.draw.rect(screen, theme.ACCENT if aktiv else theme.ACCENT_DIM,
+            zeichnen.rect(screen, theme.ACCENT if aktiv else theme.ACCENT_DIM,
                              (bahn.x, bahn.y, fw, bahn.height), border_radius=4)
         knauf = pygame.Rect(0, 0, 8, 18)
         knauf.center = (bahn.x + fw, bahn.centery)
-        pygame.draw.rect(screen, theme.ACCENT_HOT if aktiv else theme.TEXT_DIM,
+        zeichnen.rect(screen, theme.ACCENT_HOT if aktiv else theme.TEXT_DIM,
                          knauf, border_radius=3)
         for x, glyph, richtung in ((r.x, "‹", -1), (r.right - 24, "›", +1)):
             kr = pygame.Rect(x, r.y + 6, 24, 30)
             self._pfeile.append((index, richtung, kr))
             hover = kr.collidepoint(display.mouse_pos())
-            pygame.draw.rect(screen, (46, 50, 62) if hover else (28, 31, 40), kr,
+            zeichnen.rect(screen, (46, 50, 62) if hover else (28, 31, 40), kr,
                              border_radius=5)
-            pygame.draw.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT,
+            zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT,
                              kr, 1, border_radius=5)
             theme.text(screen, glyph, theme.BODY,
                        theme.ACCENT_HOT if hover else theme.ACCENT, kr.center, center=True)
@@ -481,19 +482,19 @@ class KlangLabor:
     # -- Anzeigen -------------------------------------------------------
     @staticmethod
     def _kasten(screen, r: pygame.Rect, *, rand=theme.BORDER) -> None:
-        pygame.draw.rect(screen, (10, 12, 20), r, border_radius=6)
-        pygame.draw.rect(screen, rand, r, 1, border_radius=6)
+        zeichnen.rect(screen, (10, 12, 20), r, border_radius=6)
+        zeichnen.rect(screen, rand, r, 1, border_radius=6)
 
     def _mini_welle(self, screen, r: pygame.Rect, b: np.ndarray, *,
                     takt: bool = False) -> None:
-        pygame.draw.rect(screen, (8, 10, 16), r, border_radius=4)
-        pygame.draw.rect(screen, (40, 44, 58), r, 1, border_radius=4)
+        zeichnen.rect(screen, (8, 10, 16), r, border_radius=4)
+        zeichnen.rect(screen, (40, 44, 58), r, 1, border_radius=4)
         mitte = r.centery
-        pygame.draw.line(screen, (28, 32, 42), (r.x + 2, mitte), (r.right - 2, mitte), 1)
+        zeichnen.line(screen, (28, 32, 42), (r.x + 2, mitte), (r.right - 2, mitte), 1)
         if takt:
             # Die Blockgrenze sichtbar machen — hier fragt die Station danach.
             for y in range(r.y + 3, r.bottom - 3, 6):
-                pygame.draw.line(screen, (60, 52, 30), (r.right - 2, y),
+                zeichnen.line(screen, (60, 52, 30), (r.right - 2, y),
                                  (r.right - 2, y + 3), 1)
         n = len(b)
         if n < 2:
@@ -504,7 +505,7 @@ class KlangLabor:
             st = b[i0:i1]
             yo = mitte - int(float(st.max()) / WELLE_BEREICH * (r.height - 8) / 2)
             yu = mitte - int(float(st.min()) / WELLE_BEREICH * (r.height - 8) / 2)
-            pygame.draw.line(screen, (40, 110, 80),
+            zeichnen.line(screen, (40, 110, 80),
                              (r.x + px, max(r.y + 2, yo)), (r.x + px, min(r.bottom - 2, yu)), 1)
 
     def _wellenform(self, screen, r: pygame.Rect, b: np.ndarray, *, titel: str,
@@ -513,11 +514,11 @@ class KlangLabor:
         theme.text(screen, titel, theme.HINT, theme.TEXT_DIM, (r.x + 12, r.y + 9))
         innen = pygame.Rect(r.x + 12, r.y + 40, r.width - 24, r.height - 74)
         mitte = innen.centery
-        pygame.draw.line(screen, (34, 38, 50), (innen.x, mitte), (innen.right, mitte), 1)
+        zeichnen.line(screen, (34, 38, 50), (innen.x, mitte), (innen.right, mitte), 1)
         for anteil in (0.5, -0.5):
             y = mitte - int(anteil * innen.height / 2)
             for x in range(innen.x, innen.right, 8):
-                pygame.draw.line(screen, (30, 34, 46), (x, y), (x + 4, y), 1)
+                zeichnen.line(screen, (30, 34, 46), (x, y), (x + 4, y), 1)
         theme.text(screen, f"Ausschnitt ±{WELLE_BEREICH:.2f}", theme.SMALL,
                    (70, 74, 88), (innen.right - 4, innen.y + 2), topright=True)
 
@@ -534,11 +535,11 @@ class KlangLabor:
                     return mitte - int(max(-1.2, min(1.2, v / WELLE_BEREICH))
                                        * innen.height / 2)
 
-                pygame.draw.line(screen, (40, 90, 70), (x, y_von(float(st.max()))),
+                zeichnen.line(screen, (40, 90, 70), (x, y_von(float(st.max()))),
                                  (x, y_von(float(st.min()))), 1)
                 punkte.append((x, y_von(float(st.mean()))))
             if len(punkte) > 1:
-                pygame.draw.lines(screen, theme.SUCCESS, False, punkte, 1)
+                zeichnen.lines(screen, theme.SUCCESS, False, punkte, 1)
         if unter:
             theme.text(screen, unter, theme.SMALL, theme.TEXT_FAINT,
                        (r.x + 12, r.bottom - 24))
@@ -558,12 +559,12 @@ class KlangLabor:
 
         for hz in (100, 1000, 10000):
             x = x_von(hz)
-            pygame.draw.line(screen, (30, 34, 44), (x, innen.y), (x, innen.bottom), 1)
+            zeichnen.line(screen, (30, 34, 44), (x, innen.y), (x, innen.bottom), 1)
             theme.text(screen, f"{hz // 1000}k" if hz >= 1000 else str(hz),
                        theme.SMALL, (74, 78, 92), (x + 4, innen.bottom + 2))
         for pegel in (-20, -40, -60):
             y = innen.bottom - int(innen.height * (pegel + 80) / 80.0)
-            pygame.draw.line(screen, (26, 30, 40), (innen.x, y), (innen.right, y), 1)
+            zeichnen.line(screen, (26, 30, 40), (innen.x, y), (innen.right, y), 1)
             theme.text(screen, str(pegel), theme.SMALL, (74, 78, 92), (innen.x + 2, y - 16))
 
         b = self._stufe(4)
@@ -578,12 +579,12 @@ class KlangLabor:
                                   * (np.clip(db[gueltig], -80.0, 0.0) + 80.0) / 80.0))
             punkte = list(zip(xs, ys.astype(int)))
             for x, y in punkte:
-                pygame.draw.line(screen, (36, 82, 62), (x, innen.bottom), (x, y), 1)
+                zeichnen.line(screen, (36, 82, 62), (x, innen.bottom), (x, y), 1)
             if len(punkte) > 1:
-                pygame.draw.lines(screen, theme.SUCCESS, False, punkte, 1)
+                zeichnen.lines(screen, theme.SUCCESS, False, punkte, 1)
 
         x = x_von(sfx.FAERBUNG_ECKE)
-        pygame.draw.line(screen, theme.ACCENT, (x, innen.y), (x, innen.bottom), 1)
+        zeichnen.line(screen, theme.ACCENT, (x, innen.y), (x, innen.bottom), 1)
         theme.text(screen, "Färbung", theme.SMALL, theme.ACCENT, (x + 5, innen.y + 4))
         theme.text(screen, "was am Ende der Kette herauskommt", theme.SMALL,
                    theme.TEXT_FAINT, (r.x + 12, r.bottom - 24))
@@ -603,8 +604,8 @@ class KlangLabor:
         sch = sfx.schichten(self.motor())
         lo, hi = sch.bereich
         bahn = pygame.Rect(r.x + 20, r.y + 46, r.width - 40, 16)
-        pygame.draw.rect(screen, (22, 25, 33), bahn, border_radius=8)
-        pygame.draw.rect(screen, (48, 52, 66), bahn, 1, border_radius=8)
+        zeichnen.rect(screen, (22, 25, 33), bahn, border_radius=8)
+        zeichnen.rect(screen, (48, 52, 66), bahn, 1, border_radius=8)
         if hi <= lo:
             theme.text(screen, "keine Aufnahmen für diesen Motor", theme.HINT,
                        theme.TEXT_FAINT, bahn.center, center=True)
@@ -614,7 +615,7 @@ class KlangLabor:
             x = bahn.x + int(bahn.width * (u - lo) / max(1, hi - lo))
             h = 10 + int(18 * g)
             an = g > 0.01
-            pygame.draw.line(screen, theme.ACCENT if an else (60, 64, 80),
+            zeichnen.line(screen, theme.ACCENT if an else (60, 64, 80),
                              (x, bahn.y - 6), (x, bahn.y - 6 - h), 3 if an else 1)
             theme.text(screen, str(u), theme.SMALL,
                        theme.ACCENT_DIM if an else (70, 74, 88),
@@ -623,7 +624,7 @@ class KlangLabor:
                 theme.text(screen, f"{g:.2f}", theme.SMALL, theme.ACCENT,
                            (x, bahn.y - 26 - h), center=True)
         x = bahn.x + int(bahn.width * (self.upm - lo) / max(1, hi - lo))
-        pygame.draw.rect(screen, theme.ACCENT_HOT,
+        zeichnen.rect(screen, theme.ACCENT_HOT,
                          (x - 2, bahn.y - 2, 4, bahn.height + 4), border_radius=2)
 
     # -- Bedienung unten ------------------------------------------------
@@ -639,14 +640,14 @@ class KlangLabor:
         theme.text(screen, f"{int(self.upm)} UPM", theme.SMALL, theme.ACCENT,
                    (dz.right - 30, dz.y), topright=True)
         bahn = pygame.Rect(dz.x + 30, dz.y + 22, dz.width - 60, 8)
-        pygame.draw.rect(screen, (30, 33, 44), bahn, border_radius=4)
+        zeichnen.rect(screen, (30, 33, 44), bahn, border_radius=4)
         fw = int(bahn.width * max(0.0, min(1.0, anteil)))
         if fw > 0:
-            pygame.draw.rect(screen, theme.ACCENT, (bahn.x, bahn.y, fw, bahn.height),
+            zeichnen.rect(screen, theme.ACCENT, (bahn.x, bahn.y, fw, bahn.height),
                              border_radius=4)
         knauf = pygame.Rect(0, 0, 8, 18)
         knauf.center = (bahn.x + fw, bahn.centery)
-        pygame.draw.rect(screen, theme.ACCENT_HOT, knauf, border_radius=3)
+        zeichnen.rect(screen, theme.ACCENT_HOT, knauf, border_radius=3)
         for x, glyph, name in ((dz.x, "‹", "upm_l"), (dz.right - 24, "›", "upm_r")):
             kr = pygame.Rect(x, dz.y + 6, 24, 30)
             self._rects[name] = kr
@@ -691,8 +692,8 @@ class KlangLabor:
             self._knopf(screen, b, label, stil)
 
     def _stepper(self, screen, r: pygame.Rect, label: str, wert: str, name: str) -> None:
-        pygame.draw.rect(screen, theme.PANEL_LIGHT, r, border_radius=8)
-        pygame.draw.rect(screen, theme.BORDER, r, 2, border_radius=8)
+        zeichnen.rect(screen, theme.PANEL_LIGHT, r, border_radius=8)
+        zeichnen.rect(screen, theme.BORDER, r, 2, border_radius=8)
         sz = 42
         if label:
             links = pygame.Rect(r.right - min(250, r.width // 2), r.y + 4, sz, r.height - 8)
@@ -719,8 +720,8 @@ class KlangLabor:
 
     def _pfeilknopf(self, screen, r: pygame.Rect, glyph: str) -> None:
         hover = r.collidepoint(display.mouse_pos())
-        pygame.draw.rect(screen, (46, 50, 62) if hover else (28, 31, 40), r, border_radius=5)
-        pygame.draw.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT, r, 1,
+        zeichnen.rect(screen, (46, 50, 62) if hover else (28, 31, 40), r, border_radius=5)
+        zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT, r, 1,
                          border_radius=5)
         theme.text(screen, glyph, theme.BODY,
                    theme.ACCENT_HOT if hover else theme.ACCENT, r.center, center=True)
@@ -734,7 +735,7 @@ class KlangLabor:
         else:
             fill = (44, 38, 18) if stil == "primary" else (32, 36, 46)
             rand = theme.ACCENT if stil == "primary" else theme.BORDER_LIGHT
-        pygame.draw.rect(screen, fill, r, border_radius=8)
-        pygame.draw.rect(screen, rand, r, 2, border_radius=8)
+        zeichnen.rect(screen, fill, r, border_radius=8)
+        zeichnen.rect(screen, rand, r, 2, border_radius=8)
         theme.text_fit(screen, label, theme.HINT, theme.TEXT, r.inflate(-12, 0),
                        center=True)

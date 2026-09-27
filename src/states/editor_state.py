@@ -38,6 +38,7 @@ from src.core.settings import (
 )
 from src.track.tile_track import CELL, Piece, TileTrackDraft
 from src.core.i18n import tr
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -169,9 +170,9 @@ class EditorState(BaseState):
     # Lifecycle
     # ==================================================================
     def enter(self, **kwargs) -> None:
-        self.f_title = pygame.font.Font(None, 44)
-        self.f_body = pygame.font.Font(None, 30)
-        self.f_small = pygame.font.Font(None, 24)
+        self.f_title = theme.font_standard(44)
+        self.f_body = theme.font_standard(30)
+        self.f_small = theme.font_standard(24)
 
         self._tool = None
         self._moving_idx = None
@@ -1136,11 +1137,11 @@ class EditorState(BaseState):
             for c in range(c0, c1 + 1):
                 sx, _ = self._w2s(c * CELL, 0)
                 col = _GRID_LINE_MAJOR if c % 5 == 0 else _GRID_LINE
-                pygame.draw.line(screen, col, (sx, gr.top), (sx, gr.bottom), 1)
+                zeichnen.line(screen, col, (sx, gr.top), (sx, gr.bottom), 1)
             for r in range(r0, r1 + 1):
                 _, sy = self._w2s(0, r * CELL)
                 col = _GRID_LINE_MAJOR if r % 5 == 0 else _GRID_LINE
-                pygame.draw.line(screen, col, (gr.left, sy), (gr.right, sy), 1)
+                zeichnen.line(screen, col, (gr.left, sy), (gr.right, sy), 1)
 
     def _piece_polyline(self, piece: Piece) -> list[tuple[float, float]]:
         p0 = piece.ports()[0]
@@ -1166,16 +1167,16 @@ class EditorState(BaseState):
 
             # dashed centreline
             for j in range(0, len(pts) - 1, 2):
-                pygame.draw.line(screen, _CENTERLINE, pts[j], pts[j + 1], 1)
+                zeichnen.line(screen, _CENTERLINE, pts[j], pts[j + 1], 1)
 
     def _draw_road(self, screen, pts, w, color) -> None:
         if len(pts) < 2:
             return
-        pygame.draw.lines(screen, color, False, pts, w)
+        zeichnen.lines(screen, color, False, pts, w)
         # Round the joints so curves don't show gaps.
         r = w // 2
         for p in pts:
-            pygame.draw.circle(screen, color, p, r)
+            zeichnen.circle(screen, color, p, r)
 
     def _draw_start_marker(self, screen: pygame.Surface) -> None:
         if not self.draft.pieces:
@@ -1195,19 +1196,19 @@ class EditorState(BaseState):
             a = self._w2s(p0.wx + px * f0, p0.wy + py * f0)
             b = self._w2s(p0.wx + px * f1, p0.wy + py * f1)
             c = (240, 240, 240) if k % 2 == 0 else (20, 20, 20)
-            pygame.draw.line(screen, c, a, b, max(3, int(0.35 * CELL * self._zoom)))
+            zeichnen.line(screen, c, a, b, max(3, int(0.35 * CELL * self._zoom)))
 
     def _draw_open_ports(self, screen: pygame.Surface) -> None:
         pulse = 0.5 + 0.5 * math.sin(self._time * 5.0)
         rad = int(6 + 5 * pulse)
         for port in self._open_ports_cache:
             s = self._w2s(port.wx, port.wy)
-            pygame.draw.circle(screen, _OPEN_PORT, s, rad, 2)
+            zeichnen.circle(screen, _OPEN_PORT, s, rad, 2)
             # small arrow along the outward face
             ang = math.radians(port.face_dir)
             dx, dy = math.cos(ang), math.sin(ang)
             tip = (int(s[0] + dx * 22), int(s[1] - dy * 22))
-            pygame.draw.line(screen, _OPEN_PORT, s, tip, 2)
+            zeichnen.line(screen, _OPEN_PORT, s, tip, 2)
 
     def _draw_ghost(self, screen: pygame.Surface) -> None:
         mx, my = self._get_cursor_pos()
@@ -1235,7 +1236,7 @@ class EditorState(BaseState):
             a = self._w2s(c * CELL, (r + 1) * CELL)
             b = self._w2s((c + 1) * CELL, r * CELL)
             rect = pygame.Rect(a[0], a[1], b[0] - a[0], b[1] - a[1])
-            pygame.draw.rect(screen, color, rect, 2)
+            zeichnen.rect(screen, color, rect, 2)
         # ghost road
         pts = [self._w2s(x, y) for x, y in self._piece_polyline(ghost)]
         w = max(3, int(self.draft.width * self._zoom))
@@ -1244,8 +1245,8 @@ class EditorState(BaseState):
     # -- Palette --------------------------------------------------------
     def _draw_palette(self, screen: pygame.Surface) -> None:
         panel = pygame.Rect(0, 0, PALETTE_W, SCREEN_HEIGHT)
-        pygame.draw.rect(screen, _PANEL, panel)
-        pygame.draw.line(screen, _PANEL_BORDER, (PALETTE_W, 0), (PALETTE_W, SCREEN_HEIGHT), 2)
+        zeichnen.rect(screen, _PANEL, panel)
+        zeichnen.line(screen, _PANEL_BORDER, (PALETTE_W, 0), (PALETTE_W, SCREEN_HEIGHT), 2)
 
         title = self.f_body.render(tr("BAUTEILE"), True, COLOR_UI_ACCENT)
         screen.blit(title, (20, 24))
@@ -1267,8 +1268,8 @@ class EditorState(BaseState):
                 bg = (30, 33, 42)
                 border = (60, 64, 80)
                 
-            pygame.draw.rect(screen, bg, rect, border_radius=6)
-            pygame.draw.rect(screen, border, rect, 2, border_radius=6)
+            zeichnen.rect(screen, bg, rect, border_radius=6)
+            zeichnen.rect(screen, border, rect, 2, border_radius=6)
 
             # thumbnail
             self._draw_thumbnail(screen, rect, it)
@@ -1282,7 +1283,7 @@ class EditorState(BaseState):
         L = 40
         col = (120, 200, 255)
         if it["kind"] == "straight":
-            pygame.draw.line(screen, col, (cx - L, cy), (cx + L, cy), 8)
+            zeichnen.line(screen, col, (cx - L, cy), (cx + L, cy), 8)
         else:
             # quarter-arc schematic (bigger radius index → gentler curve)
             r = 26 + (it["radius"] - 1) * 8
@@ -1292,13 +1293,13 @@ class EditorState(BaseState):
                 a = math.pi / 2 * k / 12
                 pts.append((cxo + r * math.cos(a), cyo - r * math.sin(a)))
             if len(pts) >= 2:
-                pygame.draw.lines(screen, col, False, [(int(x), int(y)) for x, y in pts], 8)
+                zeichnen.lines(screen, col, False, [(int(x), int(y)) for x, y in pts], 8)
 
     # -- Status bar -----------------------------------------------------
     def _draw_status_bar(self, screen: pygame.Surface) -> None:
         bar = pygame.Rect(PALETTE_W, 0, SCREEN_WIDTH - PALETTE_W, TOP_H)
-        pygame.draw.rect(screen, _PANEL, bar)
-        pygame.draw.line(screen, _PANEL_BORDER, (PALETTE_W, TOP_H), (SCREEN_WIDTH, TOP_H), 2)
+        zeichnen.rect(screen, _PANEL, bar)
+        zeichnen.line(screen, _PANEL_BORDER, (PALETTE_W, TOP_H), (SCREEN_WIDTH, TOP_H), 2)
 
         name = self.f_body.render(self.draft.name, True, COLOR_UI_TEXT)
         screen.blit(name, (PALETTE_W + 24, (TOP_H - name.get_height()) // 2))
@@ -1319,10 +1320,10 @@ class EditorState(BaseState):
         h = surf.get_height() + pad
         x = (SCREEN_WIDTH + PALETTE_W) // 2 - w // 2
         y = SCREEN_HEIGHT - BOTTOM_H - h - 20
-        box = pygame.Surface((w, h), pygame.SRCALPHA)
+        box = leinwand.flaeche((w, h), pygame.SRCALPHA)
         box.fill((20, 20, 30, 230))
         screen.blit(box, (x, y))
-        pygame.draw.rect(screen, COLOR_UI_ACCENT, (x, y, w, h), 2, border_radius=6)
+        zeichnen.rect(screen, COLOR_UI_ACCENT, (x, y, w, h), 2, border_radius=6)
         screen.blit(surf, (x + pad, y + pad // 2))
 
     # -- Sidebar properties layout & rendering --------------------------
@@ -1379,8 +1380,8 @@ class EditorState(BaseState):
         x_start = 1500
         w = 420
         # Draw background panel
-        pygame.draw.rect(screen, _PANEL, (x_start, 0, w, SCREEN_HEIGHT))
-        pygame.draw.line(screen, _PANEL_BORDER, (x_start, 0), (x_start, SCREEN_HEIGHT), 2)
+        zeichnen.rect(screen, _PANEL, (x_start, 0, w, SCREEN_HEIGHT))
+        zeichnen.line(screen, _PANEL_BORDER, (x_start, 0), (x_start, SCREEN_HEIGHT), 2)
         
         # --- 1. HELP / BEDIENHILFE ---
         theme.text(screen, tr("BEDIENHILFE"), theme.LABEL, COLOR_UI_ACCENT, (x_start + 20, 20))
@@ -1416,7 +1417,7 @@ class EditorState(BaseState):
             ry += 24
             
         # Divider 1
-        pygame.draw.line(screen, _PANEL_BORDER, (x_start, 350), (SCREEN_WIDTH, 350), 2)
+        zeichnen.line(screen, _PANEL_BORDER, (x_start, 350), (SCREEN_WIDTH, 350), 2)
         
         # --- 2. PROPERTIES / OPTIONS ---
         theme.text(screen, tr("EIGENSCHAFTEN"), theme.LABEL, COLOR_UI_ACCENT, (x_start + 20, 375))
@@ -1439,8 +1440,8 @@ class EditorState(BaseState):
             
             # Draw row background
             bg_color = (48, 42, 20) if is_active else (26, 28, 36)
-            pygame.draw.rect(screen, bg_color, rect, border_radius=6)
-            pygame.draw.rect(screen, COLOR_UI_ACCENT if is_active else (56, 60, 76), rect, 2, border_radius=6)
+            zeichnen.rect(screen, bg_color, rect, border_radius=6)
+            zeichnen.rect(screen, COLOR_UI_ACCENT if is_active else (56, 60, 76), rect, 2, border_radius=6)
             
             # Label
             screen.blit(self.f_small.render(label, True, (170, 174, 190)), (rect.x + 16, rect.y + 16))
@@ -1465,20 +1466,20 @@ class EditorState(BaseState):
                 
                 # Render left button `<`
                 b_bg_l = (110, 90, 35) if hover_left else ((48, 42, 20) if is_active else (36, 40, 52))
-                pygame.draw.rect(screen, b_bg_l, btn_left, border_radius=4)
-                pygame.draw.rect(screen, COLOR_UI_ACCENT if hover_left else (70, 75, 95), btn_left, 1, border_radius=4)
+                zeichnen.rect(screen, b_bg_l, btn_left, border_radius=4)
+                zeichnen.rect(screen, COLOR_UI_ACCENT if hover_left else (70, 75, 95), btn_left, 1, border_radius=4)
                 lbl_l = self.f_small.render("‹", True, COLOR_UI_ACCENT if hover_left else COLOR_UI_TEXT)
                 screen.blit(lbl_l, lbl_l.get_rect(center=btn_left.center))
                 
                 # Render right button `>`
                 b_bg_r = (110, 90, 35) if hover_right else ((48, 42, 20) if is_active else (36, 40, 52))
-                pygame.draw.rect(screen, b_bg_r, btn_right, border_radius=4)
-                pygame.draw.rect(screen, COLOR_UI_ACCENT if hover_right else (70, 75, 95), btn_right, 1, border_radius=4)
+                zeichnen.rect(screen, b_bg_r, btn_right, border_radius=4)
+                zeichnen.rect(screen, COLOR_UI_ACCENT if hover_right else (70, 75, 95), btn_right, 1, border_radius=4)
                 lbl_r = self.f_small.render("›", True, COLOR_UI_ACCENT if hover_right else COLOR_UI_TEXT)
                 screen.blit(lbl_r, lbl_r.get_rect(center=btn_right.center))
             
         # Divider 2
-        pygame.draw.line(screen, _PANEL_BORDER, (x_start, 670), (SCREEN_WIDTH, 670), 2)
+        zeichnen.line(screen, _PANEL_BORDER, (x_start, 670), (SCREEN_WIDTH, 670), 2)
         
         # --- 3. BUTTONS (Save, Publish/Unpublish, Cancel, Delete) ---
         if self.draft and self.draft.is_published:
@@ -1498,8 +1499,8 @@ class EditorState(BaseState):
             rect = rects[idx]
             is_active = (getattr(self, "_props_focused", False) and self._props_field == idx) or rect.collidepoint(mx, my)
             
-            pygame.draw.rect(screen, active_col if is_active else base_col, rect, border_radius=6)
-            pygame.draw.rect(screen, (255, 255, 255) if is_active else (80, 100, 120), rect, 2, border_radius=6)
+            zeichnen.rect(screen, active_col if is_active else base_col, rect, border_radius=6)
+            zeichnen.rect(screen, (255, 255, 255) if is_active else (80, 100, 120), rect, 2, border_radius=6)
             
             txt_surf = self.f_body.render(text, True, (255, 255, 255))
             screen.blit(txt_surf, txt_surf.get_rect(center=rect.center))
@@ -1586,7 +1587,7 @@ class EditorState(BaseState):
         self._draw_tab_bar(screen)
 
         # Translucent overlay to darken background like in other menus
-        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         dark.fill((0, 0, 0, 150))
         screen.blit(dark, (0, 0))
 
@@ -1605,8 +1606,8 @@ class EditorState(BaseState):
             entry = self._projects[i]
             selected = (i == self._browse_idx)
             bg = (48, 42, 20) if selected else (28, 31, 40)
-            pygame.draw.rect(screen, bg, rect, border_radius=8)
-            pygame.draw.rect(screen, COLOR_UI_ACCENT if selected else (56, 60, 76),
+            zeichnen.rect(screen, bg, rect, border_radius=8)
+            zeichnen.rect(screen, COLOR_UI_ACCENT if selected else (56, 60, 76),
                              rect, 2, border_radius=8)
             prefix = "+ " if entry["type"] == "new" else ""
             name_col = COLOR_UI_ACCENT if entry["type"] == "new" else COLOR_UI_TEXT
@@ -1624,14 +1625,14 @@ class EditorState(BaseState):
             sb_x = SCREEN_WIDTH // 2 + 420
             sb_y = 250
             sb_h = self._BROWSE_VISIBLE * 88 - 14  # 690
-            pygame.draw.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
+            zeichnen.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
 
             handle_h = max(30, int(sb_h * (self._BROWSE_VISIBLE / total)))
             max_scroll = total - self._BROWSE_VISIBLE
             scroll_pct = self._browse_scroll / max_scroll if max_scroll > 0 else 0
             handle_y = sb_y + int(scroll_pct * (sb_h - handle_h))
 
-            pygame.draw.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
+            zeichnen.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
 
         hint_text = hints.bar(("confirm", tr("Öffnen")), ("back", tr("Zurück")))
         hint = self.f_small.render(hint_text, True, (150, 150, 165))
@@ -1653,14 +1654,14 @@ class EditorState(BaseState):
         ]
 
     def _draw_dirty_prompt(self, screen: pygame.Surface) -> None:
-        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 180))
         screen.blit(overlay, (0, 0))
         w, h = 560, 220
         x = SCREEN_WIDTH // 2 - w // 2
         y = SCREEN_HEIGHT // 2 - h // 2
-        pygame.draw.rect(screen, (26, 28, 36), (x, y, w, h), border_radius=10)
-        pygame.draw.rect(screen, COLOR_UI_ACCENT, (x, y, w, h), 2, border_radius=10)
+        zeichnen.rect(screen, (26, 28, 36), (x, y, w, h), border_radius=10)
+        zeichnen.rect(screen, COLOR_UI_ACCENT, (x, y, w, h), 2, border_radius=10)
         t1 = self.f_title.render(tr("Ungespeicherte Änderungen"), True, COLOR_UI_TEXT)
         screen.blit(t1, t1.get_rect(midtop=(x + w // 2, y + 34)))
         t2 = self.f_body.render(tr("Entwurf speichern, bevor du gehst?"), True, (180, 184, 198))
@@ -1670,8 +1671,8 @@ class EditorState(BaseState):
         focus = getattr(self, "_dirty_focus", 0)
         for i, (rect, label, base, hot) in enumerate(self._dirty_button_rects()):
             hover = rect.collidepoint(mx, my) or i == focus
-            pygame.draw.rect(screen, hot if hover else base, rect, border_radius=6)
-            pygame.draw.rect(screen, (255, 255, 255) if hover else (120, 120, 130), rect, 2, border_radius=6)
+            zeichnen.rect(screen, hot if hover else base, rect, border_radius=6)
+            zeichnen.rect(screen, (255, 255, 255) if hover else (120, 120, 130), rect, 2, border_radius=6)
             txt = self.f_body.render(label, True, (255, 255, 255))
             screen.blit(txt, txt.get_rect(center=rect.center))
 
@@ -1680,6 +1681,6 @@ class EditorState(BaseState):
         pulse = 0.5 + 0.5 * math.sin(self._time * 8.0)
         color = (0, 180, 255)
         # Draw outer glowing ring
-        pygame.draw.circle(screen, color, (cx, cy), int(12 + 4 * pulse), 2)
+        zeichnen.circle(screen, color, (cx, cy), int(12 + 4 * pulse), 2)
         # Draw inner dot
-        pygame.draw.circle(screen, color, (cx, cy), 3)
+        zeichnen.circle(screen, color, (cx, cy), 3)

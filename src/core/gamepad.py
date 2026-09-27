@@ -11,6 +11,7 @@ from __future__ import annotations
 import pygame
 from typing import List, Tuple, Optional
 from src.core.settings import SCREEN_WIDTH
+from src.ui import zeichnen, leinwand
 
 # Button mapping (Xbox layout)
 BTN_A = 0          # Cross / A - Confirm
@@ -317,13 +318,13 @@ class GamepadManager:
                 cx = x
 
             rect = pygame.Rect(cx, y, box_w, 60)
-            surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
             bg_col = (18, 20, 26, int(220 * opacity))
             border_col = (60, 200, 90, int(255 * opacity)) if notif["is_connect"] else (210, 60, 60, int(255 * opacity))
 
-            pygame.draw.rect(surf, bg_col, (0, 0, rect.width, rect.height), border_radius=10)
-            pygame.draw.rect(surf, border_col, (0, 0, rect.width, rect.height), 2, border_radius=10)
-            pygame.draw.circle(surf, border_col, (25, rect.height // 2), 6)
+            zeichnen.rect(surf, bg_col, (0, 0, rect.width, rect.height), border_radius=10)
+            zeichnen.rect(surf, border_col, (0, 0, rect.width, rect.height), 2, border_radius=10)
+            zeichnen.circle(surf, border_col, (25, rect.height // 2), 6)
 
             screen.blit(surf, (rect.x, rect.y))
 

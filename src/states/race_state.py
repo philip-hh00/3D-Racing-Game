@@ -23,6 +23,7 @@ from src.physics.checkpoint import Checkpoint
 from src.states.race_manager import RaceManager
 from src.core.i18n import tr
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -816,7 +817,7 @@ class RaceState(BaseState):
         if frame is not None:
             vid.update(1.0 / 60.0)
             screen.blit(frame, (0, 0))
-            dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             dark.fill((0, 0, 0, 150))
             screen.blit(dark, (0, 0))
         else:
@@ -832,11 +833,11 @@ class RaceState(BaseState):
 
         bar_w, bar_h = 620, 30
         bx, by = cx - bar_w // 2, cy + 10
-        pygame.draw.rect(screen, (40, 44, 56), (bx, by, bar_w, bar_h), border_radius=8)
+        zeichnen.rect(screen, (40, 44, 56), (bx, by, bar_w, bar_h), border_radius=8)
         fill_w = int(bar_w * stand)
         if fill_w > 0:
-            pygame.draw.rect(screen, theme.ACCENT, (bx, by, fill_w, bar_h), border_radius=8)
-        pygame.draw.rect(screen, theme.BORDER, (bx, by, bar_w, bar_h), 2, border_radius=8)
+            zeichnen.rect(screen, theme.ACCENT, (bx, by, fill_w, bar_h), border_radius=8)
+        zeichnen.rect(screen, theme.BORDER, (bx, by, bar_w, bar_h), 2, border_radius=8)
 
         theme.text(screen, tr(text), theme.HINT, theme.TEXT_DIM, (cx, by + 56), center=True)
         display.bild_abschliessen()
@@ -2485,7 +2486,7 @@ class RaceState(BaseState):
                 if hud_obj:
                     sub = screen.subsurface((x, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
                     hud_obj.render(sub, scale=0.75)
-            pygame.draw.line(screen, (12, 12, 18),
+            zeichnen.line(screen, (12, 12, 18),
                              (SCREEN_WIDTH // 2, 0), (SCREEN_WIDTH // 2, SCREEN_HEIGHT), 4)
         else:
             if DEBUG and self.physics_world:
@@ -2522,11 +2523,11 @@ class RaceState(BaseState):
             if frame is not None:
                 vid.update(1.0 / 60.0)
                 screen.blit(frame, (0, 0))
-                dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 dark.fill((0, 0, 0, 150))
                 screen.blit(dark, (0, 0))
             else:
-                ov = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                ov = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 ov.fill((0, 0, 0, 235))
                 screen.blit(ov, (0, 0))
 
@@ -2539,15 +2540,15 @@ class RaceState(BaseState):
             # nicht eingefroren ist.
             bar_w, bar_h = 620, 30
             bx, by = cx - bar_w // 2, cy + 10
-            pygame.draw.rect(screen, (40, 44, 56), (bx, by, bar_w, bar_h), border_radius=8)
+            zeichnen.rect(screen, (40, 44, 56), (bx, by, bar_w, bar_h), border_radius=8)
             knopf_w = 160
             pos = (_t.time() * 220) % (bar_w + knopf_w) - knopf_w
             links = max(bx, bx + int(pos))
             rechts = min(bx + bar_w, bx + int(pos) + knopf_w)
             if rechts > links:
-                pygame.draw.rect(screen, theme.ACCENT, (links, by, rechts - links, bar_h),
+                zeichnen.rect(screen, theme.ACCENT, (links, by, rechts - links, bar_h),
                                  border_radius=8)
-            pygame.draw.rect(screen, theme.BORDER, (bx, by, bar_w, bar_h), 2, border_radius=8)
+            zeichnen.rect(screen, theme.BORDER, (bx, by, bar_w, bar_h), 2, border_radius=8)
 
             theme.text(screen, tr("Rennen wird vorbereitet"), theme.HINT, theme.TEXT_DIM,
                        (cx, by + 56), center=True)
@@ -2562,12 +2563,12 @@ class RaceState(BaseState):
         # uses self.paused for its own overlay and has no race pause menu).
         if self.paused and not getattr(self, "_is_edit_pause", False):
             if self._pause_view == "settings" and self._pause_settings:
-                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 220))
                 screen.blit(overlay, (0, 0))
                 self._pause_settings.draw(screen, pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
             elif self._pause_view == "standings":
-                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
                 screen.blit(overlay, (0, 0))
 
@@ -2583,7 +2584,7 @@ class RaceState(BaseState):
                 tx = SCREEN_WIDTH // 2 - 400
                 top = SCREEN_HEIGHT // 2 - 240
                 
-                pygame.draw.line(screen, theme.BORDER, (tx, top + 34), (tx + 800, top + 34), 2)
+                zeichnen.line(screen, theme.BORDER, (tx, top + 34), (tx + 800, top + 34), 2)
                 
                 cols = [
                     (tr("POS"), tx + 10),
@@ -2605,7 +2606,7 @@ class RaceState(BaseState):
                 for label, x in cols:
                     theme.text(screen, label, theme.LABEL, theme.TEXT_DIM, (x, top + 8))
                     
-                pygame.draw.line(screen, theme.BORDER, (tx, top + 42), (tx + 800, top + 42), 1)
+                zeichnen.line(screen, theme.BORDER, (tx, top + 42), (tx + 800, top + 42), 1)
                 
                 standings_rows = []
                 leader_time = None
@@ -2675,10 +2676,10 @@ class RaceState(BaseState):
                     
                     rrect = pygame.Rect(tx, y - 4, 800, 48)
                     if hl is not None:
-                        s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                        s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                         s.fill((*theme.PANEL_SEL, 200))
                         screen.blit(s, rrect.topleft)
-                        pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                        zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
 
                     pos_str = str(row["pos"])
                     pcol = medals.get(row["pos"], theme.TEXT)
@@ -2696,7 +2697,7 @@ class RaceState(BaseState):
                     self._pause_group.draw(screen)
 
             elif getattr(self, "_pause_view", None) == "multiplayer_pause" and self._pause_group:
-                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
                 screen.blit(overlay, (0, 0))
 
@@ -2726,7 +2727,7 @@ class RaceState(BaseState):
                 self._pause_group.draw(screen)
 
             elif self._pause_group:
-                overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
                 screen.blit(overlay, (0, 0))
 
@@ -2742,7 +2743,7 @@ class RaceState(BaseState):
         if getattr(self, "_resume_countdown_timer", 0.0) > 0.0:
             
             # Draw semi-transparent overlay
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
             
@@ -2770,7 +2771,7 @@ class RaceState(BaseState):
         # kurzen Nachlaufzeit zieht ein schwarzer Schleier auf (08.08.2026).
         alpha = self._outro_alpha()
         if alpha > 0:
-            schleier = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            schleier = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             schleier.fill((0, 0, 0, alpha))
             screen.blit(schleier, (0, 0))
 

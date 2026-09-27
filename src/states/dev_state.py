@@ -29,6 +29,7 @@ from src.ai.difficulty import get_difficulty, save_difficulty, load_difficulty
 from src.core import keybindings as kb
 from src.core import display
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -163,10 +164,10 @@ class DevState(RaceState):
             }
 
         self._fonts = {
-            "title": pygame.font.Font(None, 40),
-            "body": pygame.font.Font(None, 26),
-            "small": pygame.font.Font(None, 22),
-            "big": pygame.font.Font(None, 64),
+            "title": theme.font_standard(40),
+            "body": theme.font_standard(26),
+            "small": theme.font_standard(22),
+            "big": theme.font_standard(64),
         }
 
         # Skip the countdown – race immediately, never auto-finish.
@@ -554,7 +555,7 @@ class DevState(RaceState):
         if not self.track:
             return
         for wp in self.track.waypoints:
-            pygame.draw.circle(screen, (90, 90, 110), self._w2s((wp.x, wp.y)), 2)
+            zeichnen.circle(screen, (90, 90, 110), self._w2s((wp.x, wp.y)), 2)
 
     def _draw_solver_line(self, screen: pygame.Surface) -> None:
         """Draw the individual vehicle racing lines, colored by their speed profiles."""
@@ -585,10 +586,10 @@ class DevState(RaceState):
                     r = int(255 * (1.0 - ratio) * alpha_mult)
                     g = int((60 + 180 * ratio) * alpha_mult)
                     b = int((60 + 50 * ratio) * alpha_mult)
-                    pygame.draw.line(screen, (r, g, b), pts[i], pts[(i + 1) % n], width)
+                    zeichnen.line(screen, (r, g, b), pts[i], pts[(i + 1) % n], width)
             else:
                 col = (60, 255, 90) if is_target else (100, 180, 120)
-                pygame.draw.lines(screen, col, True, pts, width)
+                zeichnen.lines(screen, col, True, pts, width)
 
         # Show telemetry details for the active camera target at the top left
         if target and target.controller.racing_line:
@@ -618,8 +619,8 @@ class DevState(RaceState):
         for ai in self.ai_vehicles:
             c = ai.controller
             tgt = self._w2s(c.dbg_look)
-            pygame.draw.circle(screen, (255, 180, 0), tgt, 5, 1)
-            pygame.draw.line(screen, (255, 180, 0), self._w2s(ai.position), tgt, 1)
+            zeichnen.circle(screen, (255, 180, 0), tgt, 5, 1)
+            zeichnen.line(screen, (255, 180, 0), self._w2s(ai.position), tgt, 1)
             if self.show_sensors:
                 self._draw_whiskers(screen, ai)
 
@@ -635,13 +636,13 @@ class DevState(RaceState):
             end = (origin[0] + math.cos(a) * reach, origin[1] + math.sin(a) * reach)
             hit = c._raycast_wall_distance(origin, end)
             color = (255, 60, 60) if hit is not None else (60, 200, 60)
-            pygame.draw.line(screen, color, self._w2s(origin), self._w2s(end), 1)
+            zeichnen.line(screen, color, self._w2s(origin), self._w2s(end), 1)
 
     def _panel(self, screen, rect, alpha=185) -> None:
-        surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
         surf.fill((10, 12, 22, alpha))
         screen.blit(surf, rect.topleft)
-        pygame.draw.rect(screen, (60, 80, 120), rect, 1)
+        zeichnen.rect(screen, (60, 80, 120), rect, 1)
 
     def _render_wrapped_text(self, screen: pygame.Surface, text: str, x: int, y: int, max_w: int, font: pygame.font.Font, color: tuple[int, int, int]) -> int:
         words = text.split(' ')
@@ -730,7 +731,7 @@ class DevState(RaceState):
                 screen.blit(range_surf, (tip_rect.x + 16, tip_rect.y + 38))
                 
                 # Divider line
-                pygame.draw.line(screen, (60, 80, 120), (tip_rect.x + 10, tip_rect.y + 58), (tip_rect.right - 10, tip_rect.y + 58), 1)
+                zeichnen.line(screen, (60, 80, 120), (tip_rect.x + 10, tip_rect.y + 58), (tip_rect.right - 10, tip_rect.y + 58), 1)
                 
                 # Description
                 y_text = tip_rect.y + 68
@@ -787,7 +788,7 @@ class DevState(RaceState):
         surf = self._fonts["title"].render(self._toast_text, True, (120, 255, 120))
         surf.set_alpha(alpha)
         r = surf.get_rect(center=(SCREEN_WIDTH // 2, 140))
-        bg = pygame.Surface((r.width + 40, r.height + 16), pygame.SRCALPHA)
+        bg = leinwand.flaeche((r.width + 40, r.height + 16), pygame.SRCALPHA)
         bg.fill((10, 12, 22, min(200, alpha)))
         screen.blit(bg, (r.x - 20, r.y - 8))
         screen.blit(surf, r)

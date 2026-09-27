@@ -20,6 +20,7 @@ verwendet.
 from __future__ import annotations
 
 import numpy as np
+import pygame
 
 try:                                             # pragma: no cover - Importpfad
     import moderngl
@@ -91,7 +92,7 @@ def direkt_lesbar(flaeche) -> bool:
     das Bild käme schräg heraus.
     """
     return (flaeche.get_bitsize() == 32
-            and flaeche.get_pitch() == flaeche.get_width() * 4)
+            and flaeche.get_pitch() == pygame.Surface.get_width(flaeche) * 4)
 
 
 def _byteplatz(schiebung: int) -> int:
@@ -135,9 +136,11 @@ class Ueberlagerung:
             (self._vbo, "2f 2f", "in_position", "in_uv"),
         ])
         self._textur = ctx.texture(groesse, 4)
-        # Keine Glättung: die Fläche hat genau die Auflösung, in der sie
-        # gezeichnet wurde. Interpolation würde nur Text verwaschen.
-        self._textur.filter = (moderngl.NEAREST, moderngl.NEAREST)
+        # Linear: in 1920×1080 trifft jeder Bildpunkt genau ein Texel, dort
+        # ist das dasselbe wie NEAREST. In jeder anderen Fenstergröße aber
+        # verdoppelte NEAREST einzelne Pixel — Schrift sah treppig aus, man
+        # konnte die Pixel zählen (gemeldet 27.09.2026).
+        self._textur.filter = (moderngl.LINEAR, moderngl.LINEAR)
         self._programm["flaeche"].value = 0
         self._programm["bgra"].value = False
 
@@ -155,10 +158,13 @@ class Ueberlagerung:
         Grafikkarte mit einer halben Millisekunde für die ganze Szene
         auskam.
         """
-        if tuple(flaeche.get_size()) != tuple(self._textur.size):
-            raise ValueError(
-                f"Flaeche ist {flaeche.get_size()}, Textur {self._textur.size} - "
-                "beide muessen die virtuelle Aufloesung haben")
+        groesse = tuple(pygame.Surface.get_size(flaeche))    # Bildpunkte, nicht Raster
+        if groesse != tuple(self._textur.size):
+            # Das Fenster hat die Größe gewechselt, und die Oberfläche zeichnet
+            # in echter Auflösung (src/ui/leinwand.py): Textur mitziehen.
+            self._textur.release()
+            self._textur = self._ctx.texture(groesse, 4)
+            self._textur.filter = (moderngl.LINEAR, moderngl.LINEAR)
         if direkt_lesbar(flaeche):
             self._programm["bgra"].value = _ist_bgra(flaeche)
             self._textur.write(memoryview(flaeche.get_view("0")))

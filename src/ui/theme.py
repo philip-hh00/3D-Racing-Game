@@ -6,6 +6,7 @@ here so the whole game shares one visual language.
 from __future__ import annotations
 
 import pygame
+from src.ui import zeichnen, leinwand  # noqa: E402
 
 # --- Palette -------------------------------------------------------------
 ACCENT       = (255, 180, 0)     # primary orange
@@ -73,7 +74,7 @@ ZEIGER = "►"
 #: Beide Richtungen einer Achse. ``↕`` fehlt der Schrift, die einzelnen Pfeile nicht.
 HOCH_RUNTER = "↑↓"
 
-_font_cache: dict[int, pygame.font.Font] = {}
+_font_cache: dict = {}
 
 
 def _load_font(size: int) -> pygame.font.Font:
@@ -116,11 +117,52 @@ def font(size: int) -> pygame.font.Font:
     if hasattr(size, "render"):
         return size
 
-    f = _font_cache.get(size)
+    # Je Skala eine eigene Schrift: in 1440p oder 4K wird in echter Größe
+    # gerendert (src/ui/leinwand.py), gemessen aber weiter im Raster.
+    from src.ui import leinwand
+    s = leinwand.skala()
+    schluessel = (size, s)
+    f = _font_cache.get(schluessel)
     if f is None:
-        f = _load_font(size)
-        _font_cache[size] = f
+        f = _load_font(size) if s == 1.0 else leinwand.Schrift(_load_font, size, s)
+        _font_cache[schluessel] = f
     return f
+
+
+_standard_cache: dict = {}
+
+
+def _standard_jetzt(size: int):
+    from src.ui import leinwand
+    s = leinwand.skala()
+    schluessel = (int(size), s)
+    f = _standard_cache.get(schluessel)
+    if f is None:
+        erzeugen = lambda px: pygame.font.Font(None, px)  # noqa: E731
+        f = erzeugen(int(size)) if s == 1.0 else leinwand.Schrift(erzeugen, int(size), s)
+        _standard_cache[schluessel] = f
+    return f
+
+
+class _StandardSchrift:
+    """Die eingebaute pygame-Schrift, jedes Mal in der **aktuellen** Skala.
+
+    Viele Zustände legen ihre Schriften einmal im Konstruktor an — bevor das
+    Fenster seine endgültige Größe hat. Diese Hülle löst erst beim Zeichnen
+    auf, dadurch bleibt auch eine früh angelegte Schrift scharf.
+    """
+
+    def __init__(self, size: int) -> None:
+        self._size = int(size)
+
+    def __getattr__(self, name):
+        return getattr(_standard_jetzt(self._size), name)
+
+
+def font_standard(size: int):
+    """Die eingebaute pygame-Schrift (``pygame.font.Font(None, size)``) —
+    ebenfalls in echter Größe gerendert (src/ui/leinwand.py)."""
+    return _StandardSchrift(size)
 
 
 
@@ -134,7 +176,7 @@ def draw_background(screen: pygame.Surface) -> None:
     w, h = screen.get_size()
     grad = _grad_cache.get((w, h))
     if grad is None:
-        grad = pygame.Surface((1, h))
+        grad = leinwand.flaeche((1, h))
         for y in range(h):
             t = y / max(1, h - 1)
             grad.set_at((0, y), (
@@ -159,7 +201,7 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
     surf = _vignette_cache.get(key)
     if surf is None:
         w, h = size
-        surf = pygame.Surface(size, pygame.SRCALPHA)
+        surf = leinwand.flaeche(size, pygame.SRCALPHA)
         cx, cy = w / 2, h / 2
         maxd = (cx ** 2 + cy ** 2) ** 0.5
         # Coarse radial darkening (stepped rings — cheap and cached once).
@@ -168,7 +210,7 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
             for rx in range(0, w, step):
                 d = (((rx - cx) ** 2 + (ry - cy) ** 2) ** 0.5) / maxd
                 a = int(strength * (d ** 2))
-                pygame.draw.rect(surf, (0, 0, 0, a), (rx, ry, step, step))
+                zeichnen.rect(surf, (0, 0, 0, a), (rx, ry, step, step))
         _vignette_cache[key] = surf
     return surf
 
@@ -176,10 +218,10 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
 def panel(screen: pygame.Surface, rect: pygame.Rect, *, alpha: int = 205,
           border: tuple = BORDER, radius: int = 8, fill: tuple = PANEL) -> None:
     """Semi-transparent card with a border."""
-    surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
-    pygame.draw.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
+    surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
+    zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
     screen.blit(surf, rect.topleft)
-    pygame.draw.rect(screen, border, rect, 2, border_radius=radius)
+    zeichnen.rect(screen, border, rect, 2, border_radius=radius)
 
 
 def draw_input_badge(screen: pygame.Surface, topright: tuple[int, int]) -> None:
@@ -195,23 +237,23 @@ def draw_input_badge(screen: pygame.Surface, topright: tuple[int, int]) -> None:
     h = 34
     x = topright[0] - w
     y = topright[1]
-    box = pygame.Surface((w, h), pygame.SRCALPHA)
+    box = leinwand.flaeche((w, h), pygame.SRCALPHA)
     a = int(150 + 90 * pulse)
     box.fill((18, 20, 26, a))
     screen.blit(box, (x, y))
     border = ACCENT_HOT if pulse > 0.05 else BORDER
-    pygame.draw.rect(screen, border, (x, y, w, h), 2, border_radius=6)
+    zeichnen.rect(screen, border, (x, y, w, h), 2, border_radius=6)
     # glyph: keyboard = small rectangle w/ keys; controller = rounded body + sticks
     gx, gy = x + 8, y + h // 2
     col = ACCENT if pad else (150, 200, 255)
     if pad:
-        pygame.draw.rect(screen, col, (gx, gy - 5, 18, 11), border_radius=5)
-        pygame.draw.circle(screen, (18, 20, 26), (gx + 5, gy), 2)
-        pygame.draw.circle(screen, (18, 20, 26), (gx + 13, gy), 2)
+        zeichnen.rect(screen, col, (gx, gy - 5, 18, 11), border_radius=5)
+        zeichnen.circle(screen, (18, 20, 26), (gx + 5, gy), 2)
+        zeichnen.circle(screen, (18, 20, 26), (gx + 13, gy), 2)
     else:
-        pygame.draw.rect(screen, col, (gx, gy - 6, 18, 12), 1, border_radius=2)
+        zeichnen.rect(screen, col, (gx, gy - 6, 18, 12), 1, border_radius=2)
         for kx in (gx + 3, gx + 8, gx + 13):
-            pygame.draw.line(screen, col, (kx, gy - 3), (kx, gy - 3), 1)
+            zeichnen.line(screen, col, (kx, gy - 3), (kx, gy - 3), 1)
     screen.blit(surf, (x + pad_w, y + (h - surf.get_height()) // 2))
 
 

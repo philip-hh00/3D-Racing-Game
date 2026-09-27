@@ -14,6 +14,7 @@ import math
 import pygame
 
 from src.core.settings import SCREEN_HEIGHT
+from src.ui import zeichnen, leinwand
 
 
 class Minimap:
@@ -69,9 +70,9 @@ class Minimap:
         origin_y = self.PADDING + (avail_h - map_h) / 2.0
         self._offset = (origin_x, origin_y)
 
-        surf = pygame.Surface((self.PANEL_W, self.PANEL_H), pygame.SRCALPHA)
+        surf = leinwand.flaeche((self.PANEL_W, self.PANEL_H), pygame.SRCALPHA)
         surf.fill(self.BG_COLOR)
-        pygame.draw.rect(surf, self.BORDER_COLOR,
+        zeichnen.rect(surf, self.BORDER_COLOR,
                          (0, 0, self.PANEL_W, self.PANEL_H), 2, border_radius=8)
 
         # Road band: fill quads between outer & inner wall (no thick-line artifacts)
@@ -81,15 +82,15 @@ class Minimap:
             m = len(o)
             for i in range(m):
                 quad = [o[i], o[(i + 1) % m], n[(i + 1) % m], n[i]]
-                pygame.draw.polygon(surf, self.ROAD_COLOR, quad)
-            pygame.draw.polygon(surf, self.ROAD_EDGE, o, 1)
-            pygame.draw.polygon(surf, self.ROAD_EDGE, n, 1)
+                zeichnen.polygon(surf, self.ROAD_COLOR, quad)
+            zeichnen.polygon(surf, self.ROAD_EDGE, o, 1)
+            zeichnen.polygon(surf, self.ROAD_EDGE, n, 1)
         else:
             # Fallback: centerline strip via per-point circles (still artifact-free)
             cl = [self._world_to_map(p) for p in self.track.centerline]
             rad = max(2, int(getattr(self.track, "track_width", 120.0) * scale * 0.5))
             for p in cl:
-                pygame.draw.circle(surf, self.ROAD_COLOR, p, rad)
+                zeichnen.circle(surf, self.ROAD_COLOR, p, rad)
 
         # Start-/Ziellinie — quer ueber die Fahrbahn.
         #
@@ -100,8 +101,8 @@ class Minimap:
         linie = self.startlinie()
         if linie is not None:
             a, b = linie
-            pygame.draw.line(surf, (0, 0, 0), a, b, 4)          # Kontur
-            pygame.draw.line(surf, self.START_COLOR, a, b, 2)
+            zeichnen.line(surf, (0, 0, 0), a, b, 4)          # Kontur
+            zeichnen.line(surf, self.START_COLOR, a, b, 2)
 
         self._bg_cache = surf
 
@@ -168,8 +169,8 @@ class Minimap:
                     continue
             mx, my = self._world_to_map(pos)
             if v.id == player_id:
-                pygame.draw.circle(panel, (255, 40, 40), (mx, my), 5)
-                pygame.draw.circle(panel, (255, 255, 255), (mx, my), 5, 1)
+                zeichnen.circle(panel, (255, 40, 40), (mx, my), 5)
+                zeichnen.circle(panel, (255, 255, 255), (mx, my), 5, 1)
             else:
                 color = getattr(v, "minimap_color", None)
                 if color is None:
@@ -185,6 +186,6 @@ class Minimap:
                     color = getattr(cfg, "color_primary", None) or (0, 180, 220)
                 if isinstance(color, list):
                     color = tuple(color[:3])
-                pygame.draw.circle(panel, color, (mx, my), 4)
-                pygame.draw.circle(panel, (0, 0, 0), (mx, my), 4, 1)
+                zeichnen.circle(panel, color, (mx, my), 4)
+                zeichnen.circle(panel, (0, 0, 0), (mx, my), 4, 1)
         screen.blit(panel, self.pos)

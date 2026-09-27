@@ -11,6 +11,7 @@ from src.ui import theme
 from src.ui.widgets import Button
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
+from src.ui import zeichnen, leinwand
 
 _MEDAL = {1: (255, 215, 0), 2: (200, 205, 215), 3: (205, 140, 80)}
 
@@ -386,7 +387,7 @@ class ResultsPage(Page):
         for label, sx in ((tr("Rang"), x), (tr("Name"), x + 70),
                           (tr("Dieses Rennen"), x + 340), (tr("Gesamt"), x + 540)):
             theme.text(screen, label, theme.SMALL, theme.TEXT_FAINT, (sx, y))
-        pygame.draw.line(screen, theme.BORDER, (x, y + 24), (x + self.GP_SPALTE_W, y + 24), 1)
+        zeichnen.line(screen, theme.BORDER, (x, y + 24), (x + self.GP_SPALTE_W, y + 24), 1)
         y += 40
 
         for rang, eintrag in enumerate(
@@ -476,7 +477,7 @@ class ResultsPage(Page):
                 _present_by = {p.get("slot"): bool(p.get("on_results", False))
                                for p in _lp._players}
                 online_ready = (_ready_by, _raw_sorted, _present_by)
-        pygame.draw.line(screen, theme.BORDER, (lx, top + 34), (lx + breite, top + 34), 2)
+        zeichnen.line(screen, theme.BORDER, (lx, top + 34), (lx + breite, top + 34), 2)
 
         y = top + 50
         for row in self.rows[:6]:
@@ -485,10 +486,10 @@ class ResultsPage(Page):
             hl = (255, 165, 0) if is_p else ((60, 150, 255) if is_p2 else None)
             rrect = pygame.Rect(lx, y - 4, breite, 56)
             if hl is not None:
-                s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                 s.fill((*theme.PANEL_SEL, 200))
                 screen.blit(s, rrect.topleft)
-                pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
             pos = row.get("position", "-")
             pcol = _MEDAL.get(pos, theme.TEXT)
             dnf = row.get("dnf")
@@ -574,7 +575,7 @@ class ResultsPage(Page):
             cols = [("SEKTOR", 420), ("DEINE ZEIT", 720), ("GHOST", 1020), ("DIFFERENZ", 1320)]
             for label, x in cols:
                 theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top))
-            pygame.draw.line(screen, theme.BORDER, (400, top + 34), (1520, top + 34), 2)
+            zeichnen.line(screen, theme.BORDER, (400, top + 34), (1520, top + 34), 2)
 
             p_row = next((r for r in self.rows if r.get("is_player")), None)
             p_durations = []
@@ -616,7 +617,7 @@ class ResultsPage(Page):
 
             if p_row:
                 p_total = p_row.get("finish_time", 9999.0)
-                pygame.draw.line(screen, theme.BORDER, (400, total_y - 10), (1520, total_y - 10), 1)
+                zeichnen.line(screen, theme.BORDER, (400, total_y - 10), (1520, total_y - 10), 1)
 
                 theme.text(screen, tr("GESAMTZEIT"), theme.LABEL, theme.TEXT_DIM, (420, total_y))
                 theme.text(screen, _fmt(p_total) if not p_row.get("dnf") else "DNF", theme.BODY, theme.TEXT, (720, total_y))
@@ -632,7 +633,7 @@ class ResultsPage(Page):
                     ("SPIELER 2", 980), ("DIFF 2", 1180), ("GHOST", 1380)]
             for label, x in cols:
                 theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top))
-            pygame.draw.line(screen, theme.BORDER, (360, top + 34), (1560, top + 34), 2)
+            zeichnen.line(screen, theme.BORDER, (360, top + 34), (1560, top + 34), 2)
 
             p1_row = next((r for r in self.rows if r.get("is_player")), None)
             p2_row = next((r for r in self.rows if r.get("is_player2")), None)
@@ -685,7 +686,7 @@ class ResultsPage(Page):
             if self._scroll + max_visible < num_sectors:
                 theme.text(screen, "...", theme.BODY, theme.TEXT_DIM, (380, visible_top + max_visible * row_h))
 
-            pygame.draw.line(screen, theme.BORDER, (360, total_y - 10), (1560, total_y - 10), 1)
+            zeichnen.line(screen, theme.BORDER, (360, total_y - 10), (1560, total_y - 10), 1)
 
             theme.text(screen, tr("GESAMTZEIT"), theme.LABEL, theme.TEXT_DIM, (380, total_y))
 
@@ -742,7 +743,7 @@ class ResultsPage(Page):
         cols_a = [("FAHRER", ax + 20), ("FAHRZEUG", ax + 300), ("ZEIT", ax + 540)]
         for label, x in cols_a:
             theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top + 80))
-        pygame.draw.line(screen, theme.BORDER, (ax, top + 114), (ax + 700, top + 114), 2)
+        zeichnen.line(screen, theme.BORDER, (ax, top + 114), (ax + 700, top + 114), 2)
 
         # Draw Team B Table on the right (x0 = 1000, w = 700)
         bx = 1000
@@ -752,7 +753,7 @@ class ResultsPage(Page):
         cols_b = [("FAHRER", bx + 20), ("FAHRZEUG", bx + 300), ("ZEIT", bx + 540)]
         for label, x in cols_b:
             theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top + 80))
-        pygame.draw.line(screen, theme.BORDER, (bx, top + 114), (bx + 700, top + 114), 2)
+        zeichnen.line(screen, theme.BORDER, (bx, top + 114), (bx + 700, top + 114), 2)
 
         # Render rows
         y_a = top + 130
@@ -776,10 +777,10 @@ class ResultsPage(Page):
 
             rrect = pygame.Rect(tx, ty - 4, 700, 50)
             if hl is not None:
-                s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                 s.fill((*theme.PANEL_SEL, 200))
                 screen.blit(s, rrect.topleft)
-                pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
 
             dnf = row.get("dnf")
             name = str(row.get("name", ""))
@@ -823,12 +824,12 @@ class ResultsPage(Page):
             tx = 100
             top = 260
             theme.text(screen, tr("GESAMTWERTUNG"), theme.HEADER, theme.TEXT, (tx + 300, top), center=True)
-            pygame.draw.line(screen, theme.BORDER, (tx, top + 34), (tx + 600, top + 34), 2)
+            zeichnen.line(screen, theme.BORDER, (tx, top + 34), (tx + 600, top + 34), 2)
 
             cols = [("RANG", tx + 10), ("FAHRER", tx + 120), ("PUNKTE", tx + 480)]
             for label, x in cols:
                 theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top + 50))
-            pygame.draw.line(screen, theme.BORDER, (tx, top + 84), (tx + 600, top + 84), 1)
+            zeichnen.line(screen, theme.BORDER, (tx, top + 84), (tx + 600, top + 84), 1)
 
             y = top + 100
             for entry in standings[:6]:
@@ -843,10 +844,10 @@ class ResultsPage(Page):
 
                 rrect = pygame.Rect(tx, y - 4, 600, 50)
                 if hl is not None:
-                    s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                    s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                     s.fill((*theme.PANEL_SEL, 200))
                     screen.blit(s, rrect.topleft)
-                    pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                    zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
 
                 pcol = _MEDAL.get(rank, theme.TEXT)
                 theme.text(screen, str(rank), theme.BODY, pcol, (tx + 20, y))
@@ -869,22 +870,22 @@ class ResultsPage(Page):
             from src.core.settings import SCREEN_WIDTH
             # Draw boxes
             # P2: x = 800, y = 500, w = 220, h = 300
-            pygame.draw.rect(screen, (34, 38, 48), (800, 500, 220, 300), border_radius=8)
-            pygame.draw.rect(screen, (200, 205, 215), (800, 500, 220, 300), 3, border_radius=8)
+            zeichnen.rect(screen, (34, 38, 48), (800, 500, 220, 300), border_radius=8)
+            zeichnen.rect(screen, (200, 205, 215), (800, 500, 220, 300), 3, border_radius=8)
             theme.text(screen, "2", 120, (200, 205, 215), (910, 600), center=True)
             theme.text_fit(screen, p2_name, theme.HEADER, theme.TEXT, pygame.Rect(910 - 100, 395, 200, 40), center=True)
             theme.text(screen, tr("{p} Pkt").format(p=p2_pts), theme.BODY, theme.TEXT_DIM, (910, 450), center=True)
 
             # P1: x = 1060, y = 400, w = 240, h = 400
-            pygame.draw.rect(screen, (46, 44, 34), (1060, 400, 240, 400), border_radius=8)
-            pygame.draw.rect(screen, (255, 215, 0), (1060, 400, 240, 400), 4, border_radius=8)
+            zeichnen.rect(screen, (46, 44, 34), (1060, 400, 240, 400), border_radius=8)
+            zeichnen.rect(screen, (255, 215, 0), (1060, 400, 240, 400), 4, border_radius=8)
             theme.text(screen, "1", 140, (255, 215, 0), (1180, 500), center=True)
             theme.text_fit(screen, p1_name, 52, (255, 215, 0), pygame.Rect(1180 - 110, 272, 220, 45), center=True)
             theme.text(screen, tr("{p} Pkt").format(p=p1_pts), theme.BODY, theme.TEXT_DIM, (1180, 340), center=True)
 
             # P3: x = 1340, y = 560, w = 220, h = 240
-            pygame.draw.rect(screen, (38, 32, 28), (1340, 560, 220, 240), border_radius=8)
-            pygame.draw.rect(screen, (205, 140, 80), (1340, 560, 220, 240), 3, border_radius=8)
+            zeichnen.rect(screen, (38, 32, 28), (1340, 560, 220, 240), border_radius=8)
+            zeichnen.rect(screen, (205, 140, 80), (1340, 560, 220, 240), 3, border_radius=8)
             theme.text(screen, "3", 100, (205, 140, 80), (1450, 640), center=True)
             theme.text_fit(screen, p3_name, theme.HEADER, theme.TEXT, pygame.Rect(1450 - 100, 455, 200, 40), center=True)
             theme.text(screen, tr("{p} Pkt").format(p=p3_pts), theme.BODY, theme.TEXT_DIM, (1450, 510), center=True)
@@ -899,12 +900,12 @@ class ResultsPage(Page):
             ax = 160
             top = 280
             theme.text(screen, tr("RENNERGEBNIS"), theme.HEADER, theme.TEXT, (ax + 380, top), center=True)
-            pygame.draw.line(screen, theme.BORDER, (ax, top + 34), (ax + 760, top + 34), 2)
+            zeichnen.line(screen, theme.BORDER, (ax, top + 34), (ax + 760, top + 34), 2)
 
             cols_a = [("PLATZ", ax + 20), ("FAHRER", ax + 140), ("FAHRZEUG", ax + 360), ("ZEIT", ax + 540), ("PUNKTE", ax + 680)]
             for label, x in cols_a:
                 theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top + 50))
-            pygame.draw.line(screen, theme.BORDER, (ax, top + 84), (ax + 760, top + 84), 1)
+            zeichnen.line(screen, theme.BORDER, (ax, top + 84), (ax + 760, top + 84), 1)
 
             y = top + 100
             for row in self.rows[:6]:
@@ -914,10 +915,10 @@ class ResultsPage(Page):
 
                 rrect = pygame.Rect(ax, y - 4, 760, 50)
                 if hl is not None:
-                    s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                    s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                     s.fill((*theme.PANEL_SEL, 200))
                     screen.blit(s, rrect.topleft)
-                    pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                    zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
 
                 pos = row.get("position", "-")
                 pcol = _MEDAL.get(pos, theme.TEXT)
@@ -937,12 +938,12 @@ class ResultsPage(Page):
             bx = 1000
             top = 280
             theme.text(screen, tr("GESAMTWERTUNG"), theme.HEADER, theme.TEXT, (bx + 380, top), center=True)
-            pygame.draw.line(screen, theme.BORDER, (bx, top + 34), (bx + 760, top + 34), 2)
+            zeichnen.line(screen, theme.BORDER, (bx, top + 34), (bx + 760, top + 34), 2)
 
             cols_b = [("RANG", bx + 20), ("FAHRER", bx + 140), ("PUNKTE", bx + 500), ("TENDENZ", bx + 640)]
             for label, x in cols_b:
                 theme.text(screen, tr(label), theme.LABEL, theme.TEXT_DIM, (x, top + 50))
-            pygame.draw.line(screen, theme.BORDER, (bx, top + 84), (bx + 760, top + 84), 1)
+            zeichnen.line(screen, theme.BORDER, (bx, top + 84), (bx + 760, top + 84), 1)
 
             standings = gp.get_standings()
             y = top + 100
@@ -958,10 +959,10 @@ class ResultsPage(Page):
 
                 rrect = pygame.Rect(bx, y - 4, 760, 50)
                 if hl is not None:
-                    s = pygame.Surface(rrect.size, pygame.SRCALPHA)
+                    s = leinwand.flaeche(rrect.size, pygame.SRCALPHA)
                     s.fill((*theme.PANEL_SEL, 200))
                     screen.blit(s, rrect.topleft)
-                    pygame.draw.rect(screen, hl, rrect, 2, border_radius=6)
+                    zeichnen.rect(screen, hl, rrect, 2, border_radius=6)
 
                 pcol = _MEDAL.get(rank, theme.TEXT)
                 theme.text(screen, str(rank), theme.BODY, pcol, (bx + 20, y))

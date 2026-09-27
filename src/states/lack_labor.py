@@ -24,6 +24,7 @@ import pygame
 
 from src.core import display, lack
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 #: Arbeitsbreite der Laborvorschau — Kompromiss aus Detail und Reaktionszeit.
 BREITE_LABOR = 640
@@ -293,7 +294,7 @@ class LackLabor:
                           label, wert, name)
             y += 62
 
-        pygame.draw.line(screen, (46, 50, 62), (r.x + 16, y + 2), (r.right - 16, y + 2), 1)
+        zeichnen.line(screen, (46, 50, 62), (r.x + 16, y + 2), (r.right - 16, y + 2), 1)
         y += 16
 
         # Verfahren zuerst — es entscheidet, welche Regler darunter überhaupt wirken.
@@ -340,8 +341,8 @@ class LackLabor:
         return True
 
     def _stepper(self, screen, r: pygame.Rect, label: str, wert: str, name: str) -> None:
-        pygame.draw.rect(screen, theme.PANEL_LIGHT, r, border_radius=8)
-        pygame.draw.rect(screen, theme.BORDER, r, 2, border_radius=8)
+        zeichnen.rect(screen, theme.PANEL_LIGHT, r, border_radius=8)
+        zeichnen.rect(screen, theme.BORDER, r, 2, border_radius=8)
         sz = 42
         links = pygame.Rect(r.right - min(250, r.width // 2), r.y + 6, sz, r.height - 12)
         rechts = pygame.Rect(r.right - sz - 6, r.y + 6, sz, r.height - 12)
@@ -371,26 +372,26 @@ class LackLabor:
         theme.text(screen, tr(label), theme.HINT, farbe_text, (r.x, r.y))
         theme.text(screen, wert, theme.HINT, farbe_wert, (r.right, r.y), topright=True)
         bar = pygame.Rect(r.x, r.y + 26, r.width, 8)
-        pygame.draw.rect(screen, (30, 33, 44), bar, border_radius=4)
-        pygame.draw.rect(screen, (52, 56, 70), bar, 1, border_radius=4)
+        zeichnen.rect(screen, (30, 33, 44), bar, border_radius=4)
+        zeichnen.rect(screen, (52, 56, 70), bar, 1, border_radius=4)
         fw = int(bar.width * max(0.0, min(1.0, anteil)))
         if fw > 0:
-            pygame.draw.rect(screen, (theme.ACCENT if aktiv else theme.ACCENT_DIM)
+            zeichnen.rect(screen, (theme.ACCENT if aktiv else theme.ACCENT_DIM)
                              if benutzt else theme.DISABLED,
                              (bar.x, bar.y, fw, bar.height), border_radius=4)
         knauf = pygame.Rect(0, 0, 8, 18)
         knauf.center = (bar.x + fw, bar.centery)
-        pygame.draw.rect(screen, (theme.ACCENT_HOT if aktiv else theme.TEXT_DIM)
+        zeichnen.rect(screen, (theme.ACCENT_HOT if aktiv else theme.TEXT_DIM)
                          if benutzt else theme.DISABLED, knauf, border_radius=3)
         if aktiv:
-            pygame.draw.polygon(screen, theme.ACCENT,
+            zeichnen.polygon(screen, theme.ACCENT,
                                 [(r.x - 18, r.y + 4), (r.x - 8, r.y + 11),
                                  (r.x - 18, r.y + 18)])
 
     def _pfeilknopf(self, screen, r: pygame.Rect, glyph: str, an: bool = True) -> None:
         hover = an and r.collidepoint(display.mouse_pos())
-        pygame.draw.rect(screen, (46, 50, 62) if hover else (32, 36, 46), r, border_radius=8)
-        pygame.draw.rect(screen, theme.ACCENT_HOT if hover else
+        zeichnen.rect(screen, (46, 50, 62) if hover else (32, 36, 46), r, border_radius=8)
+        zeichnen.rect(screen, theme.ACCENT_HOT if hover else
                          (theme.BORDER_LIGHT if an else theme.DISABLED), r, 2,
                          border_radius=8)
         theme.text(screen, glyph, theme.BODY,
@@ -406,16 +407,16 @@ class LackLabor:
         else:
             fill = (44, 38, 18) if stil == "primary" else (32, 36, 46)
             rand = theme.ACCENT if stil == "primary" else theme.BORDER_LIGHT
-        pygame.draw.rect(screen, fill, r, border_radius=8)
-        pygame.draw.rect(screen, rand, r, 2, border_radius=8)
+        zeichnen.rect(screen, fill, r, border_radius=8)
+        zeichnen.rect(screen, rand, r, 2, border_radius=8)
         theme.text_fit(screen, tr(label), theme.HINT, theme.TEXT,
                        r.inflate(-12, 0), center=True)
 
     # -- Bildfelder -----------------------------------------------------
     def _feld(self, screen, r: pygame.Rect, titel: str,
               bild: pygame.Surface | None, rand, *, unter: str = "") -> None:
-        pygame.draw.rect(screen, (10, 12, 20), r, border_radius=6)
-        pygame.draw.rect(screen, rand, r, 1, border_radius=6)
+        zeichnen.rect(screen, (10, 12, 20), r, border_radius=6)
+        zeichnen.rect(screen, rand, r, 1, border_radius=6)
         theme.text(screen, titel, theme.HINT, theme.TEXT_DIM, (r.x + 12, r.y + 10))
         if bild is not None:
             innen = pygame.Rect(r.x + 10, r.y + 44, r.width - 20, r.height - 80)
@@ -432,8 +433,8 @@ class LackLabor:
                        (r.x + 12, r.bottom - 26), max_w=r.width - 24)
 
     def _histogramm(self, screen, r: pygame.Rect) -> None:
-        pygame.draw.rect(screen, (10, 12, 20), r, border_radius=6)
-        pygame.draw.rect(screen, (70, 90, 130), r, 1, border_radius=6)
+        zeichnen.rect(screen, (10, 12, 20), r, border_radius=6)
+        zeichnen.rect(screen, (70, 90, 130), r, 1, border_radius=6)
         theme.text(screen, "HELLIGKEIT DER SICHTBAREN PIXEL", theme.HINT,
                    theme.TEXT_DIM, (r.x + 12, r.y + 10))
         if self._lum is None or self._sichtbar is None or self._gewicht is None:
@@ -453,7 +454,7 @@ class LackLabor:
 
         gx, gy = r.x + 16, r.y + 52
         gw, gh = r.width - 32, r.height - 100
-        fenster = pygame.Surface((max(1, int((hmax - hmin) * gw)), gh), pygame.SRCALPHA)
+        fenster = leinwand.flaeche((max(1, int((hmax - hmin) * gw)), gh), pygame.SRCALPHA)
         fenster.fill((255, 180, 0, 22))
         screen.blit(fenster, (gx + int(hmin * gw), gy))
         bb = max(1, gw // _HISTO_KLASSEN - 1)
@@ -462,13 +463,13 @@ class LackLabor:
             h1 = int(gh * a_s[i] / hoch)
             h2 = int(gh * d_s[i] / hoch)
             if h1:
-                pygame.draw.rect(screen, (52, 56, 72), (bx, gy + gh - h1, bb, h1))
+                zeichnen.rect(screen, (52, 56, 72), (bx, gy + gh - h1, bb, h1))
             if h2:
-                pygame.draw.rect(screen, (150, 100, 235), (bx, gy + gh - h2, bb, h2))
-        pygame.draw.line(screen, (60, 64, 80), (gx, gy + gh), (gx + gw, gy + gh), 1)
+                zeichnen.rect(screen, (150, 100, 235), (bx, gy + gh - h2, bb, h2))
+        zeichnen.line(screen, (60, 64, 80), (gx, gy + gh), (gx + gw, gy + gh), 1)
         for wert, label in ((hmin, f"min {hmin:.2f}"), (hmax, f"max {hmax:.2f}")):
             lx = gx + int(wert * gw)
-            pygame.draw.line(screen, theme.ACCENT, (lx, gy - 8), (lx, gy + gh + 4), 2)
+            zeichnen.line(screen, theme.ACCENT, (lx, gy - 8), (lx, gy + gh + 4), 2)
             theme.text(screen, label, theme.SMALL, theme.ACCENT, (lx, gy + gh + 8),
                        center=True)
         theme.text(screen, "grau = alle Pixel      violett = in der Maske      (Wurzelskala)",

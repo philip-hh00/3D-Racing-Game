@@ -1,5 +1,5 @@
 """
-Relay server for 2D Racing Game — Online Multiplayer.
+Relay server for 3D-Racing-Game — Online Multiplayer.
 
 Handles:
   TCP  — Lobby management, JSON messages (length-prefixed), map transfer

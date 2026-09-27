@@ -20,6 +20,8 @@ from src.core.settings import (
 from src.entities.vehicle_factory import VehicleFactory
 from src.entities.components.renderer import VehicleRenderer
 from src.core.i18n import tr
+from src.ui import zeichnen, leinwand
+from src.ui import theme as theme
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -105,11 +107,11 @@ class CarSelectState(BaseState):
 
     def enter(self, **kwargs) -> None:
         """Set up fonts and ensure all vehicles are loaded."""
-        self.title_font = pygame.font.Font(None, 80)
-        self.header_font = pygame.font.Font(None, 46)
-        self.body_font = pygame.font.Font(None, 32)
-        self.label_font = pygame.font.Font(None, 28)
-        self.hint_font = pygame.font.Font(None, 24)
+        self.title_font = theme.font_standard(80)
+        self.header_font = theme.font_standard(46)
+        self.body_font = theme.font_standard(32)
+        self.label_font = theme.font_standard(28)
+        self.hint_font = theme.font_standard(24)
 
         # Restrict the roster to the lobby's chosen vehicle class.
         from src.core import race_setup, gamepad, profile
@@ -393,19 +395,19 @@ class CarSelectState(BaseState):
         offset_y = int((self._time * 15.0) % grid_size)
 
         for x in range(offset_x, SCREEN_WIDTH, grid_size):
-            pygame.draw.line(screen, grid_color, (x, 0), (x, SCREEN_HEIGHT), 1)
+            zeichnen.line(screen, grid_color, (x, 0), (x, SCREEN_HEIGHT), 1)
         for y in range(offset_y, SCREEN_HEIGHT, grid_size):
-            pygame.draw.line(screen, grid_color, (0, y), (SCREEN_WIDTH, y), 1)
+            zeichnen.line(screen, grid_color, (0, y), (SCREEN_WIDTH, y), 1)
 
     def _draw_panel(self, screen: pygame.Surface, rect: pygame.Rect) -> None:
         """Draw a semi-transparent panel with a glow border."""
         # Background
-        panel_bg = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        panel_bg = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
         panel_bg.fill(COLOR_UI_PANEL)
         screen.blit(panel_bg, rect.topleft)
 
         # Border outline
-        pygame.draw.rect(screen, (50, 50, 80), rect, 2, border_radius=4)
+        zeichnen.rect(screen, (50, 50, 80), rect, 2, border_radius=4)
 
     def _draw_vehicle_list(self, screen: pygame.Surface) -> None:
         """Draw the vehicle selection items on the left side."""
@@ -424,22 +426,22 @@ class CarSelectState(BaseState):
             is_hovered = (i == self._hover_index) and not is_selected
 
             # Card background
-            card_surf = pygame.Surface((item_rect.width, item_rect.height), pygame.SRCALPHA)
+            card_surf = leinwand.flaeche((item_rect.width, item_rect.height), pygame.SRCALPHA)
             if is_selected:
                 # Golden-orange highlights for selected card
                 card_surf.fill((60, 45, 20, 220))
-                pygame.draw.rect(card_surf, COLOR_UI_ACCENT, (0, 0, item_rect.width, item_rect.height), 2, border_radius=4)
+                zeichnen.rect(card_surf, COLOR_UI_ACCENT, (0, 0, item_rect.width, item_rect.height), 2, border_radius=4)
                 # Left accent border strip
-                pygame.draw.rect(card_surf, COLOR_UI_ACCENT, (0, 0, 8, item_rect.height))
+                zeichnen.rect(card_surf, COLOR_UI_ACCENT, (0, 0, 8, item_rect.height))
             else:
                 card_surf.fill((38, 38, 50, 200) if is_hovered else (25, 25, 35, 180))
-                pygame.draw.rect(card_surf,
+                zeichnen.rect(card_surf,
                                  (110, 110, 135) if is_hovered else (50, 50, 65),
                                  (0, 0, item_rect.width, item_rect.height), 1, border_radius=4)
                 # Farbstreifen = gewaehlte Lackfarbe. Vorher stand hier
                 # config.color_primary — ein Wert, den man am Auto nie sieht,
                 # seit jedes Fahrzeug ein PNG hat.
-                pygame.draw.rect(card_surf, self._streifenfarbe(key, config),
+                zeichnen.rect(card_surf, self._streifenfarbe(key, config),
                                  (0, 0, 6, item_rect.height))
 
             screen.blit(card_surf, item_rect.topleft)
@@ -476,7 +478,7 @@ class CarSelectState(BaseState):
                 # Pulsing arrow icon on the right
                 pulse = 0.5 + 0.5 * math.sin(self._time * 5.0)
                 arrow_offset = int(pulse * 6)
-                pygame.draw.polygon(screen, COLOR_UI_ACCENT, [
+                zeichnen.polygon(screen, COLOR_UI_ACCENT, [
                     (item_rect.right - 25 + arrow_offset, item_rect.centery - 8),
                     (item_rect.right - 15 + arrow_offset, item_rect.centery),
                     (item_rect.right - 25 + arrow_offset, item_rect.centery + 8)
@@ -488,14 +490,14 @@ class CarSelectState(BaseState):
             sb_x = self.left_panel_rect.right - 15
             sb_y = self.left_panel_rect.y + 30
             sb_h = 740
-            pygame.draw.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
+            zeichnen.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
 
             handle_h = max(30, int(sb_h * (5 / total)))
             max_scroll = total - 5
             scroll_pct = self.car_scroll / max_scroll if max_scroll > 0 else 0
             handle_y = sb_y + int(scroll_pct * (sb_h - handle_h))
 
-            pygame.draw.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
+            zeichnen.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
 
     @staticmethod
     def _streifenfarbe(key: str, config) -> tuple[int, int, int]:
@@ -541,8 +543,8 @@ class CarSelectState(BaseState):
         r = self._weiter_rect()
         hover = r.collidepoint(display.mouse_pos())
         fill = (58, 44, 16) if hover else (44, 34, 14)
-        pygame.draw.rect(screen, fill, r, border_radius=6)
-        pygame.draw.rect(screen, _th.ACCENT_HOT if hover else _th.ACCENT, r, 2,
+        zeichnen.rect(screen, fill, r, border_radius=6)
+        zeichnen.rect(screen, _th.ACCENT_HOT if hover else _th.ACCENT, r, 2,
                          border_radius=6)
         _th.text_fit(screen, self._weiter_beschriftung() + "  ›", _th.BODY,
                      _th.ACCENT_HOT if hover else _th.ACCENT,
@@ -561,8 +563,8 @@ class CarSelectState(BaseState):
             fill = (46, 50, 62) if hover else (32, 36, 46)
             border = _th.ACCENT_HOT if hover else _th.BORDER_LIGHT
             txt = _th.TEXT
-        pygame.draw.rect(screen, fill, r, border_radius=8)
-        pygame.draw.rect(screen, border, r, 2, border_radius=8)
+        zeichnen.rect(screen, fill, r, border_radius=8)
+        zeichnen.rect(screen, border, r, 2, border_radius=8)
         # „Werkstatt" und nicht „Lackieren": der Knopf fuehrt in die Werkstatt,
         # und dort steht mehr als nur die Lackwahl (gemeldet 03.08.2026). Ein
         # Knopf soll heissen, wohin er fuehrt.
@@ -599,27 +601,27 @@ class CarSelectState(BaseState):
 
         # --- 1. TURNTABLE & 2D PREVIEW ---
         # Draw tech turntable grid
-        pygame.draw.circle(screen, (30, 35, 50), self.turntable_center, self.turntable_radius)
+        zeichnen.circle(screen, (30, 35, 50), self.turntable_center, self.turntable_radius)
         # Radial lines
         num_spokes = 16
         for i in range(num_spokes):
             angle_rad = i * (2 * math.pi / num_spokes) + (self._time * 0.1)
             end_x = self.turntable_center[0] + self.turntable_radius * math.cos(angle_rad)
             end_y = self.turntable_center[1] + self.turntable_radius * math.sin(angle_rad)
-            pygame.draw.line(screen, (22, 25, 36), self.turntable_center, (end_x, end_y), 1)
+            zeichnen.line(screen, (22, 25, 36), self.turntable_center, (end_x, end_y), 1)
         
         # Inner rings
         for r in (50, 100, 150, 200):
-            pygame.draw.circle(screen, (25, 30, 42), self.turntable_center, r, 1)
+            zeichnen.circle(screen, (25, 30, 42), self.turntable_center, r, 1)
 
         # Turquoise/Cyan neon turntable edge ring
-        pygame.draw.circle(screen, (0, 180, 200), self.turntable_center, self.turntable_radius, 2)
+        zeichnen.circle(screen, (0, 180, 200), self.turntable_center, self.turntable_radius, 2)
         # Subtle blinking nodes on the turntable edge
         for offset_deg in (0, 90, 180, 270):
             rad = math.radians(offset_deg + self._time * 12.0)
             node_x = int(self.turntable_center[0] + self.turntable_radius * math.cos(rad))
             node_y = int(self.turntable_center[1] + self.turntable_radius * math.sin(rad))
-            pygame.draw.circle(screen, (100, 255, 255), (node_x, node_y), 4)
+            zeichnen.circle(screen, (100, 255, 255), (node_x, node_y), 4)
 
         # Draw the rotating car model in the center of the turntable
         # Pymunk coordinate space (Y is up, which maps to -Y in Pygame)
@@ -640,8 +642,8 @@ class CarSelectState(BaseState):
         shadow_offset = pygame.Vector2(-12, 12)
 
         # Draw shadow shape (simplified rotating)
-        shadow_surf = pygame.Surface((shadow_w + 16, shadow_h + 16), pygame.SRCALPHA)
-        pygame.draw.ellipse(shadow_surf, (0, 0, 0, 80), (4, 4, shadow_w, shadow_h))
+        shadow_surf = leinwand.flaeche((shadow_w + 16, shadow_h + 16), pygame.SRCALPHA)
+        zeichnen.ellipse(shadow_surf, (0, 0, 0, 80), (4, 4, shadow_w, shadow_h))
         shadow_rot = pygame.transform.rotate(shadow_surf, math.degrees(rotation_angle))
         shadow_rot_rect = shadow_rot.get_rect(center=(self.turntable_center[0] + shadow_offset.x, self.turntable_center[1] + shadow_offset.y))
         screen.blit(shadow_rot, shadow_rot_rect)
@@ -781,8 +783,8 @@ class CarSelectState(BaseState):
 
             # Draw progress bar background (dark bezel line)
             bar_rect = pygame.Rect(cell_x, cell_y + 35, bar_width, bar_height)
-            pygame.draw.rect(screen, (30, 30, 45), bar_rect, border_radius=4)
-            pygame.draw.rect(screen, (50, 50, 70), bar_rect, 1, border_radius=4)
+            zeichnen.rect(screen, (30, 30, 45), bar_rect, border_radius=4)
+            zeichnen.rect(screen, (50, 50, 70), bar_rect, 1, border_radius=4)
 
             # Draw filled portion
             fill_width = int(bar_width * ratio)
@@ -799,10 +801,10 @@ class CarSelectState(BaseState):
                     max(0, min(255, bar_color[1])),
                     max(0, min(255, bar_color[2])),
                 )
-                pygame.draw.rect(screen, bar_color, fill_rect, border_radius=4)
+                zeichnen.rect(screen, bar_color, fill_rect, border_radius=4)
 
                 # Neon light overlay glow on the fill
-                pygame.draw.line(screen, (255, 255, 255), (cell_x, cell_y + 36), (cell_x + fill_width, cell_y + 36), 1)
+                zeichnen.line(screen, (255, 255, 255), (cell_x, cell_y + 36), (cell_x + fill_width, cell_y + 36), 1)
 
     def _draw_power_curve(self, screen: pygame.Surface, config) -> None:
         """Render a compact power curve (kW over RPM) under the turntable."""
@@ -813,8 +815,8 @@ class CarSelectState(BaseState):
 
         # Draw tech panel background
         panel_rect = pygame.Rect(gx, gy, gw, gh)
-        pygame.draw.rect(screen, (16, 18, 28), panel_rect)
-        pygame.draw.rect(screen, (0, 180, 200), panel_rect, 1, border_radius=4)
+        zeichnen.rect(screen, (16, 18, 28), panel_rect)
+        zeichnen.rect(screen, (0, 180, 200), panel_rect, 1, border_radius=4)
 
         # Kopfzeile: nur der Titel. Der Spitzenwert stand hier ebenfalls und lag
         # darueber — beide begannen auf derselben Hoehe, und der Spitzensatz ist
@@ -830,7 +832,7 @@ class CarSelectState(BaseState):
         cy = gy + 48
         cw = gw - 102
         ch = gh - 122
-        pygame.draw.rect(screen, (22, 26, 38), (cx, cy, cw, ch))
+        zeichnen.rect(screen, (22, 26, 38), (cx, cy, cw, ch))
 
         # Get the power curve points
         idle = config.idle_rpm
@@ -864,7 +866,7 @@ class CarSelectState(BaseState):
         # Spalte — sonst haengt die Ausrichtung an der Stellenzahl.
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
             yy = cy + ch - ch * frac
-            pygame.draw.line(screen, (40, 44, 60), (cx, yy), (cx + cw, yy), 1)
+            zeichnen.line(screen, (40, 44, 60), (cx, yy), (cx + cw, yy), 1)
             lbl = self.hint_font.render(f"{frac*kw_axis:.0f}", True, (150, 150, 160))
             screen.blit(lbl, lbl.get_rect(midright=(cx - 8, yy)))
         # Die Einheit stand als eigene Marke ueber der Achse und lag damit im
@@ -872,7 +874,7 @@ class CarSelectState(BaseState):
         # „Leistung (kW)".
 
         # X axis (RPM)
-        pygame.draw.line(screen, (40, 44, 60), (cx, cy + ch), (cx + cw, cy + ch), 1)
+        zeichnen.line(screen, (40, 44, 60), (cx, cy + ch), (cx + cw, cy + ch), 1)
         beschriftet = []
         for frac in (0.0, 0.25, 0.5, 0.75):
             xx = cx + cw * frac
@@ -900,14 +902,14 @@ class CarSelectState(BaseState):
 
         line_pts = [(_rpm_x(r), cy + ch - ch * min(1.0, kw / kw_axis)) for r, kw in pts]
         if len(line_pts) >= 2:
-            pygame.draw.lines(screen, (255, 120, 0), False, line_pts, 2)
+            zeichnen.lines(screen, (255, 120, 0), False, line_pts, 2)
 
         # Max Power Peak marker
         max_idx = max(range(len(pts)), key=lambda i: pts[i][1])
         peak_rpm, peak_kw = pts[max_idx]
         px = _rpm_x(peak_rpm)
         py = cy + ch - ch * min(1.0, peak_kw / kw_axis)
-        pygame.draw.circle(screen, (255, 200, 60), (int(px), int(py)), 5)
+        zeichnen.circle(screen, (255, 200, 60), (int(px), int(py)), 5)
         
         # Der Spitzenwert bekommt die unterste Zeile der Tafel fuer sich. Vorher
         # stand er neben dem Titel und lief in ihn hinein.

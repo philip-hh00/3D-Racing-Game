@@ -26,6 +26,7 @@ from src.ui.widgets import Dialog
 from src.core.i18n import tr
 from src.net import server_info
 from src.states.menu.coming_soon_page import ComingSoonPage
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -91,10 +92,10 @@ def tab_leiste_zeichnen(screen: pygame.Surface, aktiv: int, *,
                 (40, 44, 56, 220) if hover else (26, 29, 38, 210))
             border = theme.ACCENT if active else theme.BORDER
             txt = theme.TEXT if (active or hover) else theme.TEXT_DIM
-        surf = pygame.Surface(rect.size, pygame.SRCALPHA)
+        surf = leinwand.flaeche(rect.size, pygame.SRCALPHA)
         surf.fill(fill)
         screen.blit(surf, rect.topleft)
-        pygame.draw.rect(screen, border, rect, 2, border_radius=6)
+        zeichnen.rect(screen, border, rect, 2, border_radius=6)
         theme.text(screen, tr(_TABS[i][0]), theme.LABEL, txt, rect.center, center=True)
 
 
@@ -342,7 +343,7 @@ class MenuShellState(BaseState):
             return None
         small = pygame.transform.smoothscale(base, (SCREEN_WIDTH // 12, SCREEN_HEIGHT // 12))
         blur = pygame.transform.smoothscale(small, (SCREEN_WIDTH, SCREEN_HEIGHT))
-        dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         dark.fill((0, 0, 0, 150))
         blur.blit(dark, (0, 0))
         self._blur_cache[stem] = blur
@@ -366,7 +367,7 @@ class MenuShellState(BaseState):
 
         if in_page:
             screen.blit(frame, (0, 0))
-            dark = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             dark.fill((0, 0, 0, 150))
             screen.blit(dark, (0, 0))
             return
@@ -663,7 +664,7 @@ class MenuShellState(BaseState):
             lg = _lang()
             title = (ann.get("title") or {}).get(lg) or (ann.get("title") or {}).get("de") or ""
             text = (ann.get("text") or {}).get(lg) or (ann.get("text") or {}).get("de") or ""
-            overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 190))
             screen.blit(overlay, (0, 0))
             bw = 900
@@ -707,6 +708,6 @@ class MenuShellState(BaseState):
             # OK button
             self._ann_ok_rect = pygame.Rect(bx + bw // 2 - 110, by + bh - 84, 220, 56)
             hover = self._ann_ok_rect.collidepoint(display.mouse_pos())
-            pygame.draw.rect(screen, (70, 56, 22) if hover else (44, 38, 18), self._ann_ok_rect, border_radius=8)
-            pygame.draw.rect(screen, theme.ACCENT_HOT if hover else theme.ACCENT, self._ann_ok_rect, 2, border_radius=8)
+            zeichnen.rect(screen, (70, 56, 22) if hover else (44, 38, 18), self._ann_ok_rect, border_radius=8)
+            zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.ACCENT, self._ann_ok_rect, 2, border_radius=8)
             theme.text(screen, tr("OK"), theme.BODY, theme.TEXT, self._ann_ok_rect.center, center=True)

@@ -17,6 +17,7 @@ from src.core.i18n import tr
 from src.ui import theme
 from src.ui.widgets import Button, TextInput, Stepper, OnScreenKeyboard, Dialog
 from src.ui.focus import FocusGroup
+from src.ui import zeichnen, leinwand
 
 _CATEGORIES = ["Allgemein", "Steuerung", "Video", "Audio", "Dev-Mode", "Info"]
 _SOON_ROWS = {
@@ -157,7 +158,7 @@ class _AdvancedGraphicsView:
     def draw(self, screen: pygame.Surface) -> None:
         """Draw the advanced graphics overlay."""
         w, h = screen.get_size()
-        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay = leinwand.flaeche((w, h), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 240))
         screen.blit(overlay, (0, 0))
 
@@ -858,7 +859,7 @@ class SettingsPage(Page):
                 for ln in lines:
                     theme.text(screen, ln, theme.BODY, theme.TEXT_DIM, (inner_x, ey)); ey += 30
                 ey += 6
-                pygame.draw.line(screen, theme.BORDER, (inner_x, ey), (box.right - 24, ey), 1)
+                zeichnen.line(screen, theme.BORDER, (inner_x, ey), (box.right - 24, ey), 1)
                 ey += 26
             screen.set_clip(prev_clip)
             # slim scrollbar when scrollable
@@ -867,7 +868,7 @@ class SettingsPage(Page):
                 handle_h = max(30, int(track_h * box.height / content_h))
                 frac = self._info_scroll / self._info_max_scroll
                 hy = box.y + 6 + int(frac * (track_h - handle_h))
-                pygame.draw.rect(screen, theme.ACCENT, (box.right - 10, hy, 4, handle_h), border_radius=2)
+                zeichnen.rect(screen, theme.ACCENT, (box.right - 10, hy, 4, handle_h), border_radius=2)
 
         link_y = 916
         label = tr("Bugs melden: GitHub Issues öffnen")
@@ -876,7 +877,7 @@ class SettingsPage(Page):
         self._issues_rect = pygame.Rect(x, link_y, w + 8, 34)
         hover = self._issues_rect.collidepoint(display.mouse_pos())
         theme.text(screen, label, theme.BODY, theme.ACCENT_HOT if hover else theme.ACCENT, (x, link_y))
-        pygame.draw.line(screen, theme.ACCENT_HOT if hover else theme.ACCENT,
+        zeichnen.line(screen, theme.ACCENT_HOT if hover else theme.ACCENT,
                          (x, link_y + 30), (x + w, link_y + 30), 1)
 
         # Der Absturzbericht. Nach einem Absturz steht sein Pfad sechs Sekunden
@@ -893,7 +894,7 @@ class SettingsPage(Page):
             c_hover = self._crash_rect.collidepoint(display.mouse_pos())
             farbe = theme.ACCENT_HOT if c_hover else theme.ACCENT
             theme.text(screen, crash_label, theme.BODY, farbe, (x, crash_y))
-            pygame.draw.line(screen, farbe, (x, crash_y + 30), (x + cw, crash_y + 30), 1)
+            zeichnen.line(screen, farbe, (x, crash_y + 30), (x + cw, crash_y + 30), 1)
         else:
             self._crash_rect = None
             theme.text(screen, tr("Kein Absturzbericht vorhanden ({p})").format(
@@ -912,7 +913,7 @@ class SettingsPage(Page):
             l_hover = self._lizenz_rect.collidepoint(display.mouse_pos())
             farbe = theme.ACCENT_HOT if l_hover else theme.ACCENT
             theme.text(screen, lizenz_label, theme.BODY, farbe, (x, lizenz_y))
-            pygame.draw.line(screen, farbe, (x, lizenz_y + 30), (x + lw, lizenz_y + 30), 1)
+            zeichnen.line(screen, farbe, (x, lizenz_y + 30), (x + lw, lizenz_y + 30), 1)
         else:
             self._lizenz_rect = None
 
@@ -927,8 +928,8 @@ class SettingsPage(Page):
             selected = (self._focus_content
                         and self._sel_bind == len(kb.ACTIONS) + slot)
             flashing = (slot in self._controller_flash)
-            pygame.draw.rect(screen, theme.PANEL_SEL if selected else theme.PANEL, r, border_radius=8)
-            pygame.draw.rect(screen, theme.ACCENT if (selected or flashing) else theme.BORDER,
+            zeichnen.rect(screen, theme.PANEL_SEL if selected else theme.PANEL, r, border_radius=8)
+            zeichnen.rect(screen, theme.ACCENT if (selected or flashing) else theme.BORDER,
                              r, 2, border_radius=8)
             label = f"{tr('Controller')} {slot + 1}"
             theme.text(screen, label, theme.LABEL, theme.TEXT_DIM, (r.x + 12, r.centery - 12))
@@ -1115,8 +1116,8 @@ class SettingsPage(Page):
                 border_color = theme.BORDER
                 text_color = theme.TEXT_DIM
                 
-            pygame.draw.rect(screen, fill, r, border_radius=8)
-            pygame.draw.rect(screen, border_color, r, 2, border_radius=8)
+            zeichnen.rect(screen, fill, r, border_radius=8)
+            zeichnen.rect(screen, border_color, r, 2, border_radius=8)
             theme.text(screen, tr(self.categories[i]), theme.BODY,
                        text_color, (r.x + 20, r.centery - 14))
 
@@ -1133,8 +1134,8 @@ class SettingsPage(Page):
             for i, r in enumerate(self._bind_rects()):
                 aid, lbl, _dk = kb.ACTIONS[i]
                 sel = self._focus_content and i == self._sel_bind
-                pygame.draw.rect(screen, theme.PANEL_SEL if sel else theme.PANEL, r, border_radius=8)
-                pygame.draw.rect(screen, theme.ACCENT if sel else theme.BORDER, r, 2, border_radius=8)
+                zeichnen.rect(screen, theme.PANEL_SEL if sel else theme.PANEL, r, border_radius=8)
+                zeichnen.rect(screen, theme.ACCENT if sel else theme.BORDER, r, 2, border_radius=8)
                 theme.text(screen, tr(lbl), theme.BODY, theme.TEXT, (r.x + 18, r.centery - 14))
                 capturing = (self._capture == aid)
                 key_txt = tr("Taste drücken…") if capturing else kb.key_name(kb.get(aid))
@@ -1190,8 +1191,8 @@ class SettingsPage(Page):
             fill = (36, 38, 48) if hot else (26, 28, 36)
             border = theme.ACCENT if hot else theme.DISABLED
             txt_col = theme.TEXT_DIM if hot else theme.DISABLED
-        pygame.draw.rect(screen, fill, self._save_rect, border_radius=8)
-        pygame.draw.rect(screen, border, self._save_rect, 3 if self._save_focus else 2, border_radius=8)
+        zeichnen.rect(screen, fill, self._save_rect, border_radius=8)
+        zeichnen.rect(screen, border, self._save_rect, 3 if self._save_focus else 2, border_radius=8)
         theme.text(screen, tr("SPEICHERN"), theme.BODY, txt_col, self._save_rect.center, center=True)
 
         if self._leave_dialog is not None:

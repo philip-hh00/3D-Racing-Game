@@ -20,6 +20,7 @@ from src.core.settings import (
 from src.core.i18n import tr
 from src.core import display
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -83,11 +84,11 @@ class TrackSelectState(BaseState):
 
     def enter(self, **kwargs) -> None:
         """Set up fonts and load track data."""
-        self.title_font = pygame.font.Font(None, 80)
-        self.header_font = pygame.font.Font(None, 46)
-        self.body_font = pygame.font.Font(None, 32)
-        self.label_font = pygame.font.Font(None, 28)
-        self.hint_font = pygame.font.Font(None, 24)
+        self.title_font = theme.font_standard(80)
+        self.header_font = theme.font_standard(46)
+        self.body_font = theme.font_standard(32)
+        self.label_font = theme.font_standard(28)
+        self.hint_font = theme.font_standard(24)
 
         self._dialog = None
 
@@ -189,9 +190,9 @@ class TrackSelectState(BaseState):
         from src.core import display
         r = self._start_rect()
         hover = r.collidepoint(display.mouse_pos())
-        pygame.draw.rect(screen, (58, 44, 16) if hover else (44, 34, 14), r,
+        zeichnen.rect(screen, (58, 44, 16) if hover else (44, 34, 14), r,
                          border_radius=6)
-        pygame.draw.rect(screen, theme.ACCENT_HOT if hover else theme.ACCENT, r, 2,
+        zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.ACCENT, r, 2,
                          border_radius=6)
         theme.text_fit(screen, self._start_beschriftung() + "  ›", theme.BODY,
                      theme.ACCENT_HOT if hover else theme.ACCENT,
@@ -370,9 +371,9 @@ class TrackSelectState(BaseState):
         hover = rect.collidepoint(mx, my)
         pulse = 0.5 + 0.5 * math.sin(self._time * 3.0)
         base = (60, 48, 18) if not hover else (90, 70, 24)
-        pygame.draw.rect(screen, base, rect, border_radius=8)
+        zeichnen.rect(screen, base, rect, border_radius=8)
         glow = (255, 220, 90) if hover else (int(200 + 40 * pulse), int(160 + 40 * pulse), 40)
-        pygame.draw.rect(screen, glow, rect, 3, border_radius=8)
+        zeichnen.rect(screen, glow, rect, 3, border_radius=8)
 
         icon = self.header_font.render("+", True, COLOR_UI_ACCENT)
         screen.blit(icon, icon.get_rect(midleft=(rect.x + 18, rect.centery)))
@@ -408,16 +409,16 @@ class TrackSelectState(BaseState):
         offset_y = int((self._time * 15.0) % grid_size)
 
         for x in range(offset_x, SCREEN_WIDTH, grid_size):
-            pygame.draw.line(screen, grid_color, (x, 0), (x, SCREEN_HEIGHT), 1)
+            zeichnen.line(screen, grid_color, (x, 0), (x, SCREEN_HEIGHT), 1)
         for y in range(offset_y, SCREEN_HEIGHT, grid_size):
-            pygame.draw.line(screen, grid_color, (0, y), (SCREEN_WIDTH, y), 1)
+            zeichnen.line(screen, grid_color, (0, y), (SCREEN_WIDTH, y), 1)
 
     def _draw_panel(self, screen: pygame.Surface, rect: pygame.Rect) -> None:
         """Draw a semi-transparent panel with a glow border."""
-        panel_bg = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        panel_bg = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
         panel_bg.fill(COLOR_UI_PANEL)
         screen.blit(panel_bg, rect.topleft)
-        pygame.draw.rect(screen, (50, 50, 80), rect, 2, border_radius=4)
+        zeichnen.rect(screen, (50, 50, 80), rect, 2, border_radius=4)
 
     def _draw_track_list(self, screen: pygame.Surface) -> None:
         """Draw the track selection cards on the left side."""
@@ -443,19 +444,19 @@ class TrackSelectState(BaseState):
             is_hovered = (i == self._hover_index) and not is_selected
 
             # Card background
-            card_surf = pygame.Surface((item_rect.width, item_rect.height), pygame.SRCALPHA)
+            card_surf = leinwand.flaeche((item_rect.width, item_rect.height), pygame.SRCALPHA)
             diff_color = difficulty_colors.get(track_info["difficulty"], COLOR_UI_TEXT)
 
             if is_selected:
                 card_surf.fill((60, 45, 20, 220))
-                pygame.draw.rect(card_surf, COLOR_UI_ACCENT, (0, 0, item_rect.width, item_rect.height), 2, border_radius=4)
-                pygame.draw.rect(card_surf, COLOR_UI_ACCENT, (0, 0, 8, item_rect.height))
+                zeichnen.rect(card_surf, COLOR_UI_ACCENT, (0, 0, item_rect.width, item_rect.height), 2, border_radius=4)
+                zeichnen.rect(card_surf, COLOR_UI_ACCENT, (0, 0, 8, item_rect.height))
             else:
                 card_surf.fill((38, 38, 50, 200) if is_hovered else (25, 25, 35, 180))
-                pygame.draw.rect(card_surf,
+                zeichnen.rect(card_surf,
                                  (110, 110, 135) if is_hovered else (50, 50, 65),
                                  (0, 0, item_rect.width, item_rect.height), 1, border_radius=4)
-                pygame.draw.rect(card_surf, diff_color, (0, 0, 6, item_rect.height))
+                zeichnen.rect(card_surf, diff_color, (0, 0, 6, item_rect.height))
 
             screen.blit(card_surf, item_rect.topleft)
 
@@ -494,7 +495,7 @@ class TrackSelectState(BaseState):
             if is_selected:
                 pulse = 0.5 + 0.5 * math.sin(self._time * 5.0)
                 arrow_offset = int(pulse * 6)
-                pygame.draw.polygon(screen, COLOR_UI_ACCENT, [
+                zeichnen.polygon(screen, COLOR_UI_ACCENT, [
                     (item_rect.right - 25 + arrow_offset, item_rect.centery - 8),
                     (item_rect.right - 15 + arrow_offset, item_rect.centery),
                     (item_rect.right - 25 + arrow_offset, item_rect.centery + 8)
@@ -506,14 +507,14 @@ class TrackSelectState(BaseState):
             sb_x = self.left_panel_rect.right - 15
             sb_y = self.left_panel_rect.y + 30
             sb_h = 740
-            pygame.draw.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
+            zeichnen.line(screen, (40, 44, 56), (sb_x, sb_y), (sb_x, sb_y + sb_h), 4)
 
             handle_h = max(30, int(sb_h * (5 / total)))
             max_scroll = total - 5
             scroll_pct = self.track_scroll / max_scroll if max_scroll > 0 else 0
             handle_y = sb_y + int(scroll_pct * (sb_h - handle_h))
 
-            pygame.draw.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
+            zeichnen.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
 
     def _draw_track_details(self, screen: pygame.Surface) -> None:
         """Draw the detailed specs, description, and rotating minimap of the active track."""
@@ -524,24 +525,24 @@ class TrackSelectState(BaseState):
 
         # --- 1. ROTATING MINIMAP & TURNTABLE ---
         # Draw turntable grid
-        pygame.draw.circle(screen, (30, 35, 50), self.turntable_center, self.turntable_radius)
+        zeichnen.circle(screen, (30, 35, 50), self.turntable_center, self.turntable_radius)
         num_spokes = 16
         for i in range(num_spokes):
             angle_rad = i * (2 * math.pi / num_spokes) + (self._time * 0.1)
             end_x = self.turntable_center[0] + self.turntable_radius * math.cos(angle_rad)
             end_y = self.turntable_center[1] + self.turntable_radius * math.sin(angle_rad)
-            pygame.draw.line(screen, (22, 25, 36), self.turntable_center, (end_x, end_y), 1)
+            zeichnen.line(screen, (22, 25, 36), self.turntable_center, (end_x, end_y), 1)
         
         for r in (50, 100, 150, 200):
-            pygame.draw.circle(screen, (25, 30, 42), self.turntable_center, r, 1)
+            zeichnen.circle(screen, (25, 30, 42), self.turntable_center, r, 1)
 
         # Turquoise neon turntable ring
-        pygame.draw.circle(screen, (0, 180, 200), self.turntable_center, self.turntable_radius, 2)
+        zeichnen.circle(screen, (0, 180, 200), self.turntable_center, self.turntable_radius, 2)
         for offset_deg in (0, 90, 180, 270):
             rad = math.radians(offset_deg + self._time * 12.0)
             node_x = int(self.turntable_center[0] + self.turntable_radius * math.cos(rad))
             node_y = int(self.turntable_center[1] + self.turntable_radius * math.sin(rad))
-            pygame.draw.circle(screen, (100, 255, 255), (node_x, node_y), 4)
+            zeichnen.circle(screen, (100, 255, 255), (node_x, node_y), 4)
 
         # Draw the rotating track layout
         centerline = track_info["centerline"]
@@ -575,14 +576,14 @@ class TrackSelectState(BaseState):
                 screen_pts.append((int(sx), int(sy)))
 
             # Draw outer glow line
-            pygame.draw.lines(screen, (0, 180, 200, 80), True, screen_pts, 8)
+            zeichnen.lines(screen, (0, 180, 200, 80), True, screen_pts, 8)
             # Draw core neon line
-            pygame.draw.lines(screen, (0, 255, 255), True, screen_pts, 3)
+            zeichnen.lines(screen, (0, 255, 255), True, screen_pts, 3)
 
             # Draw orange starting line indicator dot
             if screen_pts:
-                pygame.draw.circle(screen, COLOR_UI_ACCENT, screen_pts[0], 6)
-                pygame.draw.circle(screen, (255, 255, 255), screen_pts[0], 3)
+                zeichnen.circle(screen, COLOR_UI_ACCENT, screen_pts[0], 6)
+                zeichnen.circle(screen, (255, 255, 255), screen_pts[0], 3)
 
         # --- 2. TITLE & DESCRIPTION ---
         desc_x = self.right_panel_rect.x + 50
@@ -702,14 +703,14 @@ class TrackSelectState(BaseState):
 
             # Draw progress bar background (dark bezel line)
             bar_rect = pygame.Rect(cell_x, cell_y + 35, bar_width, bar_height)
-            pygame.draw.rect(screen, (30, 30, 45), bar_rect, border_radius=4)
-            pygame.draw.rect(screen, (50, 50, 70), bar_rect, 1, border_radius=4)
+            zeichnen.rect(screen, (30, 30, 45), bar_rect, border_radius=4)
+            zeichnen.rect(screen, (50, 50, 70), bar_rect, 1, border_radius=4)
 
             # Draw filled portion
             fill_width = int(bar_width * ratio)
             if fill_width > 0:
                 fill_rect = pygame.Rect(cell_x, cell_y + 35, fill_width, bar_height)
-                pygame.draw.rect(screen, color, fill_rect, border_radius=4)
+                zeichnen.rect(screen, color, fill_rect, border_radius=4)
 
                 # Light glow overlay line
-                pygame.draw.line(screen, (255, 255, 255), (cell_x, cell_y + 36), (cell_x + fill_width, cell_y + 36), 1)
+                zeichnen.line(screen, (255, 255, 255), (cell_x, cell_y + 36), (cell_x + fill_width, cell_y + 36), 1)

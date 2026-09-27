@@ -21,6 +21,7 @@ from src.core import profile, statistik
 from src.core.i18n import tr
 from src.states.menu.page import Page
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 #: Höhe des Kennzahlenbands über den Karten.
 KOPF_H = 132
@@ -204,7 +205,7 @@ class ProfilPage(Page):
             theme.text_fit(screen, wert, theme.HEADER, theme.TEXT,
                            pygame.Rect(x, r.y + 52, breite - 16, 52))
             if i:
-                pygame.draw.line(screen, (38, 42, 54), (x - 14, r.y + 24),
+                zeichnen.line(screen, (38, 42, 54), (x - 14, r.y + 24),
                                  (x - 14, r.bottom - 20), 1)
 
     def _spalten(self) -> list[list[tuple[str, list]]]:
@@ -302,11 +303,11 @@ class ProfilPage(Page):
 
         mitte = (r.x + 18, r.centery)
         if fertig:
-            pygame.draw.circle(screen, (34, 60, 42), mitte, 13)
+            zeichnen.circle(screen, (34, 60, 42), mitte, 13)
             _haken(screen, mitte, 6, theme.SUCCESS)
         else:
-            pygame.draw.circle(screen, (30, 33, 44), mitte, 13)
-            pygame.draw.circle(screen, (60, 64, 80), mitte, 13, 1)
+            zeichnen.circle(screen, (30, 33, 44), mitte, 13)
+            zeichnen.circle(screen, (60, 64, 80), mitte, 13, 1)
 
         nx = r.x + 42
         theme.text_fit(screen, tr(name), theme.LABEL,
@@ -411,20 +412,20 @@ def _anzeigename(pfad, stamm: str) -> str:
 
 
 def _panel(screen: pygame.Surface, r: pygame.Rect, *, alpha: int = 195) -> None:
-    flaeche = pygame.Surface(r.size, pygame.SRCALPHA)
+    flaeche = leinwand.flaeche(r.size, pygame.SRCALPHA)
     flaeche.fill((10, 12, 22, alpha))
     screen.blit(flaeche, r.topleft)
-    pygame.draw.rect(screen, (46, 50, 62), r, 1, border_radius=6)
+    zeichnen.rect(screen, (46, 50, 62), r, 1, border_radius=6)
 
 
 def _balken(screen: pygame.Surface, r: pygame.Rect, anteil: float,
             *, farbe=None) -> None:
     radius = max(1, r.height // 2)
-    pygame.draw.rect(screen, (28, 31, 40), r, border_radius=radius)
-    pygame.draw.rect(screen, (50, 54, 68), r, 1, border_radius=radius)
+    zeichnen.rect(screen, (28, 31, 40), r, border_radius=radius)
+    zeichnen.rect(screen, (50, 54, 68), r, 1, border_radius=radius)
     breit = int(r.width * max(0.0, min(1.0, anteil)))
     if breit > 2:
-        pygame.draw.rect(screen, farbe or theme.ACCENT,
+        zeichnen.rect(screen, farbe or theme.ACCENT,
                          (r.x, r.y, breit, r.height), border_radius=radius)
 
 
@@ -436,7 +437,7 @@ def _haken(screen: pygame.Surface, mitte, groesse: float, farbe) -> None:
     """
     x, y = mitte
     g = groesse
-    pygame.draw.lines(screen, farbe, False,
+    zeichnen.lines(screen, farbe, False,
                       [(x - g, y), (x - g * 0.25, y + g * 0.7),
                        (x + g, y - g * 0.8)], 3)
 
@@ -446,10 +447,10 @@ def _rollbalken(screen: pygame.Surface, flaeche: pygame.Rect, scroll: int,
     """Zeigt, dass unten noch etwas kommt. Ohne ihn sieht eine abgeschnittene
     Kartenspalte aus wie das Ende der Liste."""
     bahn = pygame.Rect(flaeche.right - 6, flaeche.y, 4, flaeche.height)
-    pygame.draw.rect(screen, (26, 29, 38), bahn, border_radius=2)
+    zeichnen.rect(screen, (26, 29, 38), bahn, border_radius=2)
     anteil = flaeche.height / max(1, inhalt)
     hoehe = max(30, int(flaeche.height * anteil))
     grenze = max(1, inhalt - flaeche.height)
     y = flaeche.y + int((flaeche.height - hoehe) * min(1.0, scroll / grenze))
-    pygame.draw.rect(screen, theme.ACCENT_DIM, (bahn.x, y, bahn.width, hoehe),
+    zeichnen.rect(screen, theme.ACCENT_DIM, (bahn.x, y, bahn.width, hoehe),
                      border_radius=2)

@@ -58,6 +58,11 @@ _ZUSTAENDE = {
     "ist veraltet":
         "Die Versionswarnung. Sie darf nicht weghuschen, sie ist die "
         "Handlungsanweisung",
+    "Spieldateien wurden verändert":
+        "Veraenderte Fahrwerte sperren Online (src/core/integritaet.py). "
+        "Wie die Versionswarnung eine Handlungsanweisung, die stehen bleibt",
+    "Deine Spieldateien passen nicht zur Lobby":
+        "Absage des Servers wegen anderem Datenstand; dito",
     "Kein Server verfügbar":
         "Zustand der Serverliste, kein Ereignis",
     "Lobby-Code muss 6 Zeichen":

@@ -16,6 +16,7 @@ from src.ui.widgets import Stepper, Button
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.entities.vehicle_factory import VehicleFactory
+from src.ui import zeichnen
 
 
 class MPLobbyPage(Page):
@@ -401,8 +402,8 @@ class MPLobbyPage(Page):
             ax = 960
             ay = 210
             panel_rect = pygame.Rect(ax, ay, 800, 360)
-            pygame.draw.rect(screen, (30, 32, 40), panel_rect, border_radius=12)
-            pygame.draw.rect(screen, theme.BORDER, panel_rect, 2, border_radius=12)
+            zeichnen.rect(screen, (30, 32, 40), panel_rect, border_radius=12)
+            zeichnen.rect(screen, theme.BORDER, panel_rect, 2, border_radius=12)
 
             theme.text(screen, tr("GHOST-MODUS (MEHRSPIELER ZEITFAHREN)"), theme.HEADER, theme.ACCENT, (ax + 30, ay + 30))
             
@@ -422,8 +423,8 @@ class MPLobbyPage(Page):
         # Draw Modus-Erklärung box on the left
         desc_y = 550 if s.mode == "Zeitfahren" else 750
         desc_rect = pygame.Rect(80, desc_y, 800, 160)
-        pygame.draw.rect(screen, (30, 32, 40), desc_rect, border_radius=8)
-        pygame.draw.rect(screen, theme.BORDER, desc_rect, 1, border_radius=8)
+        zeichnen.rect(screen, (30, 32, 40), desc_rect, border_radius=8)
+        zeichnen.rect(screen, theme.BORDER, desc_rect, 1, border_radius=8)
 
         desc_text = tr(race_setup.MODE_DESCRIPTIONS.get(self.mode.value, ""))
         theme.text(screen, tr("MODUS-BESCHREIBUNG"), theme.LABEL, theme.ACCENT, (100, desc_y + 15))

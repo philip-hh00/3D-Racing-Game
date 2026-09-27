@@ -15,6 +15,7 @@ import pygame
 from src.core.settings import KMH_PER_PXS
 from src.core.i18n import tr
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 
 class HUD:
@@ -91,17 +92,17 @@ class HUD:
         self._standings_list: list[dict[str, Any]] = []
 
     def _init_fonts(self, scale: float) -> None:
-        self._fps_font = pygame.font.Font(None, int(self._FPS_FONT_SIZE * scale))
-        self._speed_font = pygame.font.Font(None, int(self._SPEED_FONT_SIZE * scale))
-        self._gear_label_font = pygame.font.Font(None, int(self._GEAR_LABEL_FONT_SIZE * scale))
-        self._gear_font = pygame.font.Font(None, int(self._GEAR_FONT_SIZE * scale))
-        self._tick_font = pygame.font.Font(None, int(self._TICK_FONT_SIZE * scale))
+        self._fps_font = theme.font_standard(int(self._FPS_FONT_SIZE * scale))
+        self._speed_font = theme.font_standard(int(self._SPEED_FONT_SIZE * scale))
+        self._gear_label_font = theme.font_standard(int(self._GEAR_LABEL_FONT_SIZE * scale))
+        self._gear_font = theme.font_standard(int(self._GEAR_FONT_SIZE * scale))
+        self._tick_font = theme.font_standard(int(self._TICK_FONT_SIZE * scale))
         # Countdown-/GO!-Schrift: die Spielschrift aus theme.py statt der
         # Standardschrift — die Groesse haengt zusaetzlich von der Pop-in-
         # Animation ab, wird also direkt beim Zeichnen ueber theme.font() geholt.
-        self._overlay_title_font = pygame.font.Font(None, int(72 * scale))
-        self._overlay_body_font = pygame.font.Font(None, int(36 * scale))
-        self._split_font = pygame.font.Font(None, int(48 * scale))
+        self._overlay_title_font = theme.font_standard(int(72 * scale))
+        self._overlay_body_font = theme.font_standard(int(36 * scale))
+        self._split_font = theme.font_standard(int(48 * scale))
 
     def update(
         self,
@@ -215,10 +216,10 @@ class HUD:
         panel_y = h - panel_h - int(20 * scale)
 
         # Draw semi-transparent panel background
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf = leinwand.flaeche((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_PANEL_BG)
         # Subtle border with rounded corners
-        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(12 * scale))
+        zeichnen.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(12 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # Common gauge parameters
@@ -237,7 +238,7 @@ class HUD:
         redline_deg = 220.0 - redline_ratio * 260.0
 
         # Draw tachometer background arc
-        pygame.draw.arc(
+        zeichnen.arc(
             screen,
             (45, 45, 55),
             (cx_rpm - radius, cy_rpm - radius, radius * 2, radius * 2),
@@ -247,7 +248,7 @@ class HUD:
         )
 
         # Draw redline static indicator
-        pygame.draw.arc(
+        zeichnen.arc(
             screen,
             self._COL_RPM_REDLINE,
             (cx_rpm - radius, cy_rpm - radius, radius * 2, radius * 2),
@@ -272,7 +273,7 @@ class HUD:
             x_in = cx_rpm + (radius - tick_len) * math.cos(tick_rad)
             y_in = cy_rpm - (radius - tick_len) * math.sin(tick_rad)
             
-            pygame.draw.line(screen, tick_color, (x_in, y_in), (x_out, y_out), max(1, int(2 * scale) if is_redline else 1))
+            zeichnen.line(screen, tick_color, (x_in, y_in), (x_out, y_out), max(1, int(2 * scale) if is_redline else 1))
             
             # Number label (e.g. 1, 2, 10, 12)
             lbl_num = rpm_val // 1000
@@ -292,7 +293,7 @@ class HUD:
         if self._rpm > rpm_start:
             if self._rpm <= self._redline_rpm:
                 # All green
-                pygame.draw.arc(
+                zeichnen.arc(
                     screen,
                     self._COL_RPM_NORMAL,
                     (cx_rpm - radius, cy_rpm - radius, radius * 2, radius * 2),
@@ -302,7 +303,7 @@ class HUD:
                 )
             else:
                 # Green part up to redline
-                pygame.draw.arc(
+                zeichnen.arc(
                     screen,
                     self._COL_RPM_NORMAL,
                     (cx_rpm - radius, cy_rpm - radius, radius * 2, radius * 2),
@@ -311,7 +312,7 @@ class HUD:
                     max(1, int(5 * scale))
                 )
                 # Red part from redline to current RPM
-                pygame.draw.arc(
+                zeichnen.arc(
                     screen,
                     self._COL_RPM_REDLINE,
                     (cx_rpm - radius, cy_rpm - radius, radius * 2, radius * 2),
@@ -335,11 +336,11 @@ class HUD:
         nd_base_x2 = cx_rpm + int(4 * scale) * math.cos(curr_rpm_rad + math.pi/2)
         nd_base_y2 = cy_rpm - int(4 * scale) * math.sin(curr_rpm_rad + math.pi/2)
         # Draw needle polygon
-        pygame.draw.polygon(screen, (255, 60, 60), [(nd_base_x1, nd_base_y1), (nd_base_x2, nd_base_y2), (nx, ny)])
+        zeichnen.polygon(screen, (255, 60, 60), [(nd_base_x1, nd_base_y1), (nd_base_x2, nd_base_y2), (nx, ny)])
 
         # Center cap
-        pygame.draw.circle(screen, (15, 15, 20), (cx_rpm, cy_rpm), int(6 * scale))
-        pygame.draw.circle(screen, (120, 120, 130), (cx_rpm, cy_rpm), int(6 * scale), 1)
+        zeichnen.circle(screen, (15, 15, 20), (cx_rpm, cy_rpm), int(6 * scale))
+        zeichnen.circle(screen, (120, 120, 130), (cx_rpm, cy_rpm), int(6 * scale), 1)
 
 
         # --- 2. Right Gauge: Speedometer (Speed needle) ---
@@ -347,7 +348,7 @@ class HUD:
         cy_spd = panel_y + int(60 * scale)
 
         # Draw speedometer background arc (0 to 300 km/h)
-        pygame.draw.arc(
+        zeichnen.arc(
             screen,
             (45, 45, 55),
             (cx_spd - radius, cy_spd - radius, radius * 2, radius * 2),
@@ -371,7 +372,7 @@ class HUD:
             x_in = cx_spd + (radius - tick_len) * math.cos(tick_rad)
             y_in = cy_spd - (radius - tick_len) * math.sin(tick_rad)
             
-            pygame.draw.line(screen, tick_color, (x_in, y_in), (x_out, y_out), 1)
+            zeichnen.line(screen, tick_color, (x_in, y_in), (x_out, y_out), 1)
             
             # Text label for major values
             if is_major:
@@ -390,7 +391,7 @@ class HUD:
 
         # Draw filled active Speedometer arc (cool cyan/blue)
         if abs_speed > 0.0:
-            pygame.draw.arc(
+            zeichnen.arc(
                 screen,
                 (0, 180, 255),
                 (cx_spd - radius, cy_spd - radius, radius * 2, radius * 2),
@@ -411,11 +412,11 @@ class HUD:
         nd_base_y1 = cy_spd - int(4 * scale) * math.sin(curr_spd_rad - math.pi/2)
         nd_base_x2 = cx_spd + int(4 * scale) * math.cos(curr_spd_rad + math.pi/2)
         nd_base_y2 = cy_spd - int(4 * scale) * math.sin(curr_spd_rad + math.pi/2)
-        pygame.draw.polygon(screen, (255, 60, 60), [(nd_base_x1, nd_base_y1), (nd_base_x2, nd_base_y2), (nx, ny)])
+        zeichnen.polygon(screen, (255, 60, 60), [(nd_base_x1, nd_base_y1), (nd_base_x2, nd_base_y2), (nx, ny)])
 
         # Center cap
-        pygame.draw.circle(screen, (15, 15, 20), (cx_spd, cy_spd), int(6 * scale))
-        pygame.draw.circle(screen, (120, 120, 130), (cx_spd, cy_spd), int(6 * scale), 1)
+        zeichnen.circle(screen, (15, 15, 20), (cx_spd, cy_spd), int(6 * scale))
+        zeichnen.circle(screen, (120, 120, 130), (cx_spd, cy_spd), int(6 * scale), 1)
 
 
         # --- 3. Center Stack: ESP Warning, Gear, Digital Speed ---
@@ -468,11 +469,11 @@ class HUD:
             (center_x - int(9 * scale), center_y - int(3 * scale)),   # Bumper top left
             (center_x - int(7 * scale), center_y - int(3 * scale)),   # Shoulder left
         ]
-        pygame.draw.polygon(screen, color, body_pts)
+        zeichnen.polygon(screen, color, body_pts)
         
         # Wheels
-        pygame.draw.rect(screen, color, (center_x - int(8 * scale), center_y + int(2 * scale), int(2 * scale), int(2 * scale)))
-        pygame.draw.rect(screen, color, (center_x + int(6 * scale), center_y + int(2 * scale), int(2 * scale), int(2 * scale)))
+        zeichnen.rect(screen, color, (center_x - int(8 * scale), center_y + int(2 * scale), int(2 * scale), int(2 * scale)))
+        zeichnen.rect(screen, color, (center_x + int(6 * scale), center_y + int(2 * scale), int(2 * scale), int(2 * scale)))
         
         # Wavy skid marks
         left_skid = [
@@ -487,8 +488,8 @@ class HUD:
             (center_x + int(8 * scale), center_y + int(10 * scale)),
             (center_x + int(5 * scale), center_y + int(13 * scale)),
         ]
-        pygame.draw.lines(screen, color, False, left_skid, max(1, int(2 * scale)))
-        pygame.draw.lines(screen, color, False, right_skid, max(1, int(2 * scale)))
+        zeichnen.lines(screen, color, False, left_skid, max(1, int(2 * scale)))
+        zeichnen.lines(screen, color, False, right_skid, max(1, int(2 * scale)))
 
     def _render_top_right_panel(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
         """Draw details like position, lap, and times in the top-right corner."""
@@ -498,9 +499,9 @@ class HUD:
         panel_y = int(20 * scale)
 
         # Leicht durchsichtiger Panel-Hintergrund (50% Deckkraft)
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf = leinwand.flaeche((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_STATUS_PANEL_BG)
-        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(8 * scale))
+        zeichnen.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(8 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # 1. Position & Laps
@@ -598,14 +599,14 @@ class HUD:
         for i in range(n):
             cx = x0 + i * (dot_r * 2 + gap)
             on = i < lit
-            pygame.draw.circle(screen, (18, 18, 22), (cx, y), dot_r + max(1, int(3 * scale)))
+            zeichnen.circle(screen, (18, 18, 22), (cx, y), dot_r + max(1, int(3 * scale)))
             if on:
-                glow = pygame.Surface((dot_r * 4, dot_r * 4), pygame.SRCALPHA)
-                pygame.draw.circle(glow, (*lit_color, 90), (dot_r * 2, dot_r * 2), dot_r * 2)
+                glow = leinwand.flaeche((dot_r * 4, dot_r * 4), pygame.SRCALPHA)
+                zeichnen.circle(glow, (*lit_color, 90), (dot_r * 2, dot_r * 2), dot_r * 2)
                 screen.blit(glow, (cx - dot_r * 2, y - dot_r * 2))
-                pygame.draw.circle(screen, lit_color, (cx, y), dot_r)
+                zeichnen.circle(screen, lit_color, (cx, y), dot_r)
             else:
-                pygame.draw.circle(screen, (55, 55, 62), (cx, y), dot_r)
+                zeichnen.circle(screen, (55, 55, 62), (cx, y), dot_r)
 
     def _render_countdown(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
         """Render the 3, 2, 1, GO! starting countdown overlay.
@@ -635,10 +636,10 @@ class HUD:
 
             # Ruhige, undurchsichtige Hintergrundscheibe, blendet mit der Ziffer.
             backing_r = int(85 * scale)
-            backing = pygame.Surface((backing_r * 2 + 8, backing_r * 2 + 8), pygame.SRCALPHA)
+            backing = leinwand.flaeche((backing_r * 2 + 8, backing_r * 2 + 8), pygame.SRCALPHA)
             bc = backing.get_width() // 2
-            pygame.draw.circle(backing, (10, 10, 15, int(150 * min(fade_in, fade_out))), (bc, bc), backing_r)
-            pygame.draw.circle(backing, (*self._COL_GEAR_TEXT, alpha), (bc, bc), backing_r, max(1, int(4 * scale)))
+            zeichnen.circle(backing, (10, 10, 15, int(150 * min(fade_in, fade_out))), (bc, bc), backing_r)
+            zeichnen.circle(backing, (*self._COL_GEAR_TEXT, alpha), (bc, bc), backing_r, max(1, int(4 * scale)))
             screen.blit(backing, backing.get_rect(center=(cx, cy)))
 
             # Weiches Gluehen: mehrere leicht versetzte, gedimmte Kopien darunter.
@@ -667,7 +668,7 @@ class HUD:
             # Kurzes gruenes Aufblitzen des ganzen Bildschirms im Moment des GO!.
             flash_alpha = int(70 * pop)
             if flash_alpha > 0:
-                flash = pygame.Surface((w, h), pygame.SRCALPHA)
+                flash = leinwand.flaeche((w, h), pygame.SRCALPHA)
                 flash.fill((0, 255, 120, flash_alpha))
                 screen.blit(flash, (0, 0))
 
@@ -687,9 +688,9 @@ class HUD:
             # ist und wurde in einer Flaeche von Schriftgroesse oben und unten
             # abgeschnitten.
             glow_r = int(max(text_rect.width, text_rect.height) * 0.5)
-            glow = pygame.Surface((glow_r * 2 + 4, glow_r * 2 + 4), pygame.SRCALPHA)
+            glow = leinwand.flaeche((glow_r * 2 + 4, glow_r * 2 + 4), pygame.SRCALPHA)
             gc = (glow.get_width() // 2, glow.get_height() // 2)
-            pygame.draw.circle(glow, (0, 220, 110, int(70 * min(fade_in, fade_out))), gc, glow_r)
+            zeichnen.circle(glow, (0, 220, 110, int(70 * min(fade_in, fade_out))), gc, glow_r)
             screen.blit(glow, glow.get_rect(center=(cx, cy)))
 
             screen.blit(text_surf, text_rect)
@@ -715,9 +716,9 @@ class HUD:
             # Text background panel
             pad_w = text_rect.width + int(30 * scale)
             pad_h = text_rect.height + int(12 * scale)
-            pad_surf = pygame.Surface((pad_w, pad_h), pygame.SRCALPHA)
+            pad_surf = leinwand.flaeche((pad_w, pad_h), pygame.SRCALPHA)
             pad_surf.fill((10, 10, 15, 160))
-            pygame.draw.rect(pad_surf, color, (0, 0, pad_w, pad_h), max(1, int(2 * scale)), border_radius=int(6 * scale))
+            zeichnen.rect(pad_surf, color, (0, 0, pad_w, pad_h), max(1, int(2 * scale)), border_radius=int(6 * scale))
             
             screen.blit(pad_surf, (cx - pad_w//2, cy - pad_h//2))
             screen.blit(text_surf, text_rect)
@@ -746,9 +747,9 @@ class HUD:
                 tr("ZIEL! Warte auf weitere Fahrzeuge..."), True, self._COL_GEAR_TEXT
             )
             rect = text.get_rect(center=(w // 2, int(60 * scale)))
-            bg = pygame.Surface((rect.width + int(40 * scale), rect.height + int(16 * scale)), pygame.SRCALPHA)
+            bg = leinwand.flaeche((rect.width + int(40 * scale), rect.height + int(16 * scale)), pygame.SRCALPHA)
             bg.fill((10, 10, 15, 190))
-            pygame.draw.rect(bg, self._COL_GEAR_TEXT,
+            zeichnen.rect(bg, self._COL_GEAR_TEXT,
                              (0, 0, bg.get_width(), bg.get_height()), max(1, int(2 * scale)), border_radius=int(6 * scale))
             screen.blit(bg, (rect.x - int(20 * scale), rect.y - int(8 * scale)))
             screen.blit(text, rect)
@@ -773,9 +774,9 @@ class HUD:
 
         breite = max(z_rect.width, u_rect.width) + int(48 * scale)
         hoehe = z_rect.height + u_rect.height + int(28 * scale)
-        bg = pygame.Surface((breite, hoehe), pygame.SRCALPHA)
+        bg = leinwand.flaeche((breite, hoehe), pygame.SRCALPHA)
         bg.fill((10, 10, 15, 200))
-        pygame.draw.rect(bg, farbe, (0, 0, breite, hoehe),
+        zeichnen.rect(bg, farbe, (0, 0, breite, hoehe),
                          max(1, int(2 * scale)), border_radius=int(8 * scale))
         screen.blit(bg, (w // 2 - breite // 2, z_rect.top - int(10 * scale)))
         screen.blit(zahl, z_rect)
@@ -792,9 +793,9 @@ class HUD:
         panel_y = int(80 * scale)
 
         # Translucent panel background
-        panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
+        panel_surf = leinwand.flaeche((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_PANEL_BG)
-        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(6 * scale))
+        zeichnen.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(6 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # Title
@@ -817,7 +818,7 @@ class HUD:
                 int(12 * scale),
                 int(12 * scale)
             )
-            pygame.draw.rect(screen, badge_color, badge_rect, border_radius=int(2 * scale))
+            zeichnen.rect(screen, badge_color, badge_rect, border_radius=int(2 * scale))
 
             # Name
             name_color = self._COL_GEAR_TEXT if entry["is_player"] else (240, 240, 240)

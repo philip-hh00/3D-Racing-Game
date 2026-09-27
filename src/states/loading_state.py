@@ -18,6 +18,8 @@ import pygame
 from src.states.base_state import BaseState
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 from src.core.i18n import tr
+from src.ui import zeichnen, leinwand
+from src.ui import theme as theme
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -151,16 +153,16 @@ class LoadingState(BaseState):
         # --- Background gradient ------------------------------------------
         screen.fill((10, 11, 18))
         # Subtle radial glow in the center
-        glow = pygame.Surface((600, 600), pygame.SRCALPHA)
+        glow = leinwand.flaeche((600, 600), pygame.SRCALPHA)
         for r in range(280, 0, -8):
             alpha = int(18 * (1 - r / 280))
-            pygame.draw.circle(glow, (255, 180, 0, alpha), (300, 300), r)
+            zeichnen.circle(glow, (255, 180, 0, alpha), (300, 300), r)
         screen.blit(glow, (W // 2 - 300, H // 2 - 300))
 
         # --- Logo / title --------------------------------------------------
-        f_title = pygame.font.Font(None, 96)
-        f_sub   = pygame.font.Font(None, 38)
-        f_label = pygame.font.Font(None, 30)
+        f_title = theme.font_standard(96)
+        f_sub   = theme.font_standard(38)
+        f_label = theme.font_standard(30)
 
         title_surf = f_title.render("3D-Racing-Game", True, (255, 180, 0))
         screen.blit(title_surf, title_surf.get_rect(center=(W // 2, H // 2 - 130)))
@@ -178,7 +180,7 @@ class LoadingState(BaseState):
         bar_y = H // 2 + 20
 
         # Track
-        pygame.draw.rect(screen, (30, 33, 44), (bar_x, bar_y, bar_w, bar_h), border_radius=4)
+        zeichnen.rect(screen, (30, 33, 44), (bar_x, bar_y, bar_w, bar_h), border_radius=4)
         # Fill
         fill_w = int(bar_w * progress)
         if fill_w > 0:
@@ -188,14 +190,14 @@ class LoadingState(BaseState):
                 r = int(220 + 35 * t)
                 g = int(140 + 40 * t)
                 b = int(0)
-                pygame.draw.rect(screen, (r, g, b), (bar_x + i, bar_y, 1, bar_h))
+                zeichnen.rect(screen, (r, g, b), (bar_x + i, bar_y, 1, bar_h))
 
         # Glow at the leading edge
         if 0 < fill_w < bar_w:
             glow_x = bar_x + fill_w
             for gw in range(12, 0, -2):
                 ga = int(80 * gw / 12)
-                pygame.draw.rect(screen, (255, 210, 80, ga),
+                zeichnen.rect(screen, (255, 210, 80, ga),
                                  (glow_x - gw, bar_y - 2, gw * 2, bar_h + 4),
                                  border_radius=2)
 

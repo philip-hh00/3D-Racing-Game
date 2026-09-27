@@ -22,6 +22,7 @@ from src.core import keybindings as kb
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 from src.core import display
 from src.ui import theme
+from src.ui import zeichnen, leinwand
 
 if TYPE_CHECKING:
     from src.core.state_machine import StateMachine
@@ -747,9 +748,9 @@ class VehicleLabState(BaseState):
             self._reiter_rects.append((name, r))
             aktiv = (name == self.seite)
             hover = r.collidepoint(display.mouse_pos())
-            pygame.draw.rect(screen, (58, 48, 20) if aktiv else
+            zeichnen.rect(screen, (58, 48, 20) if aktiv else
                              ((36, 40, 52) if hover else (24, 27, 36)), r, border_radius=5)
-            pygame.draw.rect(screen, theme.ACCENT if aktiv else
+            zeichnen.rect(screen, theme.ACCENT if aktiv else
                              (theme.BORDER_LIGHT if hover else theme.BORDER), r,
                              2 if aktiv else 1, border_radius=5)
             theme.text_fit(screen, label, theme.SMALL,
@@ -758,10 +759,10 @@ class VehicleLabState(BaseState):
             x += breite + luecke
 
     def _panel(self, screen, rect, alpha=190) -> None:
-        surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
         surf.fill((10, 12, 22, alpha))
         screen.blit(surf, rect.topleft)
-        pygame.draw.rect(screen, (60, 80, 120), rect, 1)
+        zeichnen.rect(screen, (60, 80, 120), rect, 1)
 
     def _item_text(self, cfg, kind, data) -> tuple[str, str]:
         if kind == "scalar":
@@ -848,7 +849,7 @@ class VehicleLabState(BaseState):
                         (x, rect.y + 14 + max_rows * row_h + 10))
 
         # Separator line
-        pygame.draw.line(screen, (50, 70, 100), (rect.x + 20, rect.y + 440), (rect.right - 20, rect.y + 440), 1)
+        zeichnen.line(screen, (50, 70, 100), (rect.x + 20, rect.y + 440), (rect.right - 20, rect.y + 440), 1)
 
         # Mouse hover detection for tooltips
         m_x, m_y = display.mouse_pos()
@@ -924,7 +925,7 @@ class VehicleLabState(BaseState):
                     (rect.x + 20, rect.y + 12))
         gx, gy = rect.x + 70, rect.y + 60
         gw, gh = rect.width - 150, rect.height - 130
-        pygame.draw.rect(screen, (30, 35, 50), (gx, gy, gw, gh))
+        zeichnen.rect(screen, (30, 35, 50), (gx, gy, gw, gh))
         
         idle, red = cfg.idle_rpm, cfg.redline_rpm
         table = self._ensure_torque(cfg)
@@ -941,7 +942,7 @@ class VehicleLabState(BaseState):
         # Gridlines with double Y-axis labels
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
             yy = gy + gh - gh * frac
-            pygame.draw.line(screen, (45, 50, 68), (gx, yy), (gx + gw, yy), 1)
+            zeichnen.line(screen, (45, 50, 68), (gx, yy), (gx + gw, yy), 1)
             # Left: Nm (Cyan)
             screen.blit(self._fonts["small"].render(f"{frac*nm_axis:.0f}", True, (0, 200, 220)),
                         (gx - 52, yy - 10))
@@ -959,13 +960,13 @@ class VehicleLabState(BaseState):
         spts = sorted(table)
         t_line = [(_rpm_x(r), gy + gh - gh * min(1.0, nm / nm_axis)) for r, nm in spts]
         if len(t_line) >= 2:
-            pygame.draw.lines(screen, (0, 230, 255), False, t_line, 3)
+            zeichnen.lines(screen, (0, 230, 255), False, t_line, 3)
             
         # Draw Power Curve (Orange)
         spts_kw = sorted(kw_table)
         p_line = [(_rpm_x(r), gy + gh - gh * min(1.0, kw / kw_axis)) for r, kw in spts_kw]
         if len(p_line) >= 2:
-            pygame.draw.lines(screen, (255, 120, 0), False, p_line, 3)
+            zeichnen.lines(screen, (255, 120, 0), False, p_line, 3)
             
         # Highlight points
         items = self._items()
@@ -985,16 +986,16 @@ class VehicleLabState(BaseState):
             
             hot = (sel_kind in ("torque_rpm", "torque_nm") and sel_data == i) or (overlay_hot_idx == i)
             # Torque marker
-            pygame.draw.circle(screen, (255, 200, 60) if hot else (0, 230, 255), (int(px), int(py_t)), 5, 0 if hot else 1)
+            zeichnen.circle(screen, (255, 200, 60) if hot else (0, 230, 255), (int(px), int(py_t)), 5, 0 if hot else 1)
             # Power marker
-            pygame.draw.circle(screen, (255, 200, 60) if hot else (255, 120, 0), (int(px), int(py_p)), 5, 0 if hot else 1)
+            zeichnen.circle(screen, (255, 200, 60) if hot else (255, 120, 0), (int(px), int(py_p)), 5, 0 if hot else 1)
             
         # markers: shift-up + redline
         def _vline(rpm, color, label):
             if red <= idle:
                 return
             fx = gx + gw * max(0.0, min(1.0, (rpm - idle) / (red - idle)))
-            pygame.draw.line(screen, color, (fx, gy), (fx, gy + gh), 1)
+            zeichnen.line(screen, color, (fx, gy), (fx, gy + gh), 1)
             screen.blit(self._fonts["small"].render(label, True, color), (fx - 16, gy + gh + 6))
         _vline(red, (240, 80, 80), "red")
         screen.blit(self._fonts["small"].render(f"{idle:.0f} rpm", True, (120, 130, 150)),
@@ -1013,7 +1014,7 @@ class VehicleLabState(BaseState):
                     
         gx, gy = rect.x + 70, rect.y + 45
         gw, gh = rect.width - 150, rect.height - 90
-        pygame.draw.rect(screen, (22, 26, 38), (gx, gy, gw, gh))
+        zeichnen.rect(screen, (22, 26, 38), (gx, gy, gw, gh))
         
         ratios = cfg.gear_ratios or [3.5, 2.0, 1.5, 1.2, 1.0]
         red = cfg.redline_rpm
@@ -1025,7 +1026,7 @@ class VehicleLabState(BaseState):
         # Gridlines Y (RPM)
         for frac in (0.0, 0.5, 1.0):
             yy = gy + gh - gh * frac
-            pygame.draw.line(screen, (40, 44, 60), (gx, yy), (gx + gw, yy), 1)
+            zeichnen.line(screen, (40, 44, 60), (gx, yy), (gx + gw, yy), 1)
             lbl = self._fonts["small"].render(f"{frac*red:.0f}", True, (150, 150, 160))
             screen.blit(lbl, (gx - 46, yy - 8))
         screen.blit(self._fonts["small"].render("RPM", True, (0, 230, 255)), (gx - 46, gy - 20))
@@ -1033,7 +1034,7 @@ class VehicleLabState(BaseState):
         # Gridlines X (Speed)
         for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
             xx = gx + gw * frac
-            pygame.draw.line(screen, (40, 44, 60), (xx, gy), (xx, gy + gh), 1)
+            zeichnen.line(screen, (40, 44, 60), (xx, gy), (xx, gy + gh), 1)
             lbl = self._fonts["small"].render(f"{frac*v_max_axis:.0f}", True, (150, 150, 160))
             screen.blit(lbl, (xx - 14, gy + gh + 6))
         screen.blit(self._fonts["small"].render("km/h", True, (120, 130, 150)), (gx + gw + 10, gy + gh + 6))
@@ -1062,7 +1063,7 @@ class VehicleLabState(BaseState):
             color = (255, 200, 60) if is_hot else colors[idx % len(colors)]
             thickness = 3 if is_hot else 2
             
-            pygame.draw.line(screen, color, (x0, y0), (int(x1), int(y1)), thickness)
+            zeichnen.line(screen, color, (x0, y0), (int(x1), int(y1)), thickness)
             
             lbl_x = min(max(gx + 4, int(x1) - 30), gx + gw - 95)
             lbl_y = gy + 4 + (idx % 3) * 15
@@ -1078,9 +1079,9 @@ class VehicleLabState(BaseState):
         if self._bench_job is not None:
             prog = self._bench_job.get("progress", 0.0)
             bar = pygame.Rect(x, y, rect.width - 48, 26)
-            pygame.draw.rect(screen, (30, 40, 35), bar, border_radius=4)
+            zeichnen.rect(screen, (30, 40, 35), bar, border_radius=4)
             fill = pygame.Rect(x, y, int((rect.width - 48) * prog), 26)
-            pygame.draw.rect(screen, (80, 220, 130), fill, border_radius=4)
+            zeichnen.rect(screen, (80, 220, 130), fill, border_radius=4)
             screen.blit(self._fonts["small"].render(f"Berechne… {prog*100:.0f} %", True, (220, 255, 230)),
                         (x + 8, y + 36))
             return
@@ -1328,7 +1329,7 @@ class VehicleLabState(BaseState):
             return
             
         # Transparent backdrop
-        bg = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        bg = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
         bg.fill((10, 10, 15, 200))
         screen.blit(bg, (0, 0))
 
@@ -1378,8 +1379,8 @@ class VehicleLabState(BaseState):
                     border_color = (255, 200, 60) if is_active else (60, 80, 120)
                     box_bg_color = (20, 24, 38) if is_active else (14, 16, 26)
                     
-                    pygame.draw.rect(screen, box_bg_color, box_rect)
-                    pygame.draw.rect(screen, border_color, box_rect, 1)
+                    zeichnen.rect(screen, box_bg_color, box_rect)
+                    zeichnen.rect(screen, border_color, box_rect, 1)
 
                     # Cursor blinking
                     text_to_draw = inp["text"]
@@ -1416,8 +1417,8 @@ class VehicleLabState(BaseState):
                 border_color = (255, 200, 60) if is_active else (60, 80, 120)
                 box_bg_color = (20, 24, 38) if is_active else (14, 16, 26)
                 
-                pygame.draw.rect(screen, box_bg_color, box_rect)
-                pygame.draw.rect(screen, border_color, box_rect, 1)
+                zeichnen.rect(screen, box_bg_color, box_rect)
+                zeichnen.rect(screen, border_color, box_rect, 1)
 
                 # Cursor blinking
                 text_to_draw = inp["text"]
@@ -1443,7 +1444,7 @@ class VehicleLabState(BaseState):
                         pass
             
             live_table.sort(key=lambda pt: pt[0])
-            pygame.draw.rect(screen, (30, 35, 50), (gx, gy, gw, gh))
+            zeichnen.rect(screen, (30, 35, 50), (gx, gy, gw, gh))
             
             if len(live_table) >= 2:
                 idle = min(pt[0] for pt in live_table)
@@ -1459,7 +1460,7 @@ class VehicleLabState(BaseState):
                 # Gridlines
                 for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
                     yy = gy + gh - gh * frac
-                    pygame.draw.line(screen, (45, 50, 68), (gx, yy), (gx + gw, yy), 1)
+                    zeichnen.line(screen, (45, 50, 68), (gx, yy), (gx + gw, yy), 1)
                     screen.blit(self._fonts["small"].render(f"{frac*nm_axis:.0f}", True, (0, 200, 220)),
                                 (gx - 52, yy - 10))
                     screen.blit(self._fonts["small"].render(f"{frac*kw_axis:.0f}", True, (255, 120, 0)),
@@ -1472,10 +1473,10 @@ class VehicleLabState(BaseState):
                     return gx + gw * (max(0.0, min(1.0, (rpm - idle) / span)) if span > 0.0 else 0.0)
 
                 t_line = [(_live_rpm_x(r), gy + gh - gh * min(1.0, nm / nm_axis)) for r, nm in live_table]
-                pygame.draw.lines(screen, (0, 230, 255), False, t_line, 3)
+                zeichnen.lines(screen, (0, 230, 255), False, t_line, 3)
                 
                 p_line = [(_live_rpm_x(r), gy + gh - gh * min(1.0, kw / kw_axis)) for r, kw in kw_table]
-                pygame.draw.lines(screen, (255, 120, 0), False, p_line, 3)
+                zeichnen.lines(screen, (255, 120, 0), False, p_line, 3)
                 
                 overlay_hot_idx = self._overlay_sel // 2
                 for i, (r, nm) in enumerate(live_table):
@@ -1483,8 +1484,8 @@ class VehicleLabState(BaseState):
                     py_t = gy + gh - gh * min(1.0, nm / nm_axis)
                     py_p = gy + gh - gh * min(1.0, (r * nm / 9549.3) / kw_axis)
                     hot = (overlay_hot_idx == i)
-                    pygame.draw.circle(screen, (255, 200, 60) if hot else (0, 230, 255), (int(px), int(py_t)), 5, 0 if hot else 1)
-                    pygame.draw.circle(screen, (255, 200, 60) if hot else (255, 120, 0), (int(px), int(py_p)), 5, 0 if hot else 1)
+                    zeichnen.circle(screen, (255, 200, 60) if hot else (0, 230, 255), (int(px), int(py_t)), 5, 0 if hot else 1)
+                    zeichnen.circle(screen, (255, 200, 60) if hot else (255, 120, 0), (int(px), int(py_p)), 5, 0 if hot else 1)
             else:
                 lbl = self._fonts["body"].render("Mindestens 2 gültige Zeilen eingeben...", True, (150, 160, 180))
                 screen.blit(lbl, (gx + 40, gy + gh // 2 - 10))
@@ -1504,7 +1505,7 @@ class VehicleLabState(BaseState):
                 except ValueError:
                     pass
                     
-            pygame.draw.rect(screen, (22, 26, 38), (gx, gy, gw, gh))
+            zeichnen.rect(screen, (22, 26, 38), (gx, gy, gw, gh))
             
             if num_gears >= 1 and i_max > 0.0 and i_min > 0.0:
                 if num_gears > 1:
@@ -1523,7 +1524,7 @@ class VehicleLabState(BaseState):
                 # Y-axis (RPM)
                 for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
                     yy = gy + gh - gh * frac
-                    pygame.draw.line(screen, (40, 44, 60), (gx, yy), (gx + gw, yy), 1)
+                    zeichnen.line(screen, (40, 44, 60), (gx, yy), (gx + gw, yy), 1)
                     lbl = self._fonts["small"].render(f"{frac*red:.0f}", True, (150, 150, 160))
                     screen.blit(lbl, (gx - 46, yy - 8))
                 screen.blit(self._fonts["small"].render("RPM", True, (0, 230, 255)), (gx - 46, gy - 20))
@@ -1531,7 +1532,7 @@ class VehicleLabState(BaseState):
                 # X-axis (Speed km/h)
                 for frac in (0.0, 0.25, 0.5, 0.75, 1.0):
                     xx = gx + gw * frac
-                    pygame.draw.line(screen, (40, 44, 60), (xx, gy), (xx, gy + gh), 1)
+                    zeichnen.line(screen, (40, 44, 60), (xx, gy), (xx, gy + gh), 1)
                     lbl = self._fonts["small"].render(f"{frac*v_max_axis:.0f}", True, (150, 150, 160))
                     screen.blit(lbl, (xx - 14, gy + gh + 6))
                 screen.blit(self._fonts["small"].render("km/h", True, (120, 130, 150)), (gx + gw + 10, gy + gh + 6))
@@ -1557,7 +1558,7 @@ class VehicleLabState(BaseState):
                     color = (255, 200, 60) if is_hot else colors[idx % len(colors)]
                     thickness = 3 if is_hot else 2
                     
-                    pygame.draw.line(screen, color, (x0, y0), (int(x1), int(y1)), thickness)
+                    zeichnen.line(screen, color, (x0, y0), (int(x1), int(y1)), thickness)
                     
                     lbl_x = x1 + 4 if v_max_gear <= v_max_axis else x1 - 24
                     lbl_y = y1 - 12 if v_max_gear <= v_max_axis else y1 + 4

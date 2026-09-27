@@ -9,6 +9,7 @@ from __future__ import annotations
 import pygame
 
 from src.ui import theme
+from src.ui import zeichnen
 
 
 class TileGrid:
@@ -109,8 +110,8 @@ class TileGrid:
         if ms <= 0:
             return
         track = pygame.Rect(self.area.right + 8, self.area.y, 6, self.area.height)
-        pygame.draw.rect(screen, theme.PANEL_LIGHT, track, border_radius=3)
+        zeichnen.rect(screen, theme.PANEL_LIGHT, track, border_radius=3)
         frac_vis = self.area.height / self._content_h()
         knob_h = max(30, int(track.height * frac_vis))
         knob_y = track.y + int((track.height - knob_h) * (self.scroll / ms))
-        pygame.draw.rect(screen, theme.ACCENT, (track.x, knob_y, track.width, knob_h), border_radius=3)
+        zeichnen.rect(screen, theme.ACCENT, (track.x, knob_y, track.width, knob_h), border_radius=3)

@@ -131,10 +131,13 @@ def test_beide_wege_liefern_dasselbe_bild(ctx):
     u.freigeben()
 
 
-def test_falsche_flaechengroesse_wird_gemeldet(ctx):
+def test_die_textur_folgt_der_flaechengroesse(ctx):
+    """Seit die Oberfläche in echter Auflösung zeichnet (src/ui/leinwand.py),
+    wechselt ihre Größe mit dem Fenster — die Textur zieht mit, statt einen
+    Fehler zu melden."""
     u = ansicht.Ueberlagerung(ctx, (16, 16))
-    with pytest.raises(ValueError, match="virtuelle"):
-        u.aktualisieren(_flaeche((32, 32), (255, 0, 0)))
+    u.aktualisieren(_flaeche((32, 32), (255, 0, 0)))
+    assert u.groesse == (32, 32)
     u.freigeben()
 
 

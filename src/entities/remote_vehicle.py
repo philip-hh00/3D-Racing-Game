@@ -29,6 +29,7 @@ import pymunk
 
 from src.entities.components.renderer import VehicleRenderer
 from src.core.settings import COLLISION_TYPE_VEHICLE
+from src.ui import zeichnen
 
 # Visual colors per slot index (slot 0 = local player, so remote starts at 1)
 _SLOT_COLORS = [
@@ -380,7 +381,7 @@ class RemoteVehicle:
             text_surf = theme.font(14).render(self.driver_name, True, color)
             bg_rect = text_surf.get_rect(center=(x, y))
             bg_rect.inflate_ip(8, 4)
-            pygame.draw.rect(surface, (10, 11, 18, 180), bg_rect, border_radius=4)
+            zeichnen.rect(surface, (10, 11, 18, 180), bg_rect, border_radius=4)
             
             text_rect = text_surf.get_rect(center=(x, y))
             surface.blit(text_surf, text_rect)

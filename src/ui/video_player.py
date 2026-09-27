@@ -83,12 +83,21 @@ class VideoPlayer:
         # auf freigegebenen Speicher. An die Flaeche haengen laesst er sich
         # nicht (``pygame.Surface`` nimmt keine eigenen Attribute an), also
         # haelt ihn der Spieler neben ihr.
+        from src.ui import leinwand
+        s = leinwand.skala()
+        if self.size:
+            # Gleich in der echten Größe der Oberfläche (src/ui/leinwand.py):
+            # cv2 skaliert in 2-3 ms, ein nachträgliches smoothscale auf die
+            # 1440p-/4K-Fläche kostete 18 ms je Bild.
+            ziel = (max(1, round(self.size[0] * s)), max(1, round(self.size[1] * s)))
+            if (w, h) != ziel:
+                rgb = cv2.resize(rgb, ziel, interpolation=cv2.INTER_LINEAR)
+                w, h = ziel
         rgb = np.ascontiguousarray(rgb)
         surf = pygame.image.frombuffer(rgb.data, (w, h), "RGB")
-        if self.size and (w, h) != self.size:
-            # Skalieren erzeugt eine eigene Flaeche mit eigenem Speicher; der
-            # Puffer wird dann nicht mehr gebraucht.
-            surf = pygame.transform.smoothscale(surf, self.size)
+        if self.size and s != 1.0:
+            # Als Fläche mit Skala: eigene Kopie, der Puffer wird frei.
+            surf = leinwand._flaeche_aus(surf, s)
             rgb = None
         self._surface = surf
         self._puffer = rgb

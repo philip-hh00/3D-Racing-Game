@@ -27,6 +27,7 @@ import pygame
 from src.core.i18n import tr
 from src.net import payload
 from src.ui import theme
+from src.ui import zeichnen
 
 #: Linke Spalte: Streckendaten. Danach die Kacheln.
 INFO_X, INFO_W = 60, 300
@@ -134,7 +135,7 @@ def draw_outline(screen: pygame.Surface, info: dict, rect: pygame.Rect,
         for px, py in punkte
     ]
     if len(auf_schirm) >= 3:
-        pygame.draw.lines(screen, farbe, True, auf_schirm, staerke)
+        zeichnen.lines(screen, farbe, True, auf_schirm, staerke)
 
 
 class GPOverview:
@@ -313,8 +314,8 @@ class GPOverview:
             eintrag = stand[platz - 1]
             rect = pygame.Rect(SCHIRM_MITTE + dx - PODEST_W // 2,
                                PODEST_Y + (PODEST_MAX_H - hoehe), PODEST_W, hoehe)
-            pygame.draw.rect(screen, theme.PANEL, rect, border_radius=6)
-            pygame.draw.rect(screen, farbe, rect, 3, border_radius=6)
+            zeichnen.rect(screen, theme.PANEL, rect, border_radius=6)
+            zeichnen.rect(screen, farbe, rect, 3, border_radius=6)
             theme.text(screen, str(platz), theme.TITLE, farbe,
                        (rect.centerx, rect.centery), center=True)
             theme.text_fit(screen, str(eintrag.get("name", "")), theme.LABEL, farbe,
@@ -403,8 +404,8 @@ class GPOverview:
                 fuell, rand = theme.PANEL_LIGHT, theme.BORDER_LIGHT
             else:
                 fuell, rand = theme.PANEL, theme.BORDER
-            pygame.draw.rect(screen, fuell, rect, border_radius=8)
-            pygame.draw.rect(screen, rand, rect, 3 if ist_gewaehlt else 2, border_radius=8)
+            zeichnen.rect(screen, fuell, rect, border_radius=8)
+            zeichnen.rect(screen, rand, rect, 3 if ist_gewaehlt else 2, border_radius=8)
 
             # Name oben in der Kachel, Verlauf darunter.
             theme.text_fit(screen, tr(self.name_of(key)), theme.LABEL,
@@ -428,9 +429,9 @@ class GPOverview:
         leiste = self.scrollbar_rects()
         if leiste is not None:
             bahn, daumen = leiste
-            pygame.draw.rect(screen, theme.PANEL, bahn, border_radius=4)
-            pygame.draw.rect(screen, theme.BORDER, bahn, 1, border_radius=4)
-            pygame.draw.rect(screen, theme.ACCENT, daumen, border_radius=4)
+            zeichnen.rect(screen, theme.PANEL, bahn, border_radius=4)
+            zeichnen.rect(screen, theme.BORDER, bahn, 1, border_radius=4)
+            zeichnen.rect(screen, theme.ACCENT, daumen, border_radius=4)
             theme.text(screen, f"{self.cursor + 1} / {len(self.keys)}", theme.SMALL,
                        theme.TEXT_FAINT,
                        (TILE_X + TILE_W, LIST_Y - 24), topright=True)
@@ -450,7 +451,7 @@ class GPOverview:
             spalten.append((tr("Bereit"), x + 730))
         for label, sx in spalten:
             theme.text(screen, label, theme.SMALL, theme.TEXT_FAINT, (sx, LIST_Y - 26))
-        pygame.draw.line(screen, theme.BORDER, (x, LIST_Y - 4),
+        zeichnen.line(screen, theme.BORDER, (x, LIST_Y - 4),
                          (x + RIGHT_W - 60, LIST_Y - 4), 1)
 
         # Bereit-Zustand und Fahrzeug kommen aus der Spielerliste, Punkte aus
@@ -560,8 +561,8 @@ class GPOverview:
         Download ist immer ein bewusster Klick.
         """
         rect = pygame.Rect(OFFER_X, OFFER_Y, OFFER_W, OFFER_H)
-        pygame.draw.rect(screen, (22, 24, 30), rect, border_radius=10)
-        pygame.draw.rect(screen, theme.BORDER, rect, 1, border_radius=10)
+        zeichnen.rect(screen, (22, 24, 30), rect, border_radius=10)
+        zeichnen.rect(screen, theme.BORDER, rect, 1, border_radius=10)
         theme.text(screen, tr("STRECKENVORSCHLÄGE"), theme.LABEL,
                    theme.TEXT_DIM if aktiv else theme.TEXT_FAINT,
                    (rect.x + 20, rect.y + 18))

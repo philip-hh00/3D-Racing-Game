@@ -7,10 +7,11 @@ import pygame
 
 from src.utils.math_utils import to_pygame
 from src.core.settings import SCREEN_HEIGHT
+from src.ui import zeichnen, leinwand
 
 
 class VehicleRenderer:
-    """Draws a top-down car shape using pygame.draw.
+    """Draws a top-down car shape using zeichnen.
 
     Creates a polygon-based car shape with body, windshield, and
     rear spoiler detail. Supports rotation and camera offset.
@@ -128,7 +129,7 @@ class VehicleRenderer:
         # Surface is padded to allow for rotation without clipping
         pad = 4
         w, h = self.width + pad * 2, self.height + pad * 2
-        surf = pygame.Surface((h, w), pygame.SRCALPHA)
+        surf = leinwand.flaeche((h, w), pygame.SRCALPHA)
         cx, cy = h // 2, w // 2
         hw, hh = self.height // 2, self.width // 2
 
@@ -154,8 +155,8 @@ class VehicleRenderer:
                 (cx + hw - 10, cy + hh - 1),        # Front fender right
                 (cx + hw - 4, cy + hh - 1),         # Front-right corner
             ]
-            pygame.draw.polygon(surf, col_primary, body_pts)
-            pygame.draw.polygon(surf, col_dark, body_pts, 2)
+            zeichnen.polygon(surf, col_primary, body_pts)
+            zeichnen.polygon(surf, col_dark, body_pts, 2)
 
             # Windshield + Roof (Larger glass canopy covering center to rear)
             ws_pts = [
@@ -164,23 +165,23 @@ class VehicleRenderer:
                 (cx - hw + 4, cy + hh - 4),
                 (cx - hw + 4, cy - hh + 3),
             ]
-            pygame.draw.polygon(surf, col_secondary, ws_pts)
+            zeichnen.polygon(surf, col_secondary, ws_pts)
             # Roof panel in the center
-            pygame.draw.rect(surf, self._darken(col_primary, 0.8), (cx - hw + 10, cy - hh + 4, 15, self.width - 8), border_radius=2)
+            zeichnen.rect(surf, self._darken(col_primary, 0.8), (cx - hw + 10, cy - hh + 4, 15, self.width - 8), border_radius=2)
 
             # Lights
-            pygame.draw.circle(surf, (255, 255, 200), (cx + hw - 2, cy - hh + 3), 2)
-            pygame.draw.circle(surf, (255, 255, 200), (cx + hw - 2, cy + hh - 3), 2)
-            pygame.draw.circle(surf, (255, 30, 30), (cx - hw + 1, cy - hh + 6), 2)
-            pygame.draw.circle(surf, (255, 30, 30), (cx - hw + 1, cy + hh - 6), 2)
+            zeichnen.circle(surf, (255, 255, 200), (cx + hw - 2, cy - hh + 3), 2)
+            zeichnen.circle(surf, (255, 255, 200), (cx + hw - 2, cy + hh - 3), 2)
+            zeichnen.circle(surf, (255, 30, 30), (cx - hw + 1, cy - hh + 6), 2)
+            zeichnen.circle(surf, (255, 30, 30), (cx - hw + 1, cy + hh - 6), 2)
 
         elif base_type == "drifter":
             # --- Drift Machine (Aggressive Spoiler, exposed wheels outline) ---
             # Draw side wheels first so they are under the body
-            pygame.draw.rect(surf, (20, 20, 20), (cx + hw - 12, cy - hh - 2, 8, 3), border_radius=1)
-            pygame.draw.rect(surf, (20, 20, 20), (cx + hw - 12, cy + hh - 1, 8, 3), border_radius=1)
-            pygame.draw.rect(surf, (20, 20, 20), (cx - hw + 6, cy - hh - 2, 8, 3), border_radius=1)
-            pygame.draw.rect(surf, (20, 20, 20), (cx - hw + 6, cy + hh - 1, 8, 3), border_radius=1)
+            zeichnen.rect(surf, (20, 20, 20), (cx + hw - 12, cy - hh - 2, 8, 3), border_radius=1)
+            zeichnen.rect(surf, (20, 20, 20), (cx + hw - 12, cy + hh - 1, 8, 3), border_radius=1)
+            zeichnen.rect(surf, (20, 20, 20), (cx - hw + 6, cy - hh - 2, 8, 3), border_radius=1)
+            zeichnen.rect(surf, (20, 20, 20), (cx - hw + 6, cy + hh - 1, 8, 3), border_radius=1)
 
             # Body polygon
             body_pts = [
@@ -194,8 +195,8 @@ class VehicleRenderer:
                 (cx - hw + 6, cy + hh - 1),         # Mid right
                 (cx + hw - 8, cy + hh - 1),         # Front right
             ]
-            pygame.draw.polygon(surf, col_primary, body_pts)
-            pygame.draw.polygon(surf, col_dark, body_pts, 2)
+            zeichnen.polygon(surf, col_primary, body_pts)
+            zeichnen.polygon(surf, col_dark, body_pts, 2)
 
             # Sport Windshield
             ws_pts = [
@@ -204,22 +205,22 @@ class VehicleRenderer:
                 (cx - 2, cy + hh - 5),
                 (cx - 2, cy - hh + 5),
             ]
-            pygame.draw.polygon(surf, col_secondary, ws_pts)
+            zeichnen.polygon(surf, col_secondary, ws_pts)
 
             # High GT Spoiler wing
-            pygame.draw.line(surf, (15, 15, 15), (cx - hw + 1, cy - hh - 3), (cx - hw + 1, cy + hh + 3), 3)
+            zeichnen.line(surf, (15, 15, 15), (cx - hw + 1, cy - hh - 3), (cx - hw + 1, cy + hh + 3), 3)
             # Spoiler mounts
-            pygame.draw.rect(surf, col_dark, (cx - hw + 1, cy - hh + 4, 3, 2))
-            pygame.draw.rect(surf, col_dark, (cx - hw + 1, cy + hh - 6, 3, 2))
+            zeichnen.rect(surf, col_dark, (cx - hw + 1, cy - hh + 4, 3, 2))
+            zeichnen.rect(surf, col_dark, (cx - hw + 1, cy + hh - 6, 3, 2))
 
             # Sporty decals (racing stripe)
-            pygame.draw.line(surf, col_accent, (cx + hw - 8, cy), (cx - hw + 3, cy), 2)
+            zeichnen.line(surf, col_accent, (cx + hw - 8, cy), (cx - hw + 3, cy), 2)
 
             # Lights
-            pygame.draw.circle(surf, (255, 255, 180), (cx + hw - 3, cy - hh + 4), 2)
-            pygame.draw.circle(surf, (255, 255, 180), (cx + hw - 3, cy + hh - 4), 2)
-            pygame.draw.circle(surf, (255, 20, 20), (cx - hw + 2, cy - hh + 5), 2)
-            pygame.draw.circle(surf, (255, 20, 20), (cx - hw + 2, cy + hh - 5), 2)
+            zeichnen.circle(surf, (255, 255, 180), (cx + hw - 3, cy - hh + 4), 2)
+            zeichnen.circle(surf, (255, 255, 180), (cx + hw - 3, cy + hh - 4), 2)
+            zeichnen.circle(surf, (255, 20, 20), (cx - hw + 2, cy - hh + 5), 2)
+            zeichnen.circle(surf, (255, 20, 20), (cx - hw + 2, cy + hh - 5), 2)
 
         elif base_type == "limousine":
             # --- Luxus-Limousine (Long Sedan, defined Hood, Cabin, Trunk) ---
@@ -233,12 +234,12 @@ class VehicleRenderer:
                 (cx - hw + 3, cy - hh),             # Rear left corner
                 (cx + hw - 4, cy - hh),             # Front left corner
             ]
-            pygame.draw.polygon(surf, col_primary, body_pts)
-            pygame.draw.polygon(surf, col_dark, body_pts, 2)
+            zeichnen.polygon(surf, col_primary, body_pts)
+            zeichnen.polygon(surf, col_dark, body_pts, 2)
 
             # Chrome accents at bumpers
-            pygame.draw.line(surf, (220, 220, 230), (cx + hw, cy - hh + 5), (cx + hw, cy + hh - 5), 2)
-            pygame.draw.line(surf, (220, 220, 230), (cx - hw, cy - hh + 5), (cx - hw, cy + hh - 5), 2)
+            zeichnen.line(surf, (220, 220, 230), (cx + hw, cy - hh + 5), (cx + hw, cy + hh - 5), 2)
+            zeichnen.line(surf, (220, 220, 230), (cx - hw, cy - hh + 5), (cx - hw, cy + hh - 5), 2)
 
             # Long cabin glass layout
             ws_pts = [
@@ -247,15 +248,15 @@ class VehicleRenderer:
                 (cx + hw - 26, cy + hh - 4),
                 (cx + hw - 26, cy - hh + 4),
             ]
-            pygame.draw.polygon(surf, col_secondary, ws_pts)
-            pygame.draw.rect(surf, col_secondary, (cx - hw + 10, cy - hh + 3, 20, self.width - 6))
-            pygame.draw.rect(surf, col_primary, (cx - hw + 14, cy - hh + 5, 14, self.width - 10))
-            pygame.draw.rect(surf, col_dark, (cx - hw + 14, cy - hh + 5, 14, self.width - 10), 1)
+            zeichnen.polygon(surf, col_secondary, ws_pts)
+            zeichnen.rect(surf, col_secondary, (cx - hw + 10, cy - hh + 3, 20, self.width - 6))
+            zeichnen.rect(surf, col_primary, (cx - hw + 14, cy - hh + 5, 14, self.width - 10))
+            zeichnen.rect(surf, col_dark, (cx - hw + 14, cy - hh + 5, 14, self.width - 10), 1)
 
             # Headlights (xenon white) & Taillights
-            pygame.draw.circle(surf, (220, 240, 255), (cx + hw - 2, cy - hh + 4), 2)
-            pygame.draw.circle(surf, (220, 240, 255), (cx + hw - 2, cy + hh - 4), 2)
-            pygame.draw.line(surf, (255, 30, 30), (cx - hw + 2, cy - hh + 6), (cx - hw + 2, cy + hh - 6), 2)
+            zeichnen.circle(surf, (220, 240, 255), (cx + hw - 2, cy - hh + 4), 2)
+            zeichnen.circle(surf, (220, 240, 255), (cx + hw - 2, cy + hh - 4), 2)
+            zeichnen.line(surf, (255, 30, 30), (cx - hw + 2, cy - hh + 6), (cx - hw + 2, cy + hh - 6), 2)
 
         elif base_type == "electric":
             # --- Elektro-Prototyp (Streamlined futuristic sports car) ---
@@ -276,8 +277,8 @@ class VehicleRenderer:
                 (cx + hw - 10, cy - hh + 1),        # Front-left fender
                 (cx + hw - 4, cy - hh + 3),         # Front-left wheel arch
             ]
-            pygame.draw.polygon(surf, col_primary, body_pts)
-            pygame.draw.polygon(surf, col_dark, body_pts, 2)
+            zeichnen.polygon(surf, col_primary, body_pts)
+            zeichnen.polygon(surf, col_dark, body_pts, 2)
 
             # Translucent glass canopy (Teardrop capsule)
             canopy_pts = [
@@ -288,22 +289,22 @@ class VehicleRenderer:
                 (cx - hw + 12, cy - hh + 5),
                 (cx + hw - 16, cy - hh + 5),
             ]
-            pygame.draw.polygon(surf, (15, 30, 45), canopy_pts)
-            pygame.draw.polygon(surf, (0, 200, 255), canopy_pts, 1)
+            zeichnen.polygon(surf, (15, 30, 45), canopy_pts)
+            zeichnen.polygon(surf, (0, 200, 255), canopy_pts, 1)
 
             # Aero winglet camera stalks (instead of mirrors)
-            pygame.draw.line(surf, col_dark, (cx + 4, cy - hh + 1), (cx + 6, cy - hh - 3), 2)
-            pygame.draw.circle(surf, (0, 255, 255), (cx + 6, cy - hh - 3), 1)
-            pygame.draw.line(surf, col_dark, (cx + 4, cy + hh - 1), (cx + 6, cy + hh + 3), 2)
-            pygame.draw.circle(surf, (0, 255, 255), (cx + 6, cy + hh + 3), 1)
+            zeichnen.line(surf, col_dark, (cx + 4, cy - hh + 1), (cx + 6, cy - hh - 3), 2)
+            zeichnen.circle(surf, (0, 255, 255), (cx + 6, cy - hh - 3), 1)
+            zeichnen.line(surf, col_dark, (cx + 4, cy + hh - 1), (cx + 6, cy + hh + 3), 2)
+            zeichnen.circle(surf, (0, 255, 255), (cx + 6, cy + hh + 3), 1)
 
             # Futuristic LED signature light bands
             # Front: Cyan headlights and central light band
-            pygame.draw.line(surf, (0, 255, 255), (cx + hw - 1, cy - 5), (cx + hw - 1, cy + 5), 2)
-            pygame.draw.circle(surf, (150, 255, 255), (cx + hw - 2, cy - hh + 4), 2)
-            pygame.draw.circle(surf, (150, 255, 255), (cx + hw - 2, cy + hh - 4), 2)
+            zeichnen.line(surf, (0, 255, 255), (cx + hw - 1, cy - 5), (cx + hw - 1, cy + 5), 2)
+            zeichnen.circle(surf, (150, 255, 255), (cx + hw - 2, cy - hh + 4), 2)
+            zeichnen.circle(surf, (150, 255, 255), (cx + hw - 2, cy + hh - 4), 2)
             # Rear: Continuous cyan light strip
-            pygame.draw.line(surf, (0, 255, 255), (cx - hw + 1, cy - hh + 6), (cx - hw + 1, cy + hh - 6), 2)
+            zeichnen.line(surf, (0, 255, 255), (cx - hw + 1, cy - hh + 6), (cx - hw + 1, cy + hh - 6), 2)
 
         else:
             # --- Supercar (Default Sleek Race Car) ---
@@ -316,8 +317,8 @@ class VehicleRenderer:
                 (cx - hw + 4, cy + hh),             # Rear-right
                 (cx + hw - 6, cy + hh - 2),         # Front-right
             ]
-            pygame.draw.polygon(surf, col_primary, body_pts)
-            pygame.draw.polygon(surf, col_dark, body_pts, 2)
+            zeichnen.polygon(surf, col_primary, body_pts)
+            zeichnen.polygon(surf, col_dark, body_pts, 2)
 
             # Windshield
             ws_pts = [
@@ -326,7 +327,7 @@ class VehicleRenderer:
                 (cx + 2, cy + hh - 6),
                 (cx + 2, cy - hh + 6),
             ]
-            pygame.draw.polygon(surf, col_secondary, ws_pts)
+            zeichnen.polygon(surf, col_secondary, ws_pts)
 
             # Rear spoiler
             spoiler_pts = [
@@ -335,13 +336,13 @@ class VehicleRenderer:
                 (cx - hw + 6, cy + hh - 4),
                 (cx - hw + 6, cy - hh + 4),
             ]
-            pygame.draw.polygon(surf, self._darken(col_primary, 0.4), spoiler_pts)
+            zeichnen.polygon(surf, self._darken(col_primary, 0.4), spoiler_pts)
 
             # Lights
-            pygame.draw.circle(surf, (255, 255, 200), (cx + hw - 3, cy - hh + 5), 2)
-            pygame.draw.circle(surf, (255, 255, 200), (cx + hw - 3, cy + hh - 5), 2)
-            pygame.draw.circle(surf, (255, 30, 30), (cx - hw + 2, cy - hh + 4), 2)
-            pygame.draw.circle(surf, (255, 30, 30), (cx - hw + 2, cy + hh - 4), 2)
+            zeichnen.circle(surf, (255, 255, 200), (cx + hw - 3, cy - hh + 5), 2)
+            zeichnen.circle(surf, (255, 255, 200), (cx + hw - 3, cy + hh - 5), 2)
+            zeichnen.circle(surf, (255, 30, 30), (cx - hw + 2, cy - hh + 4), 2)
+            zeichnen.circle(surf, (255, 30, 30), (cx - hw + 2, cy + hh - 4), 2)
 
         return surf
 

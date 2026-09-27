@@ -15,6 +15,7 @@ from src.entities.components.steering import Steering
 from src.entities.components.brakes import Brakes
 from src.entities.components.renderer import VehicleRenderer
 from src.core.settings import COLLISION_TYPE_VEHICLE
+from src.ui import zeichnen
 
 if TYPE_CHECKING:
     from src.physics.physics_world import PhysicsWorld
@@ -487,7 +488,7 @@ class Vehicle:
             text_surf = theme.font(14).render(self.driver_name, True, color)
             bg_rect = text_surf.get_rect(center=(x, y))
             bg_rect.inflate_ip(8, 4)
-            pygame.draw.rect(screen, (10, 11, 18, 180), bg_rect, border_radius=4)
+            zeichnen.rect(screen, (10, 11, 18, 180), bg_rect, border_radius=4)
             
             text_rect = text_surf.get_rect(center=(x, y))
             screen.blit(text_surf, text_rect)
@@ -504,8 +505,8 @@ class Vehicle:
             y = int(screen_pos[1] + camera_offset.y) - 32
 
             badge_color = (255, 120, 0) if self.team == "A" else (0, 140, 255)
-            pygame.draw.circle(screen, badge_color, (x, y), 10)
-            pygame.draw.circle(screen, (255, 255, 255), (x, y), 10, 1)
+            zeichnen.circle(screen, badge_color, (x, y), 10)
+            zeichnen.circle(screen, (255, 255, 255), (x, y), 10, 1)
 
             text_surf = theme.font(16).render(self.team, True, (255, 255, 255))
             text_rect = text_surf.get_rect(center=(x, y))
