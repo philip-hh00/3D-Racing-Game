@@ -158,12 +158,12 @@ class _AdvancedGraphicsView:
         """Draw the advanced graphics overlay."""
         w, h = screen.get_size()
         overlay = pygame.Surface((w, h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 180))
+        overlay.fill((0, 0, 0, 240))
         screen.blit(overlay, (0, 0))
 
         # Draw a panel for the content
         box = pygame.Rect(160, 120, 1600, 880)
-        theme.panel(screen, box, alpha=245, border=theme.ACCENT, fill=(26, 28, 36))
+        theme.panel(screen, box, alpha=255, border=theme.ACCENT, fill=(26, 28, 36))
         theme.text(screen, tr("Grafikeinstellungen"), theme.HEADER, theme.ACCENT, (box.centerx, box.y + 30), center=True)
 
         if self._content_group:
@@ -1148,7 +1148,13 @@ class SettingsPage(Page):
             theme.text(screen, tr("Video-Einstellungen"), theme.BODY, theme.TEXT_DIM, (560, 190))
             if self._content_group:
                 self._content_group.draw(screen, focused=self._focus_content)
-            y = 650
+            # Calculate hint position dynamically based on last widget position
+            y = 250  # starting y for first widget
+            max_widget_bottom = 250
+            if self._content_group and self._content_group.widgets:
+                for w in self._content_group.widgets:
+                    max_widget_bottom = max(max_widget_bottom, w.rect.bottom)
+            y = max_widget_bottom + 24  # Add margin below last widget
             for hinweis in (tr("Änderungen werden erst mit SPEICHERN übernommen."),
                             tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
                             tr("Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.")):
