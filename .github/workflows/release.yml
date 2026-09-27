@@ -148,7 +148,9 @@ jobs:
           RACE_BUILD_QUELLE: ${{ github.ref_name }}
         # Ueber den Dateipfad wie in den Bauskripten: -m haengt daran, dass
         # das Arbeitsverzeichnis im Suchpfad liegt.
-        run: python tools/baustempel.py
+        run: |
+          python tools/baustempel.py
+          python tools/pruefsummen.py
 
       - name: Windows — Programm packen
         if: matrix.name == 'windows'

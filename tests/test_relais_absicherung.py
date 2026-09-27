@@ -838,3 +838,22 @@ def test_jeder_grund_vom_relay_laeuft_durch_die_saeuberung():
     for treffer in re.finditer(r'tr\(data\.get\("reason"', quelle):
         zeile = quelle[:treffer.start()].count("\n") + 1
         assert False, f"reason ungesäubert angezeigt, Zeile {zeile}"
+
+
+# ---------------------------------------------------------------------------
+# Datenstand (src/core/integritaet.py): gleiche Fahrwerte wie der Host
+# ---------------------------------------------------------------------------
+def test_ein_gast_mit_anderen_fahrwerten_kommt_nicht_in_die_lobby(relay):
+    wirt = _Draht(relay.port)
+    wirt.senden({"type": "HOST", "name": "Wirt", "version": VERSION, "inhalt": "a" * 64})
+    ok_h = wirt.empfangen() or {}
+    lid = ok_h["lobby_id"]
+    gast = _Draht(relay.port)
+    gast.senden({"type": "JOIN", "lobby_id": lid, "name": "Gast", "version": VERSION,
+                 "inhalt": "b" * 64})
+    antwort = gast.empfangen() or {}
+    assert antwort.get("type") == "JOIN_FAIL" and antwort.get("code") == "DATA_MISMATCH"
+    ehrlich = _Draht(relay.port)
+    ehrlich.senden({"type": "JOIN", "lobby_id": lid, "name": "Ehrlich", "version": VERSION,
+                    "inhalt": "a" * 64})
+    assert (ehrlich.empfangen() or {}).get("type") == "JOIN_OK"

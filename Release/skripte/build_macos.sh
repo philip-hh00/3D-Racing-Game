@@ -86,6 +86,7 @@ VERSION="$("$VPY" -c 'from src.core import version; print(version.VERSION)')"
 # Bauzeit einbrennen — ohne das zeigt die Info-Seite dem Spieler sein eigenes
 # Tagesdatum als Build-Datum, weil version.py sonst date.today() nimmt.
 "$VPY" tools/baustempel.py
+"$VPY" tools/pruefsummen.py
 TS="$(date +%Y-%m-%d_%H%M)"
 APPNAME="3D-Racing-Game"
 OUT="Release/ausgabe"

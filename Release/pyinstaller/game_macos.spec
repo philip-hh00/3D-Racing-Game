@@ -68,6 +68,8 @@ a = Analysis(
         # Bauzeit, von tools/baustempel.py vor dem Packen erzeugt.
         # Ohne sie zeigt die Info-Seite dem Spieler sein eigenes Tagesdatum.
         (_w('data/settings/build_stamp.json'),     'data/settings'),
+        # Signierte Pruefsummen der Fahrwerte, von tools/pruefsummen.py.
+        (_w('data/settings/pruefsummen.json'),   'data/settings'),
     ],
     # sounddevice/_sounddevice: der Audiofaden (tonausgabe.py, 06.08.2026).
     # Wie bei soundfile zieht der Hook aus pyinstaller-hooks-contrib die

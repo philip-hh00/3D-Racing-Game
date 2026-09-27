@@ -156,6 +156,11 @@ class NetworkClient:
             return
         if msg.get("type") in ("HOST", "JOIN") and "version" not in msg:
             msg["version"] = VERSION
+        if msg.get("type") in ("HOST", "JOIN") and "inhalt" not in msg:
+            # Datenstand (src/core/integritaet.py): der Server laesst nur
+            # Spieler mit gleichen Fahrwerten zusammen fahren.
+            from src.core import integritaet
+            msg["inhalt"] = integritaet.stand().digest
         body = json.dumps(msg, ensure_ascii=False).encode()
         packet = LEN_PREFIX.pack(len(body)) + body
         with self._lock:

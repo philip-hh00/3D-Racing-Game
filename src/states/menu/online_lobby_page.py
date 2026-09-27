@@ -617,7 +617,10 @@ class OnlineLobbyPage(Page):
             self._push_pick()
 
         elif t == "JOIN_FAIL":
-            if data.get("code") == "VERSION_MISMATCH":
+            if data.get("code") == "DATA_MISMATCH":
+                self._msg = tr("Deine Spieldateien passen nicht zur Lobby. "
+                               "Bitte das Spiel neu installieren.")
+            elif data.get("code") == "VERSION_MISMATCH":
                 req = data.get("required_version", "?")
                 from src.core.version import VERSION
                 self._msg = tr("Deine Spielversion {v} ist veraltet. Bitte lade die aktuelle Version {r} herunter.").format(v=VERSION, r=req)
@@ -1937,6 +1940,13 @@ class OnlineLobbyPage(Page):
         return (profile.current().username or "").strip()[:15] or "Player"
 
     def _start_connect(self, server, *, is_host: bool, lobby_code: str = "") -> None:
+        from src.core import integritaet
+        if not integritaet.stand().ok:
+            # Veraenderte Spieldateien (Fahrwerte, Strecken, KI): offline ja,
+            # gegen andere nicht.
+            self._msg = tr("Spieldateien wurden verändert – Online-Rennen sind nicht möglich. "
+                           "Bitte das Spiel neu installieren.")
+            return
         name = self._player_name()
         self._is_host        = is_host
         self._connect_server = server

@@ -1,13 +1,11 @@
-"""Das Status-Panel oben rechts laesst die Fahrbahn nicht durchscheinen.
+"""Das Status-Panel oben rechts: leicht durchsichtig, aber gedämpft.
 
-Fund 08.08.2026: gemeldet als "waagerechter Balken mitten durch die Schrift".
-Nicht die Trennlinie (die raeumt den Text bei jedem Skalierungsfaktor um ~8 px),
-sondern die Fahrbahn hinter einem nur zu ~78 % deckenden Panel: helle
-waagerechte Merkmale schienen durch und liefen quer durch POS/LAP.
-
-Die Tests halten die *Regel* — hinter dem Panel darf nichts durchscheinen —
-nicht den einen Alphawert. So faellt auch ein spaeteres Zurueckdrehen der
-Deckkraft auf.
+Fund 08.08.2026: gemeldet als "waagerechter Balken mitten durch die Schrift" —
+helle Fahrbahnmarkierungen schienen durch ein zu ~78 % deckendes Panel. Damals
+wurde das Panel deckend. Am 27.09.2026 wollte der Besitzer es ausdrücklich
+wieder "leicht durchsichtig". Die Regel ist jetzt: der Hintergrund darf
+durchscheinen, aber höchstens gut zur Hälfte gedämpft — eine weiße Linie
+dahinter wird zum grauen Schimmer, nicht zum Balken.
 """
 from __future__ import annotations
 
@@ -55,28 +53,38 @@ def _panel_gezeichnet(live_diff):
     return surf, (panel_x, panel_y, panel_w, panel_h)
 
 
-def test_status_panel_ist_undurchsichtig():
-    """Regel: im Inneren des Panels scheint der Hintergrund nirgends durch."""
-    surf, (px, py, pw, ph) = _panel_gezeichnet(live_diff=None)
-    # Rand grosszuegig aussparen: die abgerundeten Ecken sind bewusst
-    # durchsichtig und tragen keinen Text.
-    rand = 14
-    durchscheinend = 0
-    for x in range(px + rand, px + pw - rand):
-        for y in range(py + rand, py + ph - rand):
-            if _ist_hintergrund(surf.get_at((x, y))):
-                durchscheinend += 1
-    assert durchscheinend == 0, f"{durchscheinend} Pixel scheinen durch das Panel"
+#: Anteil des Hintergrunds, der höchstens durchscheinen darf (0..1).
+DURCHLASS_MAX = 0.6
 
 
-def test_status_panel_undurchsichtig_auch_mit_ghost_zeile():
-    """Auch die hoehere Ausfuehrung mit GHOST-Zeile bleibt dicht."""
-    surf, (px, py, pw, ph) = _panel_gezeichnet(live_diff=0.31)
+def _durchlass(live_diff):
+    """Wie stark der Hintergrund je Pixel durchkommt: Panel vor Magenta und
+    vor Schwarz zeichnen, der Unterschied im Rotkanal ist der Anteil von hinten.
+    Unabhängig von Schriftfarben und Kantenglättung."""
+    global _HINTERGRUND
+    alt = _HINTERGRUND
+    try:
+        hell, (px, py, pw, ph) = _panel_gezeichnet(live_diff)
+        _HINTERGRUND = (0, 0, 0)
+        dunkel, _ = _panel_gezeichnet(live_diff)
+    finally:
+        _HINTERGRUND = alt
     rand = 14
-    durchscheinend = sum(
-        1
-        for x in range(px + rand, px + pw - rand)
-        for y in range(py + rand, py + ph - rand)
-        if _ist_hintergrund(surf.get_at((x, y)))
-    )
-    assert durchscheinend == 0
+    return [(hell.get_at((x, y))[0] - dunkel.get_at((x, y))[0]) / 255.0
+            for x in range(px + rand, px + pw - rand, 2)
+            for y in range(py + rand, py + ph - rand, 2)]
+
+
+def test_status_panel_daempft_den_hintergrund():
+    """Regel: im Inneren scheint der Hintergrund höchstens gedämpft durch."""
+    assert max(_durchlass(None)) <= DURCHLASS_MAX
+
+
+def test_status_panel_daempft_auch_mit_ghost_zeile():
+    assert max(_durchlass(0.31)) <= DURCHLASS_MAX
+
+
+def test_status_panel_ist_leicht_durchsichtig():
+    """Und umgekehrt: ganz dicht ist es nicht mehr (Wunsch vom 27.09.2026)."""
+    werte = sorted(_durchlass(None))
+    assert werte[len(werte) // 2] > 0.2

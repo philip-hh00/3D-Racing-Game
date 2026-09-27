@@ -110,14 +110,36 @@ def delete(track_key: str) -> None:
             pass
 
 
+def _signatur(daten: dict) -> str:
+    """Signatur ueber den Inhalt ohne das Feld ``sig`` (siehe tresor.signatur).
+
+    Ein Ghost ist eine Bestzeit: wer in der Datei die Rundenzeit verkuerzt,
+    haette sonst einen Rekord, den er nie gefahren ist (Release 1.0.0).
+    """
+    from src.core import tresor
+    ohne = {k: v for k, v in daten.items() if k != "sig"}
+    return tresor.signatur(json.dumps(ohne, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+
+
 def load(track_key: str) -> GhostData | None:
-    """Load ghost data from file, or return None if it doesn't exist."""
+    """Load ghost data from file, or return None if it doesn't exist.
+
+    Ohne gueltige Signatur gilt die Datei als nicht vorhanden — ein
+    veraenderter Ghost wird dann neu erzeugt bzw. von der naechsten Runde
+    ersetzt, statt als Bestzeit zu zaehlen.
+    """
     path = _ghost_path(track_key)
     if not os.path.isfile(path):
         return None
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
+        from src.core import tresor
+        if not tresor.signatur_pruefen(
+                json.dumps({k: v for k, v in data.items() if k != "sig"},
+                           sort_keys=True, ensure_ascii=False).encode("utf-8"),
+                str(data.get("sig", ""))):
+            return None
         daten = GhostData.from_dict(data)
     except Exception:
         return None
@@ -136,8 +158,10 @@ def save(track_key: str, ghost: GhostData) -> None:
     path = _ghost_path(track_key)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     try:
+        daten = ghost.to_dict()
+        daten["sig"] = _signatur(daten)
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(ghost.to_dict(), f, indent=2, ensure_ascii=False)
+            json.dump(daten, f, indent=2, ensure_ascii=False)
     except Exception:
         pass
 

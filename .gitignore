@@ -94,6 +94,7 @@ data/settings/profile.json
 data/settings/profile.json.tmp
 data/settings/profile.bak
 data/settings/build_stamp.json
+data/settings/pruefsummen.json
 data/settings/servers.json
 data/settings/netlog_*.csv
 server/racing-server.service

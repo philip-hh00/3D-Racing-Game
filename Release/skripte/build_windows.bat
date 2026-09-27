@@ -106,6 +106,8 @@ echo.
 :: Build-Datum, weil version.py sonst date.today() nimmt.
 "%PY%" tools\baustempel.py
 if errorlevel 1 ( echo. & echo [FEHLER] Bauzeit konnte nicht geschrieben werden. & pause & exit /b 1 )
+"%PY%" tools\pruefsummen.py
+if errorlevel 1 ( echo. & echo [FEHLER] Pruefsummen konnten nicht geschrieben werden. & pause & exit /b 1 )
 
 :: === 1) PyInstaller: Programm + Assets packen ===============================
 echo [1/3] PyInstaller...

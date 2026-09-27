@@ -203,3 +203,14 @@ def schreiben(pfad: str, klartext: str) -> None:
             pass              # ohne Sicherung weiterzuschreiben ist besser als
             #                   gar nicht zu speichern
     os.replace(tmp, pfad)
+
+
+def signatur(daten: bytes) -> str:
+    """HMAC über beliebige Daten — für andere Ablagen als das Profil
+    (Prüfsummenliste, Ghosts). Eigener Zweck im Schlüssel, damit eine
+    Signatur nie für etwas anderes gilt als das, wofür sie gemacht wurde."""
+    return hmac.new(_SCHLUESSEL + b"|daten|", daten, hashlib.sha256).hexdigest()
+
+
+def signatur_pruefen(daten: bytes, sig: str) -> bool:
+    return hmac.compare_digest(signatur(daten), str(sig))

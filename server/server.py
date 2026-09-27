@@ -284,6 +284,8 @@ class Lobby:
     map_meta: dict = field(default_factory=dict)
     map_buffer: bytes = b""
     state: str = "lobby"         # lobby | transferring | racing
+    #: Datenstand des Hosts (src/core/integritaet.py); Gaeste muessen passen.
+    inhalt: str = ""
     # A built-in-track start briefly leaves state on "lobby" while it waits for
     # everyone's READY. Without this flag a player could slip in during that
     # window: they'd never receive MAP_META, never send READY, and all_ready()
@@ -789,7 +791,14 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 await _send(writer, {"type": "JOIN_FAIL", "code": grund,
                                      "reason": _ABSAGE_TEXT[grund]})
                 return
+            inhalt = str(msg.get("inhalt", ""))[:64]
+            erlaubt = cfg.get("required_inhalt") or []
+            if erlaubt and inhalt not in erlaubt:
+                await _send(writer, {"type": "JOIN_FAIL", "code": "DATA_MISMATCH",
+                                     "reason": "Spieldateien veraendert."})
+                return
             lobby = _registry.create()
+            lobby.inhalt = inhalt
             _wache.lobby_an(ip, lobby.lobby_id)
             slot  = 0
             conn  = ClientConn(slot=slot, name=name, reader=reader,
@@ -825,6 +834,13 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             lobby = _registry.get(lid)
             if not lobby:
                 await _send(writer, {"type": "JOIN_FAIL", "reason": "Lobby nicht gefunden."})
+                return
+            # Gleiche Fahrwerte wie der Host (src/core/integritaet.py). Ein
+            # Client ohne das Feld (aelter als 1.0.0) scheitert schon an der
+            # Versionspruefung oben.
+            if getattr(lobby, "inhalt", "") and str(msg.get("inhalt", ""))[:64] != lobby.inhalt:
+                await _send(writer, {"type": "JOIN_FAIL", "code": "DATA_MISMATCH",
+                                     "reason": "Spieldateien passen nicht zur Lobby."})
                 return
             if len(lobby.clients) >= lobby.roster_size or len(lobby.clients) >= MAX_SLOTS:
                 await _send(writer, {"type": "JOIN_FAIL", "code": "LOBBY_FULL",
