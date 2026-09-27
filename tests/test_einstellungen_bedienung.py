@@ -204,3 +204,62 @@ def test_version_string_selbst_bleibt_unveraendert(monkeypatch):
     """version.py wird bewusst NICHT angefasst — der Hash bleibt anderswo sichtbar."""
     monkeypatch.setattr(version, "GIT_REV", "abc1234", raising=False)
     assert version.version_string() == f"v{version.VERSION} (abc1234)"
+
+
+def test_erweitert_knopf_oeffnet_die_grafik_regler(seite):
+    """Der 'Erweitert ...' Knopf oeffnet das Overlay mit den Einzelreglern."""
+    seite.cat = 2  # Video category
+    seite._build_content()
+    
+    # Find the "Advanced..." button
+    advanced_btn = None
+    for w in seite._content_group.widgets if seite._content_group else []:
+        if getattr(w, "action", None) == "grafik_advanced":
+            advanced_btn = w
+            break
+    
+    assert advanced_btn is not None, "Advanced button not found in Video category"
+    
+    # Initially, the advanced view should not be open
+    assert seite._advanced_graphics is None, "Advanced view should not be open initially"
+    
+    # Activate the button
+    action = advanced_btn.activate()
+    assert action == "grafik_advanced", "Button should return grafik_advanced action"
+    
+    # Dispatch the action
+    seite._dispatch(action)
+    
+    # The advanced view should now be created and built
+    assert seite._advanced_graphics is not None, "Advanced graphics view should be created"
+    assert seite._advanced_graphics._content_group is not None, "Advanced view should have a focus group"
+    
+    # Verify that all the individual sliders are in the advanced view
+    # 13 individual sliders (not grafikstufe) + 1 back button = 14 widgets
+    grafik_regler_count = len([w for w in seite._advanced_graphics._content_group.widgets
+                               if getattr(w, "action", "").startswith("grafik_")])
+    assert grafik_regler_count == 14, f"Should have 14 grafik widgets (13 sliders + back button), found {grafik_regler_count}"
+    
+    # Verify there's a back button
+    back_btn = seite._advanced_graphics._back_button
+    assert back_btn is not None, "Advanced view should have a back button"
+    assert back_btn.action == "grafik_back", "Back button should have grafik_back action"
+
+
+def test_die_grafik_regler_sind_nicht_mehr_in_der_hauptansicht(seite):
+    """Die 13 Grafikregler stehen nicht mehr in der Hauptansicht der Video-Seite."""
+    seite.cat = 2  # Video category
+    seite._build_content()
+    
+    # Count the widgets in the main view
+    main_widget_count = len(seite._content_group.widgets) if seite._content_group else 0
+    
+    # Should have: Resolution, Window mode, FPS Limit, V-Sync, Texture quality, 
+    # Graphics quality, Advanced button = 7 widgets
+    assert main_widget_count == 7, f"Main view should have 7 widgets, found {main_widget_count}"
+    
+    # Verify no individual grafik sliders in the main view (excluding grafikstufe and grafik_advanced)
+    grafik_sliders = [w for w in seite._content_group.widgets
+                      if getattr(w, "action", "").startswith("grafik_")
+                      and not getattr(w, "action", "") in ("grafik_stufe", "grafik_advanced")]
+    assert len(grafik_sliders) == 0, "Main view should not have individual grafik sliders"

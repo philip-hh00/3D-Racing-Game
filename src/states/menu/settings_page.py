@@ -97,6 +97,79 @@ def _grafik_stufe_erkennen(werte: dict) -> str:
     return "eigen"
 
 
+class _AdvancedGraphicsView:
+    """Overlay for detailed graphics settings (13 individual sliders)."""
+
+    def __init__(self, parent_page: SettingsPage) -> None:
+        self.parent = parent_page
+        self._content_group: FocusGroup | None = None
+        self._back_button: Button | None = None
+        self._widgets: list = []
+
+    def build(self) -> None:
+        """Build the advanced graphics settings view."""
+        werte = self.parent._grafik_werte()
+        self._widgets = []
+
+        # Create widgets in two columns
+        col1_widgets = []
+        col2_widgets = []
+
+        for idx, (feld, beschriftung, optionen) in enumerate(_grafik_regler()):
+            wert = werte.get(feld)
+            if wert is not None and all(w != wert for w, _a in optionen):
+                optionen = sorted(optionen + [(wert, str(wert))],
+                                  key=lambda o: (isinstance(o[0], str), o[0]))
+            self.parent._werte["grafik_" + feld] = [w for w, _a in optionen]
+            index = next((i for i, (w, _a) in enumerate(optionen) if w == wert), 0)
+            stepper = Stepper(pygame.Rect(0, 0, 380, 42), beschriftung,
+                             [a for _w, a in optionen], index, action="grafik_" + feld)
+
+            if idx < 7:
+                col1_widgets.append(stepper)
+            else:
+                col2_widgets.append(stepper)
+            self._widgets.append(stepper)
+
+        # Layout in two columns
+        col1 = theme.Column(300, 250, gap=8)
+        for w in col1_widgets:
+            col1.add(w)
+
+        col2 = theme.Column(900, 250, gap=8)
+        for w in col2_widgets:
+            col2.add(w)
+
+        self._back_button = Button(pygame.Rect(300, 900, 380, 50), tr("Zurück"), "grafik_back")
+        self._widgets.append(self._back_button)
+        self._content_group = FocusGroup(self._widgets)
+
+    def handle_event(self, event: pygame.event.Event) -> str | None:
+        """Handle input in the advanced graphics view."""
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
+                return "grafik_back"
+
+        if self._content_group:
+            return self._content_group.handle_event(event)
+        return None
+
+    def draw(self, screen: pygame.Surface) -> None:
+        """Draw the advanced graphics overlay."""
+        w, h = screen.get_size()
+        overlay = pygame.Surface((w, h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        # Draw a panel for the content
+        box = pygame.Rect(160, 120, 1600, 880)
+        theme.panel(screen, box, alpha=245, border=theme.ACCENT, fill=(26, 28, 36))
+        theme.text(screen, tr("Grafikeinstellungen"), theme.HEADER, theme.ACCENT, (box.centerx, box.y + 30), center=True)
+
+        if self._content_group:
+            self._content_group.draw(screen, focused=True)
+
+
 class SettingsPage(Page):
     #: Der Zurück-Knopf steht mit dem Inhalt auf einer Kante (x + 80); der Titel
     #: rückt dafür nach rechts und liest sich als Fortsetzung: „‹ Zurück  TITEL".
@@ -120,6 +193,7 @@ class SettingsPage(Page):
         self._issues_rect: pygame.Rect | None = None
         self._crash_rect: pygame.Rect | None = None
         self._lizenz_rect: pygame.Rect | None = None
+        self._advanced_graphics: _AdvancedGraphicsView | None = None
 
     @property
     def categories(self) -> list[str]:
@@ -232,13 +306,20 @@ class SettingsPage(Page):
             vs_idx = 1 if self._eff("vsync", profile.current().vsync) else 0
             tex_opts = [tr("Niedrig"), tr("Hoch")]
             tex_idx = 1 if self._eff("texture_quality", profile.current().texture_quality) == "Hoch" else 0
-            
+
+            # Grafikqualität (Stufe)
+            werte = self._grafik_werte()
+            stufe = werte.get("stufe", "hoch")
+            if stufe not in _GRAFIK_STUFEN:
+                stufe = _grafik_stufe_erkennen(werte)
+
             # Rohwerte NEBEN den Beschriftungen — siehe Audio-Block.
             self._werte["change_resolution"] = list(res_labels)
             self._werte["toggle_fullscreen"] = [False, True]
             self._werte["change_fps"] = [30, 60, 120, 144, 240, 0]
             self._werte["toggle_vsync"] = [False, True]
             self._werte["change_texquality"] = ["Niedrig", "Hoch"]
+            self._werte["grafik_stufe"] = list(_GRAFIK_STUFEN)
 
             col = theme.Column(560, 250, gap=12)
             s1 = Stepper(pygame.Rect(0, 0, 500, 60), tr("Auflösung"),    res_labels, res_idx,    action="change_resolution")
@@ -246,13 +327,20 @@ class SettingsPage(Page):
             s3 = Stepper(pygame.Rect(0, 0, 500, 60), tr("FPS-Limit"),    fps_opts,   fps_idx,   action="change_fps")
             s4 = Stepper(pygame.Rect(0, 0, 500, 60), tr("V-Sync"),       vs_opts,    vs_idx,    action="toggle_vsync")
             s5 = Stepper(pygame.Rect(0, 0, 500, 60), tr("Texturqualität"), tex_opts, tex_idx,   action="change_texquality")
-            
+            s_grafik = Stepper(pygame.Rect(0, 0, 500, 60), tr("Grafikqualität"),
+                               _grafik_stufen_namen(), _GRAFIK_STUFEN.index(stufe),
+                               action="grafik_stufe")
+            b_advanced = Button(pygame.Rect(0, 0, 500, 60), tr("Erweitert …"), "grafik_advanced")
+
             col.add(s1)
             col.add(s2)
             col.add(s3)
             col.add(s4)
             col.add(s5)
-            self._content_group = FocusGroup([s1, s2, s3, s4, s5] + self._grafik_bauen())
+            col.add(s_grafik)
+            col.add(b_advanced)
+            self._content_group = FocusGroup([s1, s2, s3, s4, s5, s_grafik, b_advanced])
+            self._advanced_graphics = None
         elif name == "Audio":
             menu_pct = int(round(self._eff("menu_volume", profile.current().menu_volume) * 10.0))
             menu_pct = max(0, min(10, menu_pct))
@@ -396,6 +484,33 @@ class SettingsPage(Page):
                 # Tiefe war man nach zwei Druecken im Hauptmenue statt nach drei
                 # (gemeldet 02.08.2026).
                 self.osk = None
+            return True
+
+        # Advanced graphics view overlay
+        if self._advanced_graphics is not None:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                # Forward mouse clicks to the advanced view's focus group
+                if self._advanced_graphics._content_group:
+                    self._advanced_graphics._content_group.handle_event(event)
+                    res = None
+                    # Check which widget was clicked
+                    for w in self._advanced_graphics._content_group.widgets:
+                        if getattr(w, "focusable", False) and w.hit(event.pos):
+                            res = w.activate()
+                            break
+                    if res == "grafik_back":
+                        self._advanced_graphics = None
+                        return True
+                    elif isinstance(res, str) and res.startswith("grafik_"):
+                        self._dispatch(res)
+                return True
+
+            res = self._advanced_graphics.handle_event(event)
+            if res == "grafik_back":
+                self._advanced_graphics = None
+                return True
+            elif isinstance(res, str) and res.startswith("grafik_"):
+                self._dispatch(res)
             return True
 
         if self._leave_dialog is not None:
@@ -868,6 +983,12 @@ class SettingsPage(Page):
             self.shell.state_machine.transition("vehicle_lab", vehicle_config="rookie")
         elif action == "ki_labor":
             self.shell.state_machine.transition("dev")
+        elif action == "grafik_advanced":
+            # Open the advanced graphics settings overlay
+            if self._advanced_graphics is None:
+                self._advanced_graphics = _AdvancedGraphicsView(self)
+                self._advanced_graphics.build()
+            self.msg = ""
         elif action == "change_menu_volume":
             self._pending["menu_volume"] = self._rohwert(action, 0)
             self.msg = ""
@@ -1027,8 +1148,7 @@ class SettingsPage(Page):
             theme.text(screen, tr("Video-Einstellungen"), theme.BODY, theme.TEXT_DIM, (560, 190))
             if self._content_group:
                 self._content_group.draw(screen, focused=self._focus_content)
-            theme.text(screen, tr("Grafik"), theme.BODY, theme.TEXT_DIM, (self.GRAFIK_X, 190))
-            y = 630
+            y = 650
             for hinweis in (tr("Änderungen werden erst mit SPEICHERN übernommen."),
                             tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
                             tr("Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.")):
@@ -1070,6 +1190,9 @@ class SettingsPage(Page):
 
         if self._leave_dialog is not None:
             self._leave_dialog.draw(screen)
+
+        if self._advanced_graphics is not None:
+            self._advanced_graphics.draw(screen)
 
         from src.ui import hints
         theme.text(screen, hints.bar(("back", tr("Zurück"))),
