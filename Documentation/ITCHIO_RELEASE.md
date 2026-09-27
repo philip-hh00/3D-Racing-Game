@@ -22,8 +22,8 @@ dazwischen. Ändert sich etwas am Spiel, muss es in **beide** Fassungen.
 Wird unter dem Titel und in Suchergebnissen angezeigt. itch.io schneidet nach
 rund 140 Zeichen ab.
 
-> Top-Down-Rennspiel mit echter Fahrphysik: 15 Fahrzeuge, Streckeneditor,
-> Splitscreen und Online-Rennen mit bis zu 6 Spielern.
+> 3D-Rennspiel mit echter Fahrphysik: 15 Fahrzeuge, Streckeneditor, Splitscreen
+> und Online-Rennen mit bis zu 6 Spielern.
 
 ---
 
@@ -33,13 +33,13 @@ Alles ab hier in den großen Beschreibungstext.
 
 ---
 
-# 🏎️ 2D Racing Game
+# 🏎️ 3D Racing Game
 
 **Bremsen, einlenken, driften — und der Wagen tut, was die Physik sagt.**
 
-Ein Top-Down-Rennspiel, bei dem jedes Auto sein eigenes Gewicht hat. Der
-Kompaktwagen zirkelt durch enge Kurven, der Drifter bricht hinten aus, sobald du
-es darauf anlegst, und der Supersportler bestraft jede zu späte Bremsung. Fahr
+Ein 3D-Rennspiel mit Verfolgerkamera, bei dem jedes Auto sein eigenes Gewicht hat.
+Der Kompaktwagen zirkelt durch enge Kurven, der Drifter bricht hinten aus, sobald
+du es darauf anlegst, und der Supersportler bestraft jede zu späte Bremsung. Fahr
 allein gegen die KI, zu zweit am selben Bildschirm oder online gegen bis zu fünf
 andere — und wenn dir die Strecken ausgehen, baust du dir eigene.
 
@@ -66,7 +66,7 @@ Champion. Wer in einem Rennen patzt, kann es im nächsten wieder aufholen.
 ## 🚗 15 Fahrzeuge in 5 Klassen
 
 Jede Klasse fährt sich grundlegend anders — es sind nicht dieselben Werte in
-anderer Farbe:
+anderer Farbe. Alle mit echten Leuchten, Bremslicht, Reifen und Innenraum:
 
 | Klasse | Charakter |
 |---|---|
@@ -91,7 +91,7 @@ Anfang an, die drei besonderen erspielst du dir:
 * **Zweifarbig** — indem du Ghosts unterbietest
 
 Dein Lack fährt online mit: die anderen sehen dein Auto so, wie du es lackiert
-hast.
+hast. Das Spiel berechnet jeden Lack live in 3D.
 
 ---
 
@@ -105,8 +105,9 @@ fahren, ohne das Spiel zu verlassen.
 alle Mitspieler sie automatisch übertragen. Niemand muss vorher etwas
 herunterladen oder in einen Ordner kopieren.
 
-Fünf Strecken sind fertig dabei — Oval, Stadt, Wüste, Berge und ein
-Grand-Prix-Kurs.
+Fünf Strecken sind fertig dabei — jede in ihrer eigenen Landschaft mit
+Hügeln, Bergen, Bäumen und Gras, abhängig vom Thema: Stadt, Wüste, Wald, Gebirge
+und Ebene.
 
 ---
 
@@ -147,20 +148,21 @@ Komplett übersetzt, umschaltbar im laufenden Spiel.
 Das Spiel ist fertig gepackt. Du brauchst nichts weiter zu installieren.
 
 ### Windows
-1. `2D-Racing-Game-Setup.exe` herunterladen und starten — **Adminrechte sind
-   nicht nötig**.
+1. `3D-Racing-Game_Setup_v1.0.0_Windows.exe` herunterladen und starten — 
+   **Adminrechte sind nicht nötig**.
 2. Windows zeigt beim ersten Start einen Warnhinweis („Unbekannter Herausgeber").
-   Das liegt daran, dass ich kein kostenpflichtiges Signaturzertifikat gekauft
-   habe, nicht am Spiel: **Weitere Informationen** → **Trotzdem ausführen**.
+   Das liegt daran, dass kein kostenpflichtiges Signaturzertifikat verwendet wird,
+   nicht am Spiel: **Weitere Informationen** → **Trotzdem ausführen**.
 3. Starten über Desktop oder Startmenü.
 
 ### macOS
-1. `2D-Racing-Game.dmg` öffnen und die App nach **Programme** ziehen.
-2. Beim ersten Start: **Rechtsklick auf die App → Öffnen** → im Dialog
-   **Öffnen**. Nur einmal nötig, aus demselben Grund wie oben.
-3. Blockiert macOS trotzdem, hilft im Terminal:
+1. `3D-Racing-Game_Portable_v1.0.0_macOS.zip` herunterladen und entpacken.
+2. Die App nach **Programme** ziehen.
+3. Beim ersten Start: **Rechtsklick auf die App → Öffnen** → im Dialog
+   **Öffnen**. Nur einmal nötig.
+4. Blockiert macOS trotzdem, hilft im Terminal:
    ```
-   xattr -dr com.apple.quarantine /Applications/2D-Racing-Game.app
+   xattr -dr com.apple.quarantine /Applications/3D-Racing-Game.app
    ```
 
 Ein Update über eine bestehende Installation behält deine Bestzeiten,
@@ -171,8 +173,10 @@ Einstellungen und selbstgebauten Strecken.
 ## 💻 Systemvoraussetzungen
 
 * **Windows 10/11 (64-bit)** oder **macOS 11 Big Sur** und neuer
-* Rund 200 MB Arbeitsspeicher
-* Onboard-Grafik reicht völlig
+* Rund 500 MB Arbeitsspeicher
+* Grafikkarte mit OpenGL 3.3+: Auch Einsteiger-Grafikkarten (GTX 1050 Klasse)
+  laufen das Spiel flüssig auf niedrigen Grafikeinstellungen
+* Grafikstufen von Niedrig bis Ultra — für jeden Rechner etwas
 * Controller optional, wird ohne Einrichtung erkannt
 * Für Online-Rennen eine Internetverbindung — für alles andere nicht
 
@@ -193,8 +197,8 @@ Seite — ich lese mit. Was gerade neu ist, steht auch im Spiel selbst unter
 Shown under the title and in search results. itch.io cuts off at roughly
 140 characters.
 
-> Top-down racing with real driving physics: 15 cars, a track editor,
-> split-screen and online races for up to 6 players.
+> 3D racing with real driving physics: 15 cars, a track editor, split-screen
+> and online races for up to 6 players.
 
 ---
 
@@ -204,15 +208,15 @@ Everything from here goes into the big description box.
 
 ---
 
-# 🏎️ 2D Racing Game
+# 🏎️ 3D Racing Game
 
 **Brake, turn in, drift — and the car does what the physics say.**
 
-A top-down racer where every car carries its own weight. The compact threads
-through tight corners, the drifter steps out the moment you ask it to, and the
-supercar punishes every late brake. Race the AI on your own, share a screen with
-a friend, or go online against up to five others — and when you run out of
-tracks, you build your own.
+A 3D racer with a chase camera, where every car carries its own weight. The
+compact threads through tight corners, the drifter steps out the moment you ask
+it to, and the supercar punishes every late brake. Race the AI on your own, share
+a screen with a friend, or go online against up to five others — and when you run
+out of tracks, you build your own.
 
 ---
 
@@ -237,7 +241,7 @@ at the end. A bad race isn't the end of it; there's always the next one.
 ## 🚗 15 cars in 5 classes
 
 Each class drives fundamentally differently — these aren't the same numbers in
-a different colour:
+a different colour. All with real lights, brake lights, tyres and interiors:
 
 | Class | Character |
 |---|---|
@@ -262,7 +266,7 @@ start, the other three you earn:
 * **Two-tone** — by beating ghosts
 
 Your paint comes online with you: everyone else sees the car exactly as you
-painted it.
+painted it. The game renders every colour in real-time 3D.
 
 ---
 
@@ -276,8 +280,9 @@ the game.
 receives it automatically. Nobody downloads anything or copies files into a
 folder.
 
-Five tracks ship with the game — Oval, City, Desert, Mountain and a Grand Prix
-circuit.
+Five tracks ship with the game — each in its own landscape with hills, mountains,
+trees and grass, depending on the theme: City, Desert, Forest, Mountain and
+Plains.
 
 ---
 
@@ -317,19 +322,21 @@ Fully translated, switchable while the game is running.
 The game comes packaged. There's nothing else to install.
 
 ### Windows
-1. Download and run `2D-Racing-Game-Setup.exe` — **no admin rights needed**.
+1. Download and run `3D-Racing-Game_Setup_v1.0.0_Windows.exe` — **no admin
+   rights needed**.
 2. Windows shows a warning on first launch ("Unknown publisher"). That's because
-   I haven't bought a paid signing certificate, not because of the game:
-   **More info** → **Run anyway**.
+   no paid signing certificate is used, not because of the game: **More info** →
+   **Run anyway**.
 3. Launch from the desktop or the Start menu.
 
 ### macOS
-1. Open `2D-Racing-Game.dmg` and drag the app into **Applications**.
-2. On first launch: **right-click the app → Open** → **Open** in the dialog.
-   Once only, for the same reason as above.
-3. If macOS still blocks it, in Terminal:
+1. Download and unzip `3D-Racing-Game_Portable_v1.0.0_macOS.zip`.
+2. Drag the app into **Applications**.
+3. On first launch: **right-click the app → Open** → **Open** in the dialog.
+   Once only.
+4. If macOS still blocks it, in Terminal:
    ```
-   xattr -dr com.apple.quarantine /Applications/2D-Racing-Game.app
+   xattr -dr com.apple.quarantine /Applications/3D-Racing-Game.app
    ```
 
 Installing over an existing version keeps your best times, settings and custom
@@ -340,8 +347,10 @@ tracks.
 ## 💻 System requirements
 
 * **Windows 10/11 (64-bit)** or **macOS 11 Big Sur** and newer
-* Around 200 MB of RAM
-* Integrated graphics are plenty
+* Around 500 MB of RAM
+* Graphics card with OpenGL 3.3+: Even entry-level graphics cards
+  (GTX 1050 class) run the game smoothly on low graphics settings
+* Graphics settings from Low to Ultra — there's something for every PC
 * Controller optional, detected without any setup
 * An internet connection for online races — for nothing else
 
@@ -359,8 +368,8 @@ What's new is also listed in the game itself under **Settings → Info**.
 Keine Beschreibung, sondern die Felder daneben:
 
 **Tags** (itch.io erlaubt zehn, das sind die tragenden):
-`racing`, `top-down`, `multiplayer`, `split-screen`, `physics`,
-`level-editor`, `local-multiplayer`, `online-multiplayer`, `2d`, `singleplayer`
+`racing`, `3d`, `multiplayer`, `split-screen`, `physics`,
+`level-editor`, `local-multiplayer`, `online-multiplayer`, `car-racing`, `singleplayer`
 
 **Classification:** Game · **Kind of project:** Downloadable
 **Release status:** Released
@@ -377,20 +386,20 @@ Server-based networked multiplayer · **Player count:** 1–6
 
 ## Hinweise zum Pflegen dieses Texts
 
-**Der frühere Verweis auf das GitHub-Repository ist heraus.** Er zeigte auf
-`philip1307/Fahr-Rennspiel-2D` — diesen Pfad gibt es nicht, und das echte Repo
-ist privat. Ein toter Link auf der Verkaufsseite ist schlechter als gar keiner.
-Soll das Repo öffentlich werden, gehört der Link wieder hinein.
+**Verweis auf das GitHub-Repository:** Das Repo `github.com/philip-hh00/3D-Racing-Game`
+ist öffentlich. Bei Bedarf kann der Link auf der Verkaufsseite hinzugefügt werden.
 
 **Zahlen, die veralten, wenn sich etwas ändert:** 15 Fahrzeuge, 5 Klassen,
 5 mitgelieferte Strecken, 12 Farben, 4 Lackarten, 6 Spieler online, 4 Modi.
-Sie stimmen mit dem Stand zum Release 1.0.0 überein.
+Sie stimmen mit dem Stand zum Release 1.0.0 überein. Dateinamen:
+`3D-Racing-Game_Setup_v1.0.0_Windows.exe` und `3D-Racing-Game_Portable_v1.0.0_macOS.zip`.
 
 **Beide Sprachfassungen sagen dasselbe.** Ändert sich eine Zahl oben, ändert sie
 sich in zwei Fassungen — sonst steht auf der Seite je nach Sprache etwas
 anderes. `tests/test_itchio_text.py` hält die Zahlen gegen den Code und gegen
 die jeweils andere Fassung.
 
-**Bewusst nicht erwähnt:** womit das Spiel gebaut ist, wie die Server heißen,
-wie Strecken übertragen werden, wie der Motorklang entsteht. Das interessiert
-niemanden, der ein Rennspiel sucht — und es veraltet schneller als der Rest.
+**Bewusst nicht erwähnt:** womit das Spiel gebaut ist (OpenGL, Python), wie die
+Server heißen, wie Strecken übertragen werden, wie das Rendering funktioniert.
+Das interessiert niemanden, der ein Rennspiel sucht — und es veraltet schneller
+als der Rest.
