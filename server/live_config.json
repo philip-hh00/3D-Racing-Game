@@ -1,5 +1,5 @@
 {
-  "required_version": "0.9.0-beta",
+  "required_version": "1.0.0",
   "announcements": [
     {
       "id": "2026-07-17-welcome",
@@ -119,6 +119,18 @@
       "text": {
         "de": "Erststart\n\n- Das Spiel startet nach einer Neuinstallation auf Englisch. Deutsch bleibt in den Einstellungen einen Klick entfernt; bestehende Profile behalten ihre Sprachwahl.\n- Bei einer Neuinstallation erscheinen keine alten Ankündigungen mehr. Nur was danach neu veröffentlicht wird, wird angezeigt.\n\nSicherheit\n\n- Die DNS-Abfrage zur Serversuche nutzt jetzt einen kryptografisch sicheren Zufall — gefälschte Antworten lassen sich nicht mehr über eine erratbare Kennung unterschieben.",
         "en": "First Launch\n\n- After a fresh installation, the game launches in English. German is just a click away in the settings; existing profiles retain their language selection.\n- After a fresh installation, old announcements no longer appear. Only new announcements published afterward are displayed.\n\nSecurity\n\n- The DNS query for server discovery now uses a cryptographically secure random number—fake responses can no longer be injected using a guessable identifier."
+      }
+    },
+    {
+      "id": "2026-09-27-neue-version-1-0-0",
+      "date": "2026-09-27",
+      "title": {
+        "de": "Version 1.0.0 – jetzt in 3D",
+        "en": "Version 1.0.0 – now in 3D"
+      },
+      "text": {
+        "de": "Das Rennspiel ist jetzt dreidimensional.\n\n- 15 neu gebaute Fahrzeuge mit echten Leuchten, Bremslichtern, Reifen und Innenraum – weiter in der Werkstatt lackierbar.\n- Jede Strecke liegt in einer Landschaft ihres Themas mit Hügeln, Bergen, Bäumen und Gras – auch eigene Strecken aus dem Editor.\n- Neues Start/Ziel-Portal mit Startampel, neuer Countdown.\n- Grafikeinstellungen von Niedrig bis Ultra für jeden Rechner.",
+        "en": "The racing game is now fully 3D.\n\n- 15 rebuilt cars with real lights, brake lights, tyres and interiors – still paintable in the workshop.\n- Every track sits in a landscape matching its theme with hills, mountains, trees and grass – including your own editor tracks.\n- New start/finish gantry with start lights and a new countdown.\n- Graphics settings from Low to Ultra for every PC."
       }
     }
   ]
