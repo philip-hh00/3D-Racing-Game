@@ -33,18 +33,12 @@ class HUD:
     _COL_SPEED: tuple[int, int, int] = (255, 255, 255)
     _COL_GEAR_TEXT: tuple[int, int, int] = (255, 160, 0)   # Amber/Orange
     _COL_GEAR_LABEL: tuple[int, int, int] = (140, 140, 150)
-    _COL_PANEL_BG: tuple[int, int, int, int] = (10, 10, 15, 200)  # Semi-transparent dark blue/gray
-    #: Hintergrund des Status-Panels oben rechts — undurchsichtig (08.08.2026).
-    #:
-    #: Gemeldet als "waagerechter Balken mitten durch die Schrift". Nicht die
-    #: Trennlinie in hud.py: die raeumt den Text bei jedem Skalierungsfaktor um
-    #: rund 8 px. Der Balken kam von *hinten*: bei Alpha 200 (~78 % deckend)
-    #: schienen helle waagerechte Merkmale der Fahrbahn (Curbs, Markierungen,
-    #: Start-/Ziellinie) durch das Panel und liefen quer durch POS/LAP. Ein
-    #: Anzeigefeld mit Runden- und Zeitwerten muss die Bahn nicht durchscheinen
-    #: lassen — Lesbarkeit vor Durchblick. Dashboard und Rangliste bleiben
-    #: bewusst leicht durchscheinend (_COL_PANEL_BG).
-    _COL_STATUS_PANEL_BG: tuple[int, int, int, int] = (10, 10, 15, 255)
+    _COL_PANEL_BG: tuple[int, int, int, int] = (10, 10, 15, 128)  # Semi-transparent dark blue/gray (~50% opacity)
+    #: Hintergrund des Status-Panels oben rechts — leicht durchsichtig (50% Deckkraft).
+    #: Ursprünglich undurchsichtig (Alpha 255) oder 78% (Alpha 200) um Artefakte zu vermeiden,
+    #: aber die neue Anforderung ist 45-55% Deckkraft für alle Panels einheitlich,
+    #: mit dünnem hellen Rand, damit die 3D-Welt dahinter sichtbar bleibt.
+    _COL_STATUS_PANEL_BG: tuple[int, int, int, int] = (10, 10, 15, 128)
     _COL_RPM_NORMAL: tuple[int, int, int] = (0, 220, 80)    # Green
     _COL_RPM_REDLINE: tuple[int, int, int] = (240, 40, 40)   # Red
 
@@ -224,7 +218,7 @@ class HUD:
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_PANEL_BG)
         # Subtle border with rounded corners
-        pygame.draw.rect(panel_surf, (80, 80, 95), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(12 * scale))
+        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(12 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # Common gauge parameters
@@ -503,11 +497,10 @@ class HUD:
         panel_x = w - panel_w - int(20 * scale)
         panel_y = int(20 * scale)
 
-        # Undurchsichtiger Panel-Hintergrund: sonst scheint die Fahrbahn durch
-        # und ihre waagerechten Merkmale laufen durch die Schrift (08.08.2026).
+        # Leicht durchsichtiger Panel-Hintergrund (50% Deckkraft)
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_STATUS_PANEL_BG)
-        pygame.draw.rect(panel_surf, (80, 80, 95), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(8 * scale))
+        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(8 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # 1. Position & Laps
@@ -521,9 +514,6 @@ class HUD:
 
         screen.blit(pos_surf, (panel_x + int(15 * scale), panel_y + int(15 * scale)))
         screen.blit(lap_surf, (panel_x + int(15 * scale), panel_y + int(45 * scale)))
-
-        # Divider line
-        pygame.draw.line(screen, (80, 80, 95), (panel_x + int(10 * scale), panel_y + int(80 * scale)), (panel_x + panel_w - int(10 * scale), panel_y + int(80 * scale)), 1)
 
         # Helper to format times
         def _fmt(sec: float) -> str:
@@ -804,7 +794,7 @@ class HUD:
         # Translucent panel background
         panel_surf = pygame.Surface((panel_w, panel_h), pygame.SRCALPHA)
         panel_surf.fill(self._COL_PANEL_BG)
-        pygame.draw.rect(panel_surf, (80, 80, 95), (0, 0, panel_w, panel_h), max(1, int(1 * scale)), border_radius=int(6 * scale))
+        pygame.draw.rect(panel_surf, (120, 120, 140, 100), (0, 0, panel_w, panel_h), max(1, int(2 * scale)), border_radius=int(6 * scale))
         screen.blit(panel_surf, (panel_x, panel_y))
 
         # Title
