@@ -656,63 +656,46 @@ def werbebande(index: int):
     return teile
 
 
-def tribuene():
-    beton = wand("betonwand")
-    sitze = [farbe(f"sitz_{i}", c, 0.5) for i, c in enumerate(((200, 30, 30), (230, 230, 230), (30, 60, 160)))]
-    kleidung = [farbe(f"zuschauer_{i}", c, 0.8) for i, c in enumerate((
-        (180, 40, 40), (40, 60, 150), (230, 230, 220), (30, 30, 32), (230, 190, 40), (60, 130, 70), (210, 120, 60)))]
-    rng = random.Random(7)
-    teile = []
-    laenge, stufen = 36.0, 10
-    for s in range(stufen):
-        y = -s * 0.85
-        z = s * 0.5
-        k = kasten("stufe", (0, y - 0.425, z / 2 + 0.25), (laenge, 0.85, z + 0.5), beton)
-        uv_kasten(k, 2.0)
-        teile.append(k)
-        teile.append(kasten("sitzreihe", (0, y - 0.55, z + 0.62), (laenge - 1, 0.45, 0.25), sitze[s % 3]))
-        for i in range(int(laenge / 0.55)):
-            if rng.random() < 0.55:
-                x = -laenge / 2 + 0.6 + i * 0.55
-                teile.append(kasten("zuschauer", (x, y - 0.55, z + 1.0), (0.42, 0.3, 0.6), rng.choice(kleidung)))
-                teile.append(kasten("kopf", (x, y - 0.55, z + 1.42), (0.2, 0.22, 0.24),
-                                    farbe("haut", (205, 160, 125), 0.7)))
-    hinten = -stufen * 0.85
-    wandob = kasten("rueckwand", (0, hinten - 0.2, stufen * 0.5 / 2 + 2.0), (laenge, 0.4, stufen * 0.5 + 4.0), beton)
-    uv_kasten(wandob, 2.0)
-    teile.append(wandob)
-    dachh = stufen * 0.5 + 4.2
-    dach = kasten("dach", (0, hinten / 2, dachh), (laenge + 1, -hinten + 2.5, 0.25),
-                  farbe("tribuenendach", (225, 228, 232), 0.35, 0.3))
-    teile.append(dach)
-    stahl = farbe("stahl", (90, 92, 96), 0.4, 0.8)
-    for x in range(-16, 17, 8):
-        teile.append(kasten("stuetze", (x, hinten - 0.1, dachh / 2), (0.3, 0.3, dachh), stahl))
-    for t in teile:
-        t.data.transform(Matrix.Translation((0, -hinten / 2, 0)))
-    return teile
-
-
 def startbruecke(spannweite: float = 27.0):
     """Portal über der Start-/Ziellinie, quer entlang lokal X, Banner nach ±Y.
 
-    Gitterstützen, Traverse mit Banner auf beiden Seiten und eine
-    Startampel. Die Spannweite reicht über die breiteste Strecke samt
-    Begrenzung; auf schmaleren Strecken stehen die Stützen etwas weiter weg.
+    Ein Stahl-Fachwerkportal (vier Gurte je Stütze, Riegel und diagonale
+    Streben) mit karierter Banner-Traverse „START · ZIEL“, einer
+    Startampel-Batterie aus fünf Lampenpaaren — je Paar ein eigenes Material
+    ``ampel_1``…``ampel_5``, damit das Rennen sie einzeln zuschalten kann —
+    und je einer LED-Rundentafel an beiden Stützen.
+
+    Die Spannweite reicht über die breiteste mitgelieferte Strecke samt
+    Begrenzung; ``platzierung.startbruecke`` skaliert das ganze Portal für
+    andere Streckenbreiten gleichmäßig, damit die Stützen immer außerhalb
+    der Fahrbahn bleiben.
     """
     stahl = farbe("portal_stahl", (60, 62, 68), 0.4, 0.8)
-    rot = farbe("ampel_rot", (200, 20, 20), 0.3, emission=(1.0, 0.1, 0.05), staerke=2.0)
+    ampel_farben = [farbe(f"ampel_{i + 1}", (200, 20, 20), 0.3,
+                          emission=(1.0, 0.1, 0.05), staerke=2.0) for i in range(5)]
     dunkel = farbe("ampel_gehaeuse", (15, 15, 17), 0.5)
     banner = tex_mat("startbanner", ERZEUGT / "startbanner.jpg", rauheit=0.5)
     teile = []
     halb = spannweite / 2
     hoehe = 7.5
     for x in (-halb, halb):
-        for dx in (-0.35, 0.35):
-            for dy in (-0.35, 0.35):
-                teile.append(kasten("stuetze", (x + dx, dy, hoehe / 2), (0.14, 0.14, hoehe), stahl))
+        ecken = [(dx, dy) for dx in (-0.35, 0.35) for dy in (-0.35, 0.35)]
+        for dx, dy in ecken:
+            teile.append(kasten("stuetze", (x + dx, dy, hoehe / 2), (0.14, 0.14, hoehe), stahl))
         for z in range(1, 8):
             teile.append(kasten("strebe", (x, 0, z * hoehe / 8), (0.8, 0.8, 0.06), stahl))
+        # Diagonale Streben zwischen den vier Gurten — ein echtes Fachwerk
+        # statt vier bloß parallel stehender Pfosten.
+        for k in range(7):
+            z0, z1 = k * hoehe / 7, (k + 1) * hoehe / 7
+            laenge = math.hypot(0.7, z1 - z0)
+            for (ax, ay), (bx, by) in (((-0.35, -0.35), (0.35, 0.35)), ((0.35, -0.35), (-0.35, 0.35))):
+                diag = kasten("diagonale", (0, 0, 0), (laenge, 0.05, 0.05), stahl)
+                diag.data.transform(Matrix.Rotation(math.atan2(z1 - z0, math.hypot(bx - ax, by - ay)),
+                                                    4, "Y"))
+                diag.data.transform(Matrix.Rotation(math.atan2(by - ay, bx - ax), 4, "Z"))
+                diag.data.transform(Matrix.Translation((x + (ax + bx) / 2, (ay + by) / 2, (z0 + z1) / 2)))
+                teile.append(diag)
         teile.append(kasten("fuss", (x, 0, 0.15), (1.4, 1.4, 0.3), farbe("beton", (150, 150, 148), 0.9)))
     teile.append(kasten("traverse", (0, 0, hoehe + 0.6), (spannweite + 1.0, 0.9, 1.9), stahl))
     for seite in (1, -1):
@@ -722,17 +705,39 @@ def startbruecke(spannweite: float = 27.0):
                                         (halb - 1, y, hoehe + 1.4), (-halb + 1, y, hoehe + 1.4))]
         f = bm.faces.new(v if seite > 0 else list(reversed(v)))
         uvl = bm.loops.layers.uv.verify()
-        ecken = ((1, 0), (0, 0), (0, 1), (1, 1)) if seite > 0 else ((0, 1), (1, 1), (1, 0), (0, 0))
-        for l, w in zip(f.loops, ecken):
+        ecken_uv = ((1, 0), (0, 0), (0, 1), (1, 1)) if seite > 0 else ((0, 1), (1, 1), (1, 0), (0, 0))
+        for l, w in zip(f.loops, ecken_uv):
             l[uvl].uv = w
         teile.append(g.objekt_aus(bm, "banner", [banner]))
-    # Startampel: fünf Lampenpaare in der Mitte unter der Traverse.
+    # Startampel: fünf Lampenpaare in der Mitte unter der Traverse, je eines
+    # mit eigenem Material — die Szene schaltet sie im Countdown nacheinander zu.
     teile.append(kasten("ampel", (0, 0, hoehe - 0.7), (3.2, 0.5, 0.8), dunkel))
     for i in range(5):
         for seite in (1, -1):
             lampe = zylinder("lampe", (-1.28 + i * 0.64, seite * 0.26, hoehe - 0.7), 0.2, 0.2, 0.04,
-                             rot, 16, achse="Y")
+                             ampel_farben[i], 16, achse="Y")
             teile.append(lampe)
+    # LED-Rundentafeln an beiden Stützen, zur Fahrbahn hin ausgerichtet.
+    tafel_mat = g.material("rundentafel", farbe=(1, 1, 1), metallic=0.1, rauheit=0.5,
+                           emission=(0.85, 0.16, 0.05), staerke=1.1, bild=str(ERZEUGT / "rundentafel.jpg"))
+    for x in (-halb, halb):
+        for seite in (1, -1):
+            y = seite * 0.42
+            teile.append(kasten("rundentafel_rahmen", (x, y, hoehe * 0.42), (1.3, 0.12, 0.7), dunkel))
+            bm = bmesh.new()
+            v = [bm.verts.new(p) for p in ((x - 0.55, y + seite * 0.061, hoehe * 0.42 - 0.28),
+                                           (x + 0.55, y + seite * 0.061, hoehe * 0.42 - 0.28),
+                                           (x + 0.55, y + seite * 0.061, hoehe * 0.42 + 0.28),
+                                           (x - 0.55, y + seite * 0.061, hoehe * 0.42 + 0.28))]
+            f = bm.faces.new(v if seite > 0 else list(reversed(v)))
+            uvl = bm.loops.layers.uv.verify()
+            # Wie beim Banner: von der jeweils eigenen Vorderseite gesehen
+            # liest sich die Schrift nur, wenn beide Seiten spiegelverkehrt
+            # gemappt werden — sonst steht sie auf einer Seite verkehrt.
+            ecken_uv = ((1, 0), (0, 0), (0, 1), (1, 1)) if seite > 0 else ((0, 1), (1, 1), (1, 0), (0, 0))
+            for l, w in zip(f.loops, ecken_uv):
+                l[uvl].uv = w
+            teile.append(g.objekt_aus(bm, "rundentafel", [tafel_mat]))
     return teile
 
 
@@ -785,207 +790,6 @@ def tafel(name, ecken, mat, uv=((0, 0), (1, 0), (1, 1), (0, 1))):
     for l, w in zip(f.loops, uv):
         l[uvl].uv = w
     return g.objekt_aus(bm, name, [mat])
-
-
-def _atlas_uv(k: int, spalten: int = 4, zeilen: int = 4):
-    """UV-Ecken der Figur ``k`` im Publikumsbild (Zeile 0 oben im Bild)."""
-    s, z = k % spalten, k // spalten
-    u0, u1 = s / spalten, (s + 1) / spalten
-    v1 = 1.0 - z / zeilen
-    v0 = v1 - 1.0 / zeilen
-    return ((u0, v0), (u1, v0), (u1, v1), (u0, v1))
-
-
-def tribuene_publikum(laenge: float = 30.0, reihen: int = 9, seed: int = 3):
-    """Tribüne mit Dach und Publikum aus Karten.
-
-    Jeder Platz ist eine Karte mit einer von 16 Figuren (siehe
-    ``texturen_erzeugen.publikum``), zufällig gewählt und leicht versetzt —
-    so gibt es Farbvariation ohne je Zuschauer ein eigenes Material. Zwei
-    Dreiecke je Kopf: 300 Zuschauer kosten weniger als ein Baum.
-    """
-    rng = random.Random(seed)
-    beton = wand("betonwand")
-    sitzfarben = [farbe(f"tribuene_sitz_{i}", c, 0.45) for i, c in
-                  enumerate(((30, 60, 150), (200, 30, 30), (230, 230, 230)))]
-    stahl = farbe("tribuene_stahl", (70, 74, 80), 0.4, 0.8)
-    dach_mat = farbe("tribuene_dach", (228, 230, 234), 0.35, 0.3)
-    leute = tex_mat("publikum", ERZEUGT / "publikum.png", maske=True, rauheit=0.85)
-    teile = []
-    stufe_t, stufe_h = 0.85, 0.5
-    for s in range(reihen):
-        y = -s * stufe_t
-        z = s * stufe_h
-        k = kasten("stufe", (0, y - stufe_t / 2, z / 2 + 0.25), (laenge, stufe_t, z + 0.5), beton)
-        uv_kasten(k, 2.0)
-        teile.append(k)
-        # Sitzreihe: ein farbiger Block je Reihe, Blöcke im Wechsel.
-        teile.append(kasten("sitze", (0, y - 0.6, z + 0.68), (laenge - 1.0, 0.4, 0.36),
-                            sitzfarben[(s // 3) % 3]))
-    bm = bmesh.new()
-    uvl = bm.loops.layers.uv.verify()
-    for s in range(reihen):
-        y = -s * stufe_t - 0.35
-        z = s * stufe_h + 0.5
-        x = -laenge / 2 + 0.7
-        while x < laenge / 2 - 0.7:
-            if rng.random() < 0.8:
-                b = rng.uniform(0.52, 0.6)
-                h = b * 2.0 * rng.uniform(0.92, 1.06)
-                xx = x + rng.uniform(-0.06, 0.06)
-                ecken = [(xx + b / 2, y, z), (xx - b / 2, y, z), (xx - b / 2, y, z + h), (xx + b / 2, y, z + h)]
-                v = [bm.verts.new(p) for p in ecken]
-                f = bm.faces.new(v)
-                # Von vorn (+Y) gesehen läuft +X nach links; die erste Ecke
-                # (+X) ist deshalb die linke untere des Bildes.
-                uvs = _atlas_uv(rng.randrange(16))
-                for l, w in zip(f.loops, uvs):
-                    l[uvl].uv = w
-            x += rng.uniform(0.55, 0.62)
-    publikum = g.objekt_aus(bm, "publikum", [leute])
-    teile.append(publikum)
-    hinten = -reihen * stufe_t
-    hoch = reihen * stufe_h
-    rueck = kasten("rueckwand", (0, hinten - 0.2, (hoch + 4.2) / 2), (laenge, 0.4, hoch + 4.2), beton)
-    uv_kasten(rueck, 2.0)
-    teile.append(rueck)
-    for x in (-laenge / 2 - 0.2, laenge / 2 + 0.2):
-        seite = kasten("seitenwand", (x, hinten / 2, (hoch + 1.0) / 2), (0.4, -hinten + 0.2, hoch + 1.0), beton)
-        uv_kasten(seite, 2.0)
-        teile.append(seite)
-    # Brüstung vorn mit Werbung.
-    teile.append(kasten("bruestung", (0, 0.1, 0.55), (laenge, 0.2, 1.1), stahl))
-    for i, x in enumerate(range(-int(laenge / 2) + 3, int(laenge / 2) - 2, 6)):
-        mat = tex_mat(f"bande_{i % 6}", ERZEUGT / f"bande_{i % 6}.jpg", rauheit=0.45)
-        teile.append(tafel("werbung", [(x + 3, 0.205, 0.1), (x - 3, 0.205, 0.1),
-                                       (x - 3, 0.205, 1.1), (x + 3, 0.205, 1.1)], mat,
-                           uv=((0, 0), (1, 0), (1, 1), (0, 1))))
-    # Dach: leicht geneigt, auf Stützen hinten, vorn auskragend.
-    dach_h = hoch + 4.0
-    bm = bmesh.new()
-    d = [bm.verts.new(p) for p in ((-laenge / 2 - 0.6, hinten - 0.5, dach_h), (laenge / 2 + 0.6, hinten - 0.5, dach_h),
-                                   (laenge / 2 + 0.6, 1.2, dach_h - 0.9), (-laenge / 2 - 0.6, 1.2, dach_h - 0.9))]
-    bm.faces.new(d)
-    dach = g.objekt_aus(bm, "dach", [dach_mat])
-    mod = dach.modifiers.new("dicke", "SOLIDIFY")
-    mod.thickness = 0.25
-    g.modifikator_anwenden(dach, mod)
-    teile.append(dach)
-    for x in range(-int(laenge / 2), int(laenge / 2) + 1, 10):
-        teile.append(kasten("stuetze", (x, hinten - 0.25, dach_h / 2), (0.3, 0.3, dach_h), stahl))
-        # Schräger Träger unter dem Dach nach vorn.
-        traeger = kasten("traeger", (0, 0, 0), (0.18, -hinten + 1.8, 0.3), stahl)
-        traeger.data.transform(Matrix.Rotation(math.atan2(0.9, -hinten + 1.7), 4, "X"))
-        traeger.data.transform(Matrix.Translation((x, (hinten + 1.2) / 2, dach_h - 0.6)))
-        teile.append(traeger)
-    for tl in teile:
-        tl.data.transform(Matrix.Translation((0, -hinten / 2, 0)))
-    return teile
-
-
-def boxengebaeude(garagen: int = 8, breite_garage: float = 6.0, tiefe: float = 14.0):
-    """Boxengebäude an Start und Ziel: Garagen unten, Glasband oben, Schild.
-
-    Offene Tore zeigen einen dunklen Innenraum mit Werkbank, geschlossene ein
-    Rolltor aus Wellblech. Darüber Nummern je Box, oben das Band mit dem
-    Streckennamen und eine Dachterrasse mit Geländer.
-    """
-    laenge = garagen * breite_garage
-    rng = random.Random(11)
-    putz = wand("putz")
-    beton = wand("betonwand")
-    wellblech = wand("wellblech")
-    dunkel = farbe("box_innen", (34, 36, 40), 0.8)
-    boden = farbe("box_boden", (120, 122, 126), 0.6)
-    scheibe = farbe("box_scheibe", (40, 58, 74), 0.08, 0.1)
-    stahl = farbe("box_stahl", (190, 194, 200), 0.35, 0.8)
-    rot = farbe("box_rot", (196, 28, 34), 0.45)
-    werk = farbe("box_werkbank", (200, 60, 30), 0.5)
-    schild = tex_mat("boxenschild", ERZEUGT / "boxenschild.jpg", rauheit=0.4)
-    nummern = tex_mat("garagennummern", ERZEUGT / "garagennummern.jpg", rauheit=0.5)
-    teile = []
-    tor_h, og_h = 4.6, 3.6
-    front = tiefe / 2
-    # Hauptkörper bis zur Rückwand der Garagen, Decke über den Garagen.
-    hinten_y, innen_y = -tiefe / 2, front - 3.2
-    korpus = kasten("korpus", (0, (hinten_y + innen_y) / 2, (tor_h + og_h) / 2),
-                    (laenge, innen_y - hinten_y, tor_h + og_h), putz)
-    uv_kasten(korpus, 3.0)
-    teile.append(korpus)
-    teile.append(kasten("decke", (0, front - 1.6, tor_h + 0.1), (laenge, 3.2, 0.2), beton))
-    teile.append(kasten("og_boden", (0, front - 2.2, tor_h + og_h / 2), (laenge, 2.0, og_h), putz))
-    for i in range(garagen):
-        x = -laenge / 2 + breite_garage * (i + 0.5)
-        # Pfeiler zwischen den Toren.
-        pf = kasten("pfeiler", (x - breite_garage / 2 + 0.25, front - 0.5, tor_h / 2), (0.5, 1.0, tor_h), beton)
-        uv_kasten(pf, 2.0)
-        teile.append(pf)
-        offen = rng.random() < 0.6
-        # Nische: dunkler Innenraum 3 m tief.
-        teile.append(kasten("nische_boden", (x, front - 1.6, 0.02), (breite_garage - 0.5, 3.0, 0.04), boden))
-        if offen:
-            teile.append(kasten("nische", (x, front - 3.1, tor_h / 2), (breite_garage - 0.5, 0.1, tor_h), dunkel))
-            teile.append(kasten("werkbank", (x + rng.uniform(-1.5, 1.5), front - 2.7, 0.5), (1.8, 0.6, 1.0), werk))
-            teile.append(kasten("reifen", (x - 2.0, front - 2.6, 0.35), (0.7, 0.7, 0.7),
-                                farbe("box_reifen", (20, 20, 22), 0.9)))
-            hoehe_tor = tor_h * rng.uniform(0.0, 0.2)
-        else:
-            hoehe_tor = tor_h
-        if hoehe_tor > 0.05:
-            tor = kasten("rolltor", (x, front - 0.2, tor_h - hoehe_tor / 2), (breite_garage - 0.5, 0.08, hoehe_tor),
-                         wellblech)
-            uv_kasten(tor, 2.0)
-            teile.append(tor)
-        # Nummer über dem Tor.
-        u0, u1 = i / 8.0, (i + 1) / 8.0
-        teile.append(tafel("nummer", [(x + 0.6, front + 0.01, tor_h + 0.05), (x - 0.6, front + 0.01, tor_h + 0.05),
-                                      (x - 0.6, front + 0.01, tor_h + 0.65), (x + 0.6, front + 0.01, tor_h + 0.65)],
-                           nummern, uv=((u0, 0), (u1, 0), (u1, 1), (u0, 1))))
-    pf = kasten("pfeiler", (laenge / 2 - 0.25, front - 0.5, tor_h / 2), (0.5, 1.0, tor_h), beton)
-    uv_kasten(pf, 2.0)
-    teile.append(pf)
-    # Sturz über den Toren, rote Kante.
-    teile.append(kasten("sturz", (0, front - 0.45, tor_h + 0.35), (laenge, 0.9, 0.7), rot))
-    # Obergeschoss: Glasband, etwas zurückgesetzt, mit Pfosten.
-    teile.append(kasten("glasband", (0, front - 1.2, tor_h + 0.7 + (og_h - 0.7) / 2),
-                        (laenge - 0.4, 0.1, og_h - 0.9), scheibe))
-    for x in range(int(-laenge / 2), int(laenge / 2) + 1, 3):
-        teile.append(kasten("pfosten", (x, front - 1.15, tor_h + 0.7 + (og_h - 0.7) / 2), (0.1, 0.12, og_h - 0.9),
-                            stahl))
-    # Dach mit Überstand und Schildband vorn.
-    dach_h = tor_h + og_h
-    teile.append(kasten("dach", (0, 0.2, dach_h + 0.2), (laenge + 1.0, tiefe + 0.4, 0.4), beton))
-    teile.append(kasten("schildtraeger", (0, front + 0.35, dach_h + 0.75), (laenge, 0.15, 1.4), stahl))
-    teile.append(tafel("schild", [(laenge / 2 - 1, front + 0.44, dach_h + 0.1), (-laenge / 2 + 1, front + 0.44, dach_h + 0.1),
-                                  (-laenge / 2 + 1, front + 0.44, dach_h + 1.4), (laenge / 2 - 1, front + 0.44, dach_h + 1.4)],
-                       schild, uv=((0, 0), (1, 0), (1, 1), (0, 1))))
-    # Geländer der Dachterrasse.
-    for y in (-tiefe / 2 + 0.3,):
-        teile.append(kasten("gelaender", (0, y, dach_h + 1.4), (laenge, 0.06, 0.06), stahl))
-    for x in (-laenge / 2 + 0.3, laenge / 2 - 0.3):
-        teile.append(kasten("gelaender", (x, 0, dach_h + 1.4), (0.06, tiefe - 0.6, 0.06), stahl))
-    # Vorplatz aus Beton vor den Garagen — die Boxengasse.
-    # Ein Bild über die ganze Fläche (texturen_erzeugen.boxengasse): Linien,
-    # Boxenfelder und Ölflecken sitzen dort, wo die Garagen sind.
-    gasse = tex_mat("boxengasse", ERZEUGT / "boxengasse.jpg", ERZEUGT / "boxengasse_mr.png")
-    vb, vt = laenge + 4.0, 8.0
-    vorplatz = kasten("vorplatz", (0, front + vt / 2, 0.035), (vb, vt, 0.07), gasse)
-    me = vorplatz.data
-    me.uv_layers.new(name="UVMap")
-    for poly in me.polygons:
-        for li in poly.loop_indices:
-            co = me.vertices[me.loops[li].vertex_index].co
-            u = (co.x + vb / 2) / vb
-            v = (co.y - front) / vt
-            if poly.normal.z < 0.6:
-                # Seiten: nur ein schmaler Streifen am Rand des Bildes.
-                v = min(max(v, 0.002), 0.998)
-            me.uv_layers[0].data[li].uv = (u, v)
-    teile.append(vorplatz)
-    # Drei Hütchen vor der ersten Box.
-    for k in range(3):
-        teile += huetchen_einzeln((-laenge / 2 + 2.0 + k * 1.2, front + 1.6, 0))
-    return teile
 
 
 def huetchen_einzeln(pos):
@@ -1334,16 +1138,8 @@ def alle_bauen(nur: set[str] | None, vorschau: Path | None) -> None:
             fertig(f"gemeinsam/bande_{i}", werbebande(i), radius_m=3.1)
     if soll("gemeinsam/startbruecke"):
         fertig("gemeinsam/startbruecke", startbruecke(), radius_m=2.0)
-    if soll("gemeinsam/tribuene"):
-        fertig("gemeinsam/tribuene", tribuene(), radius_m=16.0)
 
     # --- Streckenobjekte (Strang S) ------------------------------------------
-    if soll("strecke/tribuene"):
-        _strecke_fertig(fertig, "strecke/tribuene", tribuene_publikum(), radius_m=16.0)
-    if soll("strecke/tribuene_klein"):
-        _strecke_fertig(fertig, "strecke/tribuene_klein", tribuene_publikum(14.0, 6, seed=5), radius_m=8.0)
-    if soll("strecke/boxengebaeude"):
-        _strecke_fertig(fertig, "strecke/boxengebaeude", boxengebaeude(), radius_m=24.0)
     if soll("strecke/postenhaus"):
         _strecke_fertig(fertig, "strecke/postenhaus", postenhaus(), radius_m=1.8, max_abstand_m=450.0)
     if soll("strecke/fangzaun"):

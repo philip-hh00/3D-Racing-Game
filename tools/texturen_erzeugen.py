@@ -258,76 +258,8 @@ def heu() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Streckenobjekte: Publikum, Fangzaun, Schilder, Flaggen
+# Streckenobjekte: Fangzaun, Schilder, Flaggen
 # ---------------------------------------------------------------------------
-
-#: Kleidung und Haut der Zuschauer, sRGB. Viel Rot, Weiß und Schwarz —
-#: Fanfarben —, dazu Alltagsfarben.
-KLEIDUNG = [(196, 32, 36), (232, 232, 228), (26, 26, 30), (40, 70, 160), (236, 196, 40),
-            (60, 130, 70), (220, 120, 50), (120, 120, 126), (150, 40, 110), (90, 160, 210),
-            (180, 150, 110), (240, 90, 120)]
-HAUT = [(236, 196, 164), (214, 168, 128), (180, 130, 96), (120, 82, 56), (240, 208, 180)]
-HAARE = [(30, 22, 16), (70, 48, 30), (150, 110, 60), (200, 170, 110), (90, 90, 90), (20, 20, 20)]
-
-
-def publikum() -> None:
-    """Zuschauer als Karten: 16 Figuren in einem Bild (4 x 4), mit Alpha.
-
-    Jede Figur sitzt oder steht, von vorn gesehen: Kopf, Haare, Oberkörper in
-    einer Fanfarbe, Arme — manche hochgereckt, manche mit Mütze oder Fahne.
-    Die Tribüne legt je Platz eine Karte und wählt eine Figur, dadurch sieht
-    kein Block gleich aus.
-    """
-    rng = random.Random(17)
-    zelle_b, zelle_h = 128, 256
-    bild = Image.new("RGBA", (zelle_b * 4, zelle_h * 4), (0, 0, 0, 0))
-    d = ImageDraw.Draw(bild)
-    for k in range(16):
-        x0, y0 = (k % 4) * zelle_b, (k // 4) * zelle_h
-        mx = x0 + zelle_b / 2
-        haut = rng.choice(HAUT)
-        hemd = rng.choice(KLEIDUNG)
-        hose = rng.choice([(40, 44, 60), (30, 30, 34), (90, 80, 70), (60, 70, 110)])
-        kopf_r = rng.uniform(17, 21)
-        kopf_y = y0 + 58 + rng.uniform(-6, 6)
-        schulter = kopf_y + kopf_r + 6
-        breite = rng.uniform(34, 44)
-        # Beine/Hose (sitzend: kurz sichtbar), dann Oberkörper.
-        d.rectangle((mx - breite * 0.8, schulter + 88, mx + breite * 0.8, y0 + zelle_h - 4), fill=hose)
-        d.rounded_rectangle((mx - breite, schulter, mx + breite, schulter + 100), radius=16, fill=hemd)
-        # Arme.
-        hoch = rng.random() < 0.35
-        for seite in (-1, 1):
-            ax = mx + seite * (breite - 6)
-            if hoch and (seite == 1 or rng.random() < 0.6):
-                d.line((ax, schulter + 10, ax + seite * 14, schulter - 70), fill=hemd, width=16)
-                d.ellipse((ax + seite * 14 - 9, schulter - 84, ax + seite * 14 + 9, schulter - 66), fill=haut)
-            else:
-                d.line((ax, schulter + 10, ax + seite * 4, schulter + 84), fill=hemd, width=15)
-                d.ellipse((ax + seite * 4 - 8, schulter + 78, ax + seite * 4 + 8, schulter + 94), fill=haut)
-        # Hals, Kopf, Haare oder Mütze.
-        d.rectangle((mx - 7, kopf_y + kopf_r - 4, mx + 7, schulter + 4), fill=haut)
-        d.ellipse((mx - kopf_r, kopf_y - kopf_r, mx + kopf_r, kopf_y + kopf_r), fill=haut)
-        wahl = rng.random()
-        if wahl < 0.3:
-            muetze = rng.choice(KLEIDUNG)
-            d.chord((mx - kopf_r - 1, kopf_y - kopf_r - 3, mx + kopf_r + 1, kopf_y + kopf_r * 0.6),
-                    180, 360, fill=muetze)
-            d.rectangle((mx - kopf_r - 1, kopf_y - 6, mx + kopf_r + 10, kopf_y - 1), fill=muetze)
-        else:
-            haar = rng.choice(HAARE)
-            d.chord((mx - kopf_r - 1, kopf_y - kopf_r - 2, mx + kopf_r + 1, kopf_y + kopf_r * 0.5),
-                    180, 360, fill=haar)
-        # Sonnenbrille bei manchen.
-        if rng.random() < 0.25:
-            d.rectangle((mx - kopf_r * 0.7, kopf_y - 3, mx + kopf_r * 0.7, kopf_y + 4), fill=(15, 15, 18))
-        # Streifen oder Aufdruck auf dem Hemd.
-        if rng.random() < 0.4:
-            streifen = rng.choice(KLEIDUNG)
-            d.rectangle((mx - breite, schulter + 30, mx + breite, schulter + 42), fill=streifen)
-    bild = rand_fuellen(bild)
-    bild.save(ZIEL / "publikum.png")
-
 
 def fangzaun() -> None:
     """Maschendraht, eine Kachel = 1 m x 1 m, mit Alpha (Material ``fangzaun_maske``).
@@ -354,23 +286,28 @@ def fangzaun() -> None:
     Image.fromarray(rgba, "RGBA").save(ZIEL / "fangzaun.png")
 
 
+def rundentafel() -> None:
+    """LED-Rundentafel an der Startbrücke: dunkle Matrix mit leuchtenden Ziffern.
+
+    Zeigt beispielhaft eine Rundenanzeige (``LAP 01``); das Material legt
+    darüber die Emission, sodass die Ziffern im Rennen wie LEDs leuchten.
+    """
+    b, h = 512, 256
+    bild = Image.new("RGB", (b, h), (8, 6, 6))
+    d = ImageDraw.Draw(bild)
+    # Feine Rasterpunkte, wie eine LED-Matrix, dahinter die helle Anzeige.
+    rng = random.Random(9)
+    for _ in range(1400):
+        x, y = rng.randrange(b), rng.randrange(h)
+        ton = rng.randint(14, 26)
+        d.point((x, y), fill=(ton, int(ton * 0.35), int(ton * 0.2)))
+    d.text((b / 2, h * 0.32), "LAP", font=schrift(70), fill=(255, 150, 60), anchor="mm")
+    d.text((b / 2, h * 0.72), "01", font=schrift(120), fill=(255, 60, 40), anchor="mm")
+    bild.save(ZIEL / "rundentafel.jpg", quality=92)
+
+
 def schilder() -> None:
-    """Schilder der Streckenobjekte: Boxengebäude, Posten, Kameraturm, Flaggen."""
-    # Boxengebäude: breites Band über den Garagen.
-    b, h = 2048, 192
-    bild = Image.new("RGB", (b, h), (22, 26, 34))
-    d = ImageDraw.Draw(bild)
-    d.rectangle((0, h - 16, b, h), fill=(200, 24, 30))
-    d.text((60, h / 2 - 6), "APEX RACEWAY", font=schrift(120), fill=(245, 245, 245), anchor="lm")
-    d.text((b - 60, h / 2 - 6), "PIT LANE  ·  BOXEN", font=schrift(90), fill=(245, 200, 30), anchor="rm")
-    bild.save(ZIEL / "boxenschild.jpg", quality=92)
-    # Garagennummern 1-8 in einer Reihe.
-    b, h = 1024, 128
-    bild = Image.new("RGB", (b, h), (240, 240, 236))
-    d = ImageDraw.Draw(bild)
-    for i in range(8):
-        d.text((i * 128 + 64, h / 2), str(i + 1), font=schrift(96), fill=(20, 20, 24), anchor="mm")
-    bild.save(ZIEL / "garagennummern.jpg", quality=92)
+    """Schilder der Streckenobjekte: Posten, Kameraturm, Flaggen."""
     # Postenhaus: Nummerntafel.
     b, h = 256, 256
     bild = Image.new("RGB", (b, h), (250, 250, 248))
@@ -394,78 +331,6 @@ def schilder() -> None:
     d = ImageDraw.Draw(bild)
     d.text((b / 2, h / 2), "TV", font=schrift(90), fill=(245, 245, 245), anchor="mm")
     bild.save(ZIEL / "tvschild.jpg", quality=92)
-
-
-#: Maße der Boxengasse vor dem Boxengebäude, Meter (siehe
-#: ``umgebung_bauen.boxengebaeude``): 8 Garagen je 6 m, 2 m Rand je Seite.
-BOXENGASSE_M = (52.0, 8.0)
-
-
-def boxengasse(je_m: int = 64) -> None:
-    """Der Vorplatz der Boxen als **ein** Bild über die ganze Fläche.
-
-    Grund ist der Asphalt der Strecke, auf das Grau der Fahrbahn gezogen und
-    etwas dunkler als sie — eine Boxengasse wirkt nie heller als die
-    Rennstrecke daneben. Darauf Schmutz, Ölflecken vor den Garagen, Fugen alle
-    fünf Meter, eine weiße Linie zwischen Arbeits- und Fahrspur und gelbe
-    Boxenfelder. Zeile 0 ist die Streckenseite (v = 1), Spalte 0 liegt bei
-    lokal -X. Dazu die Rauheit: Linien etwas glatter.
-    """
-    breite_m, tiefe_m = BOXENGASSE_M
-    b, h = int(breite_m * je_m), int(tiefe_m * je_m)
-    rng = np.random.default_rng(23)
-    quelle = Image.open(TEX / "asphalt_farbe.jpg").convert("L")
-    kachel = quelle.resize((9 * je_m, 9 * je_m), Image.LANCZOS)
-    grund = np.asarray(kachel, dtype=np.float64) / 255.0
-    grund = np.tile(grund, (h // grund.shape[0] + 1, b // grund.shape[1] + 1))[:h, :b]
-    # Kontrast zusammenziehen, auf ein mittleres Grau um 0,22 (sRGB).
-    grund = 0.22 + (grund - grund.mean()) * 0.55
-    # Großflächiger Schmutz: grobes Rauschen, weich.
-    grob = Image.fromarray((rng.random((h // 32 + 2, b // 32 + 2)) * 255).astype(np.uint8))
-    grob = np.asarray(grob.resize((b, h), Image.BICUBIC), dtype=np.float64) / 255.0
-    grund *= 0.9 + 0.18 * grob
-    y_m = (1.0 - (np.arange(h) + 0.5) / h) * tiefe_m          # 0 an den Garagen
-    x_m = (np.arange(b) + 0.5) / b * breite_m
-    bild = np.stack([grund * 1.0, grund * 0.99, grund * 0.97], axis=2)
-    rau = np.full((h, b), 0.86)
-    # Ölflecken in der Arbeitsspur vor jeder Garage.
-    maske = Image.new("L", (b, h), 0)
-    d = ImageDraw.Draw(maske)
-    for i in range(8):
-        mitte_x = (2.0 + 6.0 * (i + 0.5)) * je_m
-        for _ in range(rng.integers(2, 5)):
-            cx = mitte_x + rng.normal(0, 1.2) * je_m
-            cy = h - (rng.uniform(1.0, 3.2)) * je_m
-            r = rng.uniform(0.2, 0.6) * je_m
-            d.ellipse((cx - r * 1.4, cy - r, cx + r * 1.4, cy + r), fill=int(rng.uniform(90, 170)))
-    fleck = np.asarray(maske.filter(ImageFilter.GaussianBlur(je_m * 0.15)), dtype=np.float64) / 255.0
-    bild *= (1.0 - 0.45 * fleck)[:, :, None]
-    rau -= 0.2 * fleck
-    # Linien: weiß zwischen Arbeits- und Fahrspur (4 m von den Garagen),
-    # gestrichelt an der Streckenseite; gelbe Boxenfelder je Garage.
-    weiss = np.array([0.72, 0.72, 0.70])
-    gelb = np.array([0.74, 0.58, 0.12])
-
-    def band(maske_bool, farbe, abnutzung=0.25):
-        staerke = maske_bool * (1.0 - abnutzung * rng.random((h, b)))
-        bild[:] = bild * (1 - staerke[:, :, None]) + farbe * staerke[:, :, None]
-        rau[:] = np.where(maske_bool, 0.6, rau)
-
-    band(np.abs(y_m - 4.0)[:, None] < 0.07 + 0 * x_m[None, :], weiss)
-    strich = ((x_m % 3.0) < 1.5)[None, :]
-    band((np.abs(y_m - 7.6)[:, None] < 0.06) & strich, weiss)
-    for i in range(8):
-        x0, x1 = 2.0 + 6.0 * i + 0.4, 2.0 + 6.0 * (i + 1) - 0.4
-        in_x = (x_m >= x0) & (x_m <= x1)
-        rahmen = ((np.abs(x_m - x0) < 0.05) | (np.abs(x_m - x1) < 0.05))[None, :] & (y_m < 3.6)[:, None]
-        rahmen |= in_x[None, :] & (np.abs(y_m - 3.6) < 0.05)[:, None]
-        band(rahmen, gelb)
-    # Fugen alle fünf Meter quer, dunkel und schmal.
-    fuge = (np.abs(((x_m + 2.5) % 5.0) - 2.5) < 0.012)[None, :] | (np.abs(y_m - 6.0) < 0.012)[:, None]
-    bild *= np.where(fuge, 0.55, 1.0)[:, :, None]
-    bild *= (0.95 + 0.05 * rng.random((h, b)))[:, :, None]
-    Image.fromarray((np.clip(bild, 0, 1) * 255).astype(np.uint8), "RGB").save(ZIEL / "boxengasse.jpg", quality=90)
-    mr_bild((b // 2, h // 2), np.clip(rau, 0.3, 1.0)).save(ZIEL / "boxengasse_mr.png")
 
 
 def main() -> None:
@@ -499,11 +364,10 @@ def main() -> None:
     laub_aufbereiten()
     banden()
     startbanner()
+    rundentafel()
     heu()
-    publikum()
     fangzaun()
     schilder()
-    boxengasse()
     print("fertig:", sorted(p.name for p in ZIEL.iterdir()))
 
 

@@ -79,37 +79,12 @@
       "radius_m": 0.8
     },
     {
-      "modell": "strecke/tribuene",
-      "art": "start",
-      "abstand_m": 11,
-      "seite": "aussen",
-      "radius_m": 17
-    },
-    {
-      "modell": "strecke/boxengebaeude",
-      "art": "start",
-      "abstand_m": 17.5,
-      "seite": "innen",
-      "radius_m": 26,
-      "versatz_m": 40
-    },
-    {
       "modell": "strecke/flaggenmasten",
       "art": "start",
       "abstand_m": 5.5,
       "seite": "aussen",
       "radius_m": 5,
-      "versatz_m": -28,
-      "detail": 2
-    },
-    {
-      "modell": "strecke/tribuene_klein",
-      "art": "reihe",
-      "abstand_m": 12,
-      "je_m": 170,
-      "seite": "aussen",
-      "radius_m": 9,
-      "detail": 1
+      "versatz_m": -28
     },
     {
       "modell": "strecke/postenhaus",

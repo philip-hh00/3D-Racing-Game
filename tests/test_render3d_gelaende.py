@@ -233,7 +233,9 @@ def test_kein_gras_auf_der_strecke_und_nicht_zu_weit():
     assert len(feld.pos) > 1000
     d = platzierung.abstand_zur_linie(feld.pos[:, :2], netz.mittellinie) - netz.halbe_breite_m
     assert d.min() > 0.8
-    assert d.max() < th.gras.bis_m + 1.0
+    # 1,5 m Toleranz: Gelaende._abstandskarte naehert mit einem groben Raster,
+    # dessen Ausdehnung am (schmaleren) Korridor ohne Tribuene/Boxen haengt.
+    assert d.max() < th.gras.bis_m + 1.5
 
 
 def test_gras_nach_grafikstufe():
@@ -306,9 +308,9 @@ def test_kein_gras_auf_vorplaetzen_und_unter_haeusern():
 
 
 def test_grasfreie_flaeche_folgt_dem_grundriss():
-    """Ein langes Gebäude sperrt ein langes Rechteck, gedreht wie das Gebäude."""
+    """Ein langes Randobjekt sperrt ein langes Rechteck, gedreht wie es selbst."""
     th = thema.laden(THEMEN, "forest")
-    boxen = next(a for a in th.rand if "boxengebaeude" in a.modell)
-    ort = platzierung.Platzierung(boxen.modell, 10.0, 20.0, math.pi / 2, 1.0)
-    zeile = platzierung.grasfreie_flaechen([ort], th, {boxen.modell: (-26, 26, -7, 15)})[0]
+    masten = next(a for a in th.rand if "flaggenmasten" in a.modell)
+    ort = platzierung.Platzierung(masten.modell, 10.0, 20.0, math.pi / 2, 1.0)
+    zeile = platzierung.grasfreie_flaechen([ort], th, {masten.modell: (-26, 26, -7, 15)})[0]
     assert tuple(zeile) == (10.0, 20.0, math.pi / 2, -26, 26, -7, 15)

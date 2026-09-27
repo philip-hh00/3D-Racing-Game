@@ -152,10 +152,9 @@ def _pflicht(pl, th) -> float:
     """Was der Test verlangt — unabhängig von der Platzierung formuliert."""
     deko = {m for d in th.deko for m in d.modell.split("|")}
     kulisse = {m for k in th.kulisse for m in k.modell.split("|")}
-    gross = {"strecke/tribuene", "strecke/boxengebaeude", "strecke/tribuene_klein"}
     if pl.modell in kulisse:
         return platzierung.KULISSE_FREI_M
-    if pl.modell in deko or pl.modell in gross:
+    if pl.modell in deko:
         return platzierung.ABSTAND_M
     return platzierung.KANTE_FREI_M
 
@@ -254,23 +253,26 @@ def test_startbruecke_steht_nur_auf_der_eigenen_fahrbahn(strecke):
 
 
 @pytest.mark.parametrize("strecke", list(STRECKEN))
-def test_tribuene_und_boxen_erscheinen(strecke):
+def test_flaggenmasten_erscheinen(strecke):
     """Wo der Platz an der Linie fehlt, rücken sie an eine andere gerade Stelle."""
     orte = _orte(strecke, "Plains", 2)
     modelle = {p.modell for p in orte}
-    assert "strecke/tribuene" in modelle
-    assert "strecke/boxengebaeude" in modelle
+    assert "strecke/flaggenmasten" in modelle
 
 
-def test_tribuene_weicht_einem_nahen_stueck_aus():
-    """Auf der Parallelstrecke läge die Tribüne außen auf der Gegengeraden
-    (8 m Luft, sie braucht 16 m) — sie muss woanders stehen, und zwar ganz."""
+def test_flaggenmasten_weichen_einem_nahen_stueck_aus():
+    """Auf der Parallelstrecke läge das Startobjekt außen auf der Gegengeraden
+    zu nah dran — es muss woanders stehen, und zwar ganz."""
     netz = _netz("parallel")
+    th = _thema("Plains")
     orte = _orte("parallel", "Plains", 2)
-    tribuene = next(p for p in orte if p.modell == "strecke/tribuene")
-    punkte = _grundriss_punkte(tribuene, *_grundriss("strecke/tribuene"))
+    masten = next(p for p in orte if p.modell == "strecke/flaggenmasten")
+    art = next(r for r in th.rand if r.modell == "strecke/flaggenmasten")
+    gr = platzierung.grundrisse(th)["strecke/flaggenmasten"]
+    pflicht = platzierung.pflichtabstand(art, gr)
+    punkte = _grundriss_punkte(masten, *_grundriss("strecke/flaggenmasten"))
     d = platzierung.abstand_zur_linie(punkte, netz.mittellinie) - netz.halbe_breite_m
-    assert d.min() >= platzierung.ABSTAND_M - TOLERANZ_M
+    assert d.min() >= pflicht - TOLERANZ_M
 
 
 # ---------------------------------------------------------------------------

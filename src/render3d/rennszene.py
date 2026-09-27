@@ -901,10 +901,10 @@ class Rennszene:
         b.indizes = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.uint32)
         return b
 
-    def ampel_setzen(self, hell: float) -> None:
-        """Startampel an (1) oder aus (0)."""
+    def ampel_setzen(self, stufe: int) -> None:
+        """Anzahl leuchtender Lampenpaare der Startampel, 0..5 — alle aus bei GO."""
         if self.deko is not None:
-            self.deko.ampel = float(hell)
+            self.deko.ampel = max(0, min(5, int(stufe)))
 
     def _knoten_bauen(self, schluessel: str):
         fahrzeugmodell = self.speicher.holen(schluessel)

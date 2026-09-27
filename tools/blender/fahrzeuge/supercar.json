@@ -1154,6 +1154,9 @@
      ],
      "mat": "licht_hinten",
      "breite_m": 0.008
+    },
+    "einheit": {
+     "typ": "ring"
     }
    }
   },
@@ -1255,6 +1258,9 @@
      ],
      "mat": "licht_hinten",
      "breite_m": 0.008
+    },
+    "einheit": {
+     "typ": "ring"
     }
    }
   },

@@ -70,28 +70,12 @@
       "radius_m": 1.0
     },
     {
-      "modell": "strecke/tribuene",
-      "art": "start",
-      "abstand_m": 11,
-      "seite": "aussen",
-      "radius_m": 17
-    },
-    {
-      "modell": "strecke/boxengebaeude",
-      "art": "start",
-      "abstand_m": 17.5,
-      "seite": "innen",
-      "radius_m": 26,
-      "versatz_m": 40
-    },
-    {
       "modell": "strecke/flaggenmasten",
       "art": "start",
       "abstand_m": 5.5,
       "seite": "aussen",
       "radius_m": 5,
-      "versatz_m": -28,
-      "detail": 2
+      "versatz_m": -28
     },
     {
       "modell": "strecke/fangzaun",
@@ -101,15 +85,6 @@
       "je_m": 4.0,
       "radius_m": 0.4,
       "bereich_m": 110,
-      "detail": 1
-    },
-    {
-      "modell": "strecke/tribuene_klein",
-      "art": "reihe",
-      "abstand_m": 12,
-      "je_m": 170,
-      "seite": "aussen",
-      "radius_m": 9,
       "detail": 1
     },
     {

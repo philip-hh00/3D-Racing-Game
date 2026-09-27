@@ -79,7 +79,15 @@ In **Zonen** (``zonen``-Liste der Fahrzeugdatei)::
                                 Seiten von außen gleich weit),
                                 "rand_anteil": 0.22, "art": "projektor"|"reflektor",
                                 "vorhalt": 0.7 (Neigung zur Fahrtrichtung),
-                                "ansicht": Umriss welcher Teilfläche (Standard: der Zone)}}
+                                "ansicht": Umriss welcher Teilfläche (Standard: der Zone)},
+                "einheit": {"typ": "band"|"winkel"|"bumerang"|"band_quer"|"ring", ...} —
+                           eigenständige Leuchteneinheit mit Kammern, Reflektor/
+                           Wabe und getrennten Segmenten (Schlusslicht,
+                           Bremslicht, Blinker, Rückfahrlicht, Rückstrahler)
+                           unter einer gewölbten Streuscheibe mit Dicke, statt
+                           der schlichten LED-Leiste; ersetzt ``led`` und
+                           ``abdeckung`` dieser Zone. Details, Parameter und
+                           Standardwerte im Kopf von ``teile_leuchte.py``.}
     "oder":    [{"ansicht": "vorn", "punkte": [[v, z], ...], "u": [0.9, 1.2],
                  "n_min": 0.1, ...}] — weitere Umrisse derselben Zone (eigene
                 Ansicht, ``n_min``, ``u``, ``z``, ``und``). So läuft eine

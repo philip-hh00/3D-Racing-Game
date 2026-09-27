@@ -164,9 +164,9 @@ class Dekozeichner:
         self.ordner = Path(ordner)
         self.katalog = katalog_laden(ordner)
         self.modelle: list[_Dekomodell] = []
-        #: Helligkeit der Startampel, 0..1 — das Rennen schaltet sie im
-        #: Countdown an und beim Start aus.
-        self.ampel = 1.0
+        #: Anzahl leuchtender Lampenpaare der Startampel, 0..5 — das Rennen
+        #: zündet sie im Countdown nacheinander und schaltet bei GO alle aus.
+        self.ampel = 0
         self._kulisse = set(kulisse_namen)
         self._gruppen: dict[str, list] = {}
         for pl in platzierungen:
@@ -328,9 +328,10 @@ class Dekozeichner:
                     else:
                         if hm is not None:
                             material_setzen(self.programm, hm)
-                            if hm.daten.name == "ampel_rot":
+                            if hm.daten.name.startswith("ampel_") and hm.daten.name[6:].isdigit():
+                                an = int(hm.daten.name[6:]) <= self.ampel
                                 shader.setzen(self.programm, "emission",
-                                              tuple(c * self.ampel for c in hm.daten.emission))
+                                              tuple(c if an else 0.0 for c in hm.daten.emission))
                         vao.render(instances=anzahl)
 
     def freigeben(self) -> None:

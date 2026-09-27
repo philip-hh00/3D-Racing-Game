@@ -638,6 +638,16 @@ def kulisse_setzen(art: Kulisse, linie: np.ndarray, rng,
 #: Thema — die Linie ist Teil des Rennens, nicht der Landschaft.
 STARTBRUECKE = "gemeinsam/startbruecke"
 
+#: Spannweite, für die ``umgebung_bauen.startbruecke`` das Modell bei Skala 1
+#: baut (siehe dort). Bei anderen Streckenbreiten wird das ganze Portal
+#: gleichmäßig skaliert, damit die Stützen immer außerhalb der Fahrbahn stehen.
+STARTBRUECKE_BASISSPANNWEITE_M = 27.0
+#: So viel Luft bleibt zwischen Fahrbahnkante und Stütze.
+STARTBRUECKE_LUFT_M = 3.0
+#: Kleiner skaliert das Portal auf sehr schmalen Strecken nicht — ein winziges
+#: Portal über einer breiten Fahrbahn sähe verloren aus.
+STARTBRUECKE_MIN_SKALA = 0.75
+
 
 def startbruecke(linie: np.ndarray, halbbreite: float, belegung: _Belegung) -> Platzierung:
     """Über Punkt 0 der Mittellinie, quer zur Fahrtrichtung.
@@ -645,14 +655,21 @@ def startbruecke(linie: np.ndarray, halbbreite: float, belegung: _Belegung) -> P
     Punkt 0 ist die Ziellinie des Spiels (Wegpunkt 0, siehe
     ``track_builder.build_waypoints``). Das Modell spannt entlang seiner lokalen
     X-Achse; gedreht wird so, dass diese nach links über die Fahrbahn zeigt.
+
+    Das Portal wird gleichmäßig so skaliert, dass seine Stützen immer
+    :data:`STARTBRUECKE_LUFT_M` außerhalb der Fahrbahnkante stehen — schmale
+    und breite Strecken bekommen so beide ein passendes Portal, nie eins, das
+    auf der Fahrbahn steht oder lächerlich schmal über ihr hängt.
     """
     t = _tangenten(linie)[0]
     links = np.array([-t[1], t[0]])
+    skala = max(STARTBRUECKE_MIN_SKALA,
+                2.0 * (halbbreite + STARTBRUECKE_LUFT_M) / STARTBRUECKE_BASISSPANNWEITE_M)
     for seite in (1, -1):
-        stuetze = linie[0] + seite * links * (halbbreite + 2.5)
-        belegung.belegen(float(stuetze[0]), float(stuetze[1]), 3.0)
+        stuetze = linie[0] + seite * links * (halbbreite + STARTBRUECKE_LUFT_M)
+        belegung.belegen(float(stuetze[0]), float(stuetze[1]), 3.0 * skala)
     return Platzierung(STARTBRUECKE, float(linie[0, 0]), float(linie[0, 1]),
-                       math.atan2(links[1], links[0]), 1.0)
+                       math.atan2(links[1], links[0]), float(skala))
 
 
 def platzieren(mittellinie_m: np.ndarray, halbbreite_m: float, thema: Thema,

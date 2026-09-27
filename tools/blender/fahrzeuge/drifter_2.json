@@ -4118,7 +4118,10 @@
       "mat": "licht_hinten",
       "breite_m": 0.007
      }
-    ]
+    ],
+    "einheit": {
+     "typ": "bumerang"
+    }
    }
   },
   {

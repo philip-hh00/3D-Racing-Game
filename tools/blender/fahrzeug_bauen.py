@@ -68,6 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gemeinsam as g  # noqa: E402
 import teile as tb  # noqa: E402
 import teile_innen as ti  # noqa: E402
+import teile_leuchte as tl  # noqa: E402
 import teile_rad as tr  # noqa: E402
 
 M_PER_PX = 0.08          # wie src/core/settings.py
@@ -79,7 +80,7 @@ RADNAMEN = {"vl": (1, 1), "vr": (1, -1), "hl": (-1, 1), "hr": (-1, -1)}
 #: Materialplätze der Karosserie, in dieser Reihenfolge.
 KAROSSERIE_MATS = ["lack", "lack2", "kunststoff", "glas", "licht_vorn", "scheinwerferglas",
                    "licht_hinten", "blinker", "chrom", "carbon", "zierteil", "dekor_weiss",
-                   "innenraum", "kennzeichen", "rueckstrahler", "motorglas"]
+                   "innenraum", "kennzeichen", "rueckstrahler", "motorglas", "bremslicht"]
 
 #: Kennziffern der Querschnittsabschnitte (Flächenattribut ``seg``).
 SEG_BODEN, SEG_SCHWELLER, SEG_FLANKE_U, SEG_FLANKE_O = 0, 1, 2, 3
@@ -195,6 +196,11 @@ def materialien(p):
         # Reflektor im Gehäuse hinter der Streuscheibe: rot verspiegelt, so
         # spiegelt die Leuchte ohne Licht den Himmel rot statt schwarz zu sein.
         "rueckstrahler": g.material("rueckstrahler", (0.62, 0.05, 0.05), 0.85, 0.28),
+        # Bremslicht-Segment der Leuchteneinheit: eigenes Material, damit die
+        # Engine es beim Bremsen unabhängig vom (immer gedimmten) Schlusslicht
+        # hochregeln kann (rennszene.py/shader.py).
+        "bremslicht": g.material("bremslicht", (0.85, 0.03, 0.02), 0.0, 0.08,
+                                 emission=(1.0, 0.04, 0.02), staerke=2.2),
         # Heller getönte Scheibe über dem Motor: man soll ihn sehen.
         "motorglas": g.material("motorglas", (0.2, 0.22, 0.25), 0.0, 0.03, alpha=0.35),
         # Gebürstetes Aluminium (Ansaugbrücke unter der Glasabdeckung).
@@ -945,20 +951,28 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
         if not le:
             continue
         boden = {KAROSSERIE_MATS.index(z["mat"]), KAROSSERIE_MATS.index(leuchten_boden(z))}
+        einheit = le.get("einheit")
         abdeckung = le.get("abdeckung", "klarglas")
-        if abdeckung and deckel.get(nr):
+        if not einheit and abdeckung and deckel.get(nr):
             ob = tb.deckel("leuchtenglas", deckel[nr], mats[abdeckung])
             if ob is not None:
                 teile.append(ob)
         leds = le.get("led") or []
         leds = leds if isinstance(leds, list) else [leds]
-        for led in leds:
-            if "ringe" not in led and "quer" not in led:
-                for schleife in raender.get(nr, []):
-                    teile += tb.led_am_rand(schleife, led, treffer, boden, mats,
-                                            tiefe=leuchten_tiefe(z))
+        if not einheit:
+            for led in leds:
+                if "ringe" not in led and "quer" not in led:
+                    for schleife in raender.get(nr, []):
+                        teile += tb.led_am_rand(schleife, led, treffer, boden, mats,
+                                                tiefe=leuchten_tiefe(z))
         pj = le.get("projektoren")
-        for zt in zonen_teilflaechen(z):
+        teilflaechen = zonen_teilflaechen(z)
+        # Eine eigenständige Einheit sitzt nur in der größten Teilfläche der
+        # Zone: über die Naht einer ``oder``-Teilfläche hinweg (Kotflügel in
+        # die Front/das Heck) laufen zwei unabhängig aufgebaute Bänder sonst
+        # sichtbar auseinander, statt wie eine einzige Leuchte zu wirken.
+        haupt_zt = max(teilflaechen, key=lambda zt: sum(abs(tb.flaeche2(p)) for p in zone_polygone(zt, ms)))
+        for zt in teilflaechen:
             ansicht = zt["ansicht"]
             polys = zone_polygone(zt, ms)
             for i_poly, poly in enumerate(polys):
@@ -967,7 +981,10 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
                 for links in _zonenseiten(ansicht):
                     def proj(a, b, _l=links, _a=ansicht):
                         return treffer.ansicht(_a, a, b, boden, _l)
-                    if zt is z:
+                    if einheit and zt is haupt_zt:
+                        teile += tl.einheit_bauen(poly, einheit, proj, ansicht, mats,
+                                                  leuchten_tiefe(z), links)
+                    elif zt is z:
                         for led in leds:
                             if "ringe" in led or "quer" in led:
                                 teile += _led_bauen(poly, led, proj, ansicht, mats)
@@ -2193,6 +2210,10 @@ def lod1_parameter(p: dict) -> dict:
         le = z.get("leuchte")
         if le:
             le.pop("projektoren", None)
+            # Die eigenständige Einheit (Kammern, Wabe, mehrere Segmente)
+            # entfällt in LOD1: einfache Fassung, flache Streuscheibe über dem
+            # eingefärbten Gehäuseboden.
+            le.pop("einheit", None)
             leds = le.get("led") or []
             le["led"] = (leds if isinstance(leds, list) else [leds])[:1]
         zonen.append(z)

@@ -478,7 +478,10 @@
       "mat": "licht_hinten",
       "breite_m": 0.006
      }
-    ]
+    ],
+    "einheit": {
+     "typ": "band"
+    }
    }
   },
   {

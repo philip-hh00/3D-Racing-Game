@@ -461,25 +461,13 @@
   "gemeinsam/startbruecke": {
     "radius_m": 2.0,
     "hoehe_m": 9.05,
-    "dreiecke": 916,
+    "dreiecke": 1308,
     "schatten": true,
     "grundriss_m": [
       -14.2,
       14.2,
       -0.7,
       0.7
-    ]
-  },
-  "gemeinsam/tribuene": {
-    "radius_m": 16.0,
-    "hoehe_m": 9.32,
-    "dreiecke": 9564,
-    "schatten": true,
-    "grundriss_m": [
-      -18.5,
-      18.5,
-      -5.5,
-      5.5
     ]
   },
   "mountain/almhuette": {
@@ -836,18 +824,6 @@
       0.06
     ]
   },
-  "strecke/boxengebaeude": {
-    "radius_m": 24.0,
-    "hoehe_m": 9.65,
-    "dreiecke": 1050,
-    "schatten": true,
-    "grundriss_m": [
-      -26.0,
-      26.0,
-      -7.0,
-      15.0
-    ]
-  },
   "strecke/fangzaun": {
     "radius_m": 2.0,
     "hoehe_m": 3.92,
@@ -909,30 +885,6 @@
       1.66,
       -1.25,
       1.55
-    ]
-  },
-  "strecke/tribuene": {
-    "radius_m": 16.0,
-    "hoehe_m": 8.7,
-    "dreiecke": 1068,
-    "schatten": true,
-    "grundriss_m": [
-      -15.61,
-      15.61,
-      -4.35,
-      5.32
-    ]
-  },
-  "strecke/tribuene_klein": {
-    "radius_m": 8.0,
-    "hoehe_m": 7.2,
-    "dreiecke": 480,
-    "schatten": true,
-    "grundriss_m": [
-      -7.6,
-      7.6,
-      -3.09,
-      4.04
     ]
   }
 }

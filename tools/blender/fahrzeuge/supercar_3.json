@@ -1373,7 +1373,24 @@
     "tiefe_m": 0.02,
     "rand_m": 0.005,
     "rand_mat": "kunststoff",
-    "abdeckung": "streuscheibe"
+    "abdeckung": "streuscheibe",
+    "einheit": {
+     "typ": "band",
+     "segmente": [
+      [
+       "schlusslicht",
+       0.34
+      ],
+      [
+       "bremslicht",
+       0.5
+      ],
+      [
+       "rueckfahr",
+       0.16
+      ]
+     ]
+    }
    }
   },
   {

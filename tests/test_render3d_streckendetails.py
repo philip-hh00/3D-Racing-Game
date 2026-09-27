@@ -180,7 +180,7 @@ def test_streckenobjekte_nach_stufe():
     viel = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m, th, netz.name, details=2)
     namen0 = {p.modell for p in wenig}
     namen2 = {p.modell for p in viel}
-    assert "strecke/tribuene" in namen0 and "strecke/boxengebaeude" in namen0
+    assert "strecke/flaggenmasten" in namen0
     assert "strecke/huetchen" not in namen0 and "strecke/huetchen" in namen2
     assert "strecke/fangzaun" not in namen0 and "strecke/fangzaun" in namen2
     # Ohne Angabe gilt die Grafikstufe.
@@ -197,10 +197,12 @@ def test_start_objekte_stehen_an_der_startlinie():
     netz = _netz("gp")
     th = _thema_der("gp")
     orte = platzierung.platzieren(netz.mittellinie, netz.halbe_breite_m, th, netz.name, details=2)
-    tribuene = [p for p in orte if p.modell == "strecke/tribuene"]
-    assert len(tribuene) == 1
-    d = math.hypot(tribuene[0].x - netz.mittellinie[0, 0], tribuene[0].y - netz.mittellinie[0, 1])
-    assert d < netz.halbe_breite_m + 15.0
+    masten = [p for p in orte if p.modell == "strecke/flaggenmasten"]
+    assert len(masten) == 1
+    art = next(r for r in th.rand if r.modell == "strecke/flaggenmasten")
+    d = math.hypot(masten[0].x - netz.mittellinie[0, 0], masten[0].y - netz.mittellinie[0, 1])
+    # Die Masten stehen ``versatz_m`` vor der Linie, nicht direkt auf ihr.
+    assert d < netz.halbe_breite_m + abs(art.versatz_m) + 15.0
 
 
 def test_themen_lesen_strang_s_felder():
@@ -209,7 +211,7 @@ def test_themen_lesen_strang_s_felder():
     assert th.auslauf.breite_m > 0 and th.auslauf.textur == "asphalt"
     arten = {r.modell: r for r in th.rand}
     assert arten["strecke/huetchen"].detail == 2
-    assert arten["strecke/boxengebaeude"].art == "start"
+    assert arten["strecke/flaggenmasten"].art == "start"
 
 
 def test_keine_echten_namen_in_den_streckenobjekten():
