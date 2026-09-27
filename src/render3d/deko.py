@@ -64,6 +64,11 @@ def instanzmatrizen(pos: np.ndarray, gier: np.ndarray, skala: np.ndarray) -> np.
     return np.ascontiguousarray(m.transpose(0, 2, 1).reshape(k, 16))
 
 
+#: Halbe Breite des Bandes um ``lod_abstand_m``, in dem Nah- und Fernmodell
+#: ineinander übergehen (Meter).
+LOD_BAND_M = 10.0
+
+
 @dataclass
 class _Stufe:
     """Eine LOD-Stufe eines Modells, hochgeladen für Farbe und Schatten."""
@@ -302,14 +307,27 @@ class Dekozeichner:
                 for stufe in m.stufen:
                     stufe.zuletzt.pop(durchgang, None)
                 continue
+            band = None
             if len(m.stufen) > 1:
-                nah = d2_auge[a:b] < m.lod_abstand * m.lod_abstand
-                gruppen = ((m.stufen[0], auswahl & nah), (m.stufen[1], auswahl & ~nah))
+                if durchgang == "schatten":
+                    nah = d2_auge[a:b] < m.lod_abstand * m.lod_abstand
+                    gruppen = ((m.stufen[0], auswahl & nah), (m.stufen[1], auswahl & ~nah))
+                else:
+                    # Im Band um lod_abstand zeichnen beide Stufen und teilen
+                    # sich die Pixel (lod_band im Shader) — kein harter Sprung.
+                    von = max(0.0, m.lod_abstand - LOD_BAND_M)
+                    bis = m.lod_abstand + LOD_BAND_M
+                    band = (von, bis)
+                    gruppen = ((m.stufen[0], auswahl & (d2_auge[a:b] < bis * bis)),
+                               (m.stufen[1], auswahl & (d2_auge[a:b] > von * von)))
             else:
                 gruppen = ((m.stufen[0], auswahl),)
             if durchgang != "schatten":
                 shader.setzen(self.programm, "nebel_faktor", 0.45 if m.kulisse else 1.0)
-            for stufe, maske in gruppen:
+            for k, (stufe, maske) in enumerate(gruppen):
+                if durchgang != "schatten":
+                    shader.setzen(self.programm, "lod_band",
+                                  (band[0], band[1], 1.0 if k == 0 else -1.0) if band else (0.0, 0.0, 0.0))
                 if not maske.any():
                     stufe.zuletzt.pop(durchgang, None)
                     continue
@@ -333,6 +351,8 @@ class Dekozeichner:
                                 shader.setzen(self.programm, "emission",
                                               tuple(c if an else 0.0 for c in hm.daten.emission))
                         vao.render(instances=anzahl)
+        if durchgang != "schatten":
+            shader.setzen(self.programm, "lod_band", (0.0, 0.0, 0.0))
 
     def freigeben(self) -> None:
         for m in self.modelle:

@@ -25,7 +25,7 @@
       "name": "rad_vl",
       "nabe": [
         1.7458,
-        0.8827,
+        0.88241,
         0.325
       ],
       "dreiecke": 8364
@@ -34,7 +34,7 @@
       "name": "rad_vr",
       "nabe": [
         1.7458,
-        -0.8827,
+        -0.88241,
         0.325
       ],
       "dreiecke": 8364
@@ -69,5 +69,5 @@
     24,
     27
   ],
-  "dreiecke_karosserie": 73248
+  "dreiecke_karosserie": 73256
 }

@@ -106,6 +106,10 @@ uniform vec3  emission;          // linear, schon mit Staerke multipliziert
 uniform float klarlack;          // 0..1
 uniform float alpha_faktor;
 uniform float alpha_schwelle;    // > 0: ausstanzen (Laub)
+// LOD-Ueberblendung (deko.py): x..y Meter, in denen ein Modell gerastert
+// aus- (z > 0) bzw. eingeblendet wird (z < 0); z = 0 aus. Ohne das springt
+// ein Baum bei lod_abstand_m hart vom Fern- aufs Nahmodell.
+uniform vec3 lod_band;
 uniform float uv_skala;          // Kachelung fuer Boden und Fahrbahn
 uniform vec3  farbton;           // Faerbt eine Textur ein (Gras gruener, Sand waermer)
 uniform float makro;             // Grossraeumige Helligkeitsschwankung gegen sichtbare Kacheln
@@ -478,6 +482,13 @@ void main() {
         basis *= mix(1.0 - makro, 1.0 + makro * 0.7, r);
     }
     if (alpha_schwelle > 0.0 && alpha < alpha_schwelle) discard;
+    if (lod_band.z != 0.0) {
+        float f = smoothstep(lod_band.x, lod_band.y, length(welt_position.xy - kamera_position.xy));
+        float bleibt = lod_band.z > 0.0 ? 1.0 - f : f;
+        // Rauschen je Bildpunkt: Nah- und Fernmodell teilen sich die Pixel.
+        float r = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+        if (r >= bleibt) discard;
+    }
 
     /* glTF legt Rauheit in den Gruen- und Metallic in den Blaukanal. */
     vec2 mr = texture(metallic_rauheit, tuv).gb;

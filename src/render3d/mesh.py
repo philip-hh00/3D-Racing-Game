@@ -432,12 +432,46 @@ class Modell:
         self.teile, self.materialien, self.puffer = [], [], []
 
 
+def _deckung_skaliert(alpha: np.ndarray, faktor: float, schwelle: float) -> float:
+    return float((np.minimum(alpha * faktor, 1.0) >= schwelle).mean())
+
+
+def alpha_mipstufen(alpha: np.ndarray, schwelle: float) -> list[np.ndarray]:
+    """Mipstufen eines Alphakanals, die die **Deckung** erhalten.
+
+    Beim Mitteln wird aus dem scharfen Rand eines Blattes ein halbes Alpha,
+    das unter die Ausstanzschwelle fällt — fern werden Bäume licht und
+    „füllen sich" beim Heranfahren (gemeldet 27.09.2026). Je Stufe wird das
+    Alpha deshalb so skaliert, dass derselbe Anteil der Fläche über der
+    Schwelle bleibt wie in Stufe 0 (Castaño, „Computing Alpha Mipmaps").
+    Stufe 0 bleibt unverändert.
+    """
+    a = np.asarray(alpha, dtype=np.float32)
+    ziel = float((a >= schwelle).mean())
+    stufen = [a]
+    while min(a.shape) > 1:
+        h, w = (a.shape[0] // 2) * 2, (a.shape[1] // 2) * 2
+        a = a[:h, :w].reshape(h // 2, 2, w // 2, 2).mean(axis=(1, 3))
+        lo, hi = 0.0, 8.0
+        for _ in range(20):                       # Halbierung auf den Faktor
+            mitte = (lo + hi) / 2
+            if _deckung_skaliert(a, mitte, schwelle) < ziel:
+                lo = mitte
+            else:
+                hi = mitte
+        stufen.append(np.minimum(a * hi, 1.0))
+    return stufen
+
+
 def textur_hochladen(ctx: "moderngl.Context", bild: "Image.Image | None",
-                     wiederholen: bool = True):
+                     wiederholen: bool = True, schwelle: float | None = None):
     """Ein PIL-Bild als ModernGL-Textur hochladen, mit Mipmaps.
 
     Einmal vertikal spiegeln: die UV sind in OpenGL-Konvention (``v = 0``
     unten), PIL-Zeile 0 ist aber die Oberkante (siehe VEREINBARUNGEN.md).
+
+    ``schwelle``: für ausgestanzte Texturen (Laub) — dann erhalten die
+    Mipstufen die Deckung (:func:`alpha_mipstufen`).
     """
     if bild is None:
         return None
@@ -445,6 +479,16 @@ def textur_hochladen(ctx: "moderngl.Context", bild: "Image.Image | None",
     gespiegelt = ImageOps.flip(rgba)
     textur = ctx.texture(gespiegelt.size, 4, gespiegelt.tobytes())
     textur.build_mipmaps()
+    if schwelle is not None:
+        pixel = np.asarray(gespiegelt, dtype=np.float32) / 255.0
+        alphas = alpha_mipstufen(pixel[..., 3], schwelle)
+        farbe = pixel[..., :3]
+        for stufe, a in enumerate(alphas[1:], start=1):
+            h, w = a.shape
+            farbe = farbe[:h * 2, :w * 2].reshape(h, 2, w, 2, 3).mean(axis=(1, 3))
+            daten = np.concatenate([farbe, a[..., None]], axis=2)
+            textur.write((np.clip(daten, 0, 1) * 255 + 0.5).astype(np.uint8).tobytes(),
+                         level=stufe)
     textur.repeat_x = wiederholen
     textur.repeat_y = wiederholen
     try:
@@ -473,7 +517,9 @@ def stueck_hochladen(ctx, programm, stueck: Stueck, puffer: list):
 
 def materialien_hochladen(ctx, materialien: list[Material]) -> list[HochgeladenesMaterial]:
     return [HochgeladenesMaterial(daten=m,
-                                  basisfarbe=textur_hochladen(ctx, m.basisfarbe),
+                                  basisfarbe=textur_hochladen(
+                                      ctx, m.basisfarbe,
+                                      schwelle=m.schwelle if m.modus == "MASK" else None),
                                   metallic_rauheit=textur_hochladen(ctx, m.metallic_rauheit))
             for m in materialien]
 

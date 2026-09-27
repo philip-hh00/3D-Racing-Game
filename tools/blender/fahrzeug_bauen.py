@@ -232,6 +232,13 @@ class Masse:
         self.achse_hinten = mitte - self.radstand / 2
         aussen = p.get("reifen_v", max(v for _, v in p["breite"]) - 0.03) * self.breite_gesamt / 2
         self.spur_halb = aussen - self.reifen_b / 2
+        #: Halbe Spur je Achse (x der Achse → m). Erst ``spur_anpassen`` setzt
+        #: sie nach der fertigen Haut; bis dahin gilt ``spur_halb``.
+        self.spur_je_achse: dict[float, float] = {}
+
+    def spur(self, achse_x: float) -> float:
+        """Halbe Spur an dieser Achse."""
+        return self.spur_je_achse.get(achse_x, self.spur_halb)
 
     def x(self, u: float) -> float:
         return -self.laenge / 2 + u * self.laenge
@@ -1192,6 +1199,33 @@ def glaszonen(p) -> list:
 # Radläufe
 # ---------------------------------------------------------------------------
 
+#: So weit sitzt die Reifenflanke hinter der Kotflügelkante, Meter.
+REIFEN_EINZUG_M = 0.02
+
+
+def spur_anpassen(haut, ms: "Masse", p) -> None:
+    """Die Spur je Achse so, dass die Reifen unter der Karosserie bleiben.
+
+    Bis zum 27.09.2026 lag die Reifenflanke an der breitesten Stelle des
+    ganzen Autos (``reifen_v``). Wo die Karosserie an einer Achse schmaler
+    ist — bei fast jedem Auto hinten, wo sie sich zum Heck einzieht — standen
+    die Räder deshalb sichtbar über (gemeldet: „die Räder stehen zu weit von
+    der Karosserie ab, vor allem von hinten"). Jetzt wird an jeder Achse die
+    Kotflügelkante gemessen (breiteste Stelle der Haut über dem Rad) und die
+    Flanke ``reifen_einzug_m`` dahinter gesetzt. Nur nach innen: wer im
+    Parameter bewusst breiter will, bekommt nicht mehr, als die Haut deckt.
+    """
+    einzug = float(p.get("reifen_einzug_m", REIFEN_EINZUG_M))
+    punkte = [v.co for v in haut.data.vertices]
+    for achse_x in (ms.achse_vorn, ms.achse_hinten):
+        kante = [abs(c.y) for c in punkte
+                 if abs(c.x - achse_x) < ms.rad_r * 0.9 and ms.rad_r < c.z < ms.rad_r + 0.35]
+        if not kante:
+            continue
+        soll = max(kante) - einzug - ms.reifen_b / 2
+        ms.spur_je_achse[achse_x] = min(ms.spur_halb, soll)
+
+
 def radlaeufe(karosserie, fo: Form, p, mats):
     """Radläufe ausschneiden und mit schwarzen Radhausschalen auskleiden."""
     ms = fo.ms
@@ -1200,9 +1234,9 @@ def radlaeufe(karosserie, fo: Form, p, mats):
     referenz = karosserie.copy()
     referenz.data = karosserie.data.copy()
     bpy.context.scene.collection.objects.link(referenz)
-    innen = ms.spur_halb - ms.reifen_b / 2 - 0.05
     aussen = ms.breite_gesamt / 2 + 0.1
     for achse_x in (ms.achse_vorn, ms.achse_hinten):
+        innen = ms.spur(achse_x) - ms.reifen_b / 2 - 0.05
         r = ms.rad_r + spiel
         for seite in (1, -1):
             schnitt = zylinder_y("schnitt", (achse_x, seite * (innen + aussen) / 2, ms.rad_r),
@@ -1985,8 +2019,8 @@ def rad_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int):
     if seite < 0:
         ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
         ob.data.flip_normals()
-    nabe = Vector((ms.achse_vorn if vorn > 0 else ms.achse_hinten,
-                   seite * ms.spur_halb, ms.rad_r))
+    achse_x = ms.achse_vorn if vorn > 0 else ms.achse_hinten
+    nabe = Vector((achse_x, seite * ms.spur(achse_x), ms.rad_r))
     ob.location = nabe
     return ob, nabe
 
@@ -2005,7 +2039,8 @@ def sattel_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int, rr: float
     if seite < 0:
         ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
         ob.data.flip_normals()
-    ob.location = (ms.achse_vorn if vorn > 0 else ms.achse_hinten, seite * ms.spur_halb, ms.rad_r)
+    achse_x = ms.achse_vorn if vorn > 0 else ms.achse_hinten
+    ob.location = (achse_x, seite * ms.spur(achse_x), ms.rad_r)
     return ob
 
 
@@ -2133,6 +2168,7 @@ def karosserie_bauen(fo: Form, p, mats):
     bpy.context.scene.collection.objects.link(ob)
     for n in KAROSSERIE_MATS:
         ob.data.materials.append(mats[n])
+    spur_anpassen(ob, fo.ms, p)
     radhaeuser = radlaeufe(ob, fo, p, mats)
     bm = bmesh.new()
     bm.from_mesh(ob.data)
@@ -2369,7 +2405,7 @@ def radlauf_lippen(karosserie, fo: Form, p, mats):
                 x = achse_x + r * math.cos(w)
                 z = ms.rad_r + r * math.sin(w)
                 t = strahl(karosserie, (x, seite * (ms.breite_gesamt + 1), z), (0, -seite, 0))
-                if t is None or abs(t[0].y) < ms.spur_halb:
+                if t is None or abs(t[0].y) < ms.spur(achse_x):
                     ringe.append(None)
                     continue
                 y = abs(t[0].y) - dicke * 0.35
