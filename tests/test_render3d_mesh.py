@@ -329,3 +329,24 @@ def test_hochgeladene_textur_zeigt_untere_bildhaelfte_bei_v_zwischen_0_und_04():
         assert durchschnitt[2] < 50, f"erwartet rot, bekommen {durchschnitt}"
     finally:
         ctx.release()
+
+
+def test_normal_emissions_und_verdeckungstextur_werden_gelesen(tmp_path):
+    """Die Detailtexturen der Fahrzeuge (in Blender gebacken) kommen an."""
+    import trimesh
+    from PIL import Image
+    from trimesh.visual.material import PBRMaterial
+    box = trimesh.creation.box((1, 1, 1))
+    bild = lambda f: Image.new("RGB", (8, 8), f)  # noqa: E731
+    box.visual = trimesh.visual.TextureVisuals(
+        uv=np.zeros((len(box.vertices), 2)),
+        material=PBRMaterial(name="leuchte", baseColorFactor=[255, 0, 0, 255],
+                             normalTexture=bild((128, 128, 255)),
+                             emissiveTexture=bild((255, 40, 40)),
+                             emissiveFactor=[1.0, 1.0, 1.0],
+                             occlusionTexture=bild((200, 200, 200))))
+    pfad = tmp_path / "t.glb"
+    box.export(str(pfad))
+    m = mesh.laden(pfad).materialien[0]
+    assert m.normalkarte is not None and m.emissionskarte is not None
+    assert m.verdeckung is not None

@@ -94,6 +94,33 @@ uniform sampler2D basisfarbe;
 uniform sampler2D metallic_rauheit;
 uniform sampler2D himmel_karte;
 uniform sampler2DShadow schatten_karte;
+// Detailtexturen der Fahrzeuge (in Blender gebacken): Normalen im
+// Tangentenraum, Leuchtbild, Umgebungsverdeckung. Ohne Tangenten im Netz —
+// der Tangentenraum entsteht je Pixel aus den Ableitungen (Schueler 2013).
+uniform sampler2D normalkarte;
+uniform sampler2D emissionskarte;
+uniform sampler2D verdeckungskarte;
+uniform float hat_normalkarte;
+uniform float normal_staerke;
+uniform float hat_emissionskarte;
+uniform float hat_verdeckung;
+
+vec3 normal_aus_karte(vec3 N, vec3 p, vec2 tuv) {
+    vec3 t = texture(normalkarte, tuv).xyz * 2.0 - 1.0;
+    t.xy *= normal_staerke;
+    vec3 dp1 = dFdx(p);
+    vec3 dp2 = dFdy(p);
+    vec2 duv1 = dFdx(tuv);
+    vec2 duv2 = dFdy(tuv);
+    vec3 dp2senk = cross(dp2, N);
+    vec3 dp1senk = cross(N, dp1);
+    vec3 T = dp2senk * duv1.x + dp1senk * duv2.x;
+    vec3 B = dp2senk * duv1.y + dp1senk * duv2.y;
+    float m = max(dot(T, T), dot(B, B));
+    if (m < 1e-20) return N;
+    float inv = inversesqrt(m);
+    return normalize(mat3(T * inv, B * inv, N) * t);
+}
 
 uniform float hat_basisfarbe;
 uniform float hat_metallic_rauheit;
@@ -499,6 +526,8 @@ void main() {
     vec3 N = normalize(welt_normale);
     vec3 V = normalize(kamera_position - welt_position);
     if (dot(N, V) < 0.0) N = -N;      // Rueckseiten nicht schwarz werden lassen
+    vec3 N_glatt = N;                 // der Klarlack liegt glatt ueber den Details
+    if (hat_normalkarte > 0.5) N = normal_aus_karte(N, welt_position, tuv);
     vec3 L = normalize(sonne_richtung);
     vec3 H = normalize(V + L);
     vec3 R = reflect(-V, N);
@@ -528,21 +557,26 @@ void main() {
     // Spiegelungen nach unten zeigen den Boden, nicht den Himmel; dunkler.
     umgebung_spiegelnd *= mix(0.35, 1.0, smoothstep(-0.15, 0.1, R.z));
     vec3 umgebung = umgebung_streuend * (vec3(1.0) - fr) + umgebung_spiegelnd * fr;
+    if (hat_verdeckung > 0.5) umgebung *= texture(verdeckungskarte, tuv).r;
 
     vec3 farbe = licht + umgebung;
 
     /* --- Klarlack -------------------------------------------------------- */
     if (klarlack > 0.0) {
-        float kf = 0.04 + 0.96 * pow(1.0 - n_dot_v, 5.0);
-        float kd = verteilung_ggx(max(dot(N, H), 0.0), 0.06);
-        float kg = geometrie_smith(n_dot_v, max(n_dot_l, 1e-4), 0.06);
-        vec3 klar = vec3(kd * kg * kf / max(4.0 * n_dot_v * max(n_dot_l, 1e-4), 1e-6))
-                    * sonne_farbe * n_dot_l * schatten;
-        klar += himmel(R, 0.08) * kf * mix(0.35, 1.0, smoothstep(-0.15, 0.1, R.z));
+        float kv = max(dot(N_glatt, V), 1e-4);
+        float kl = max(dot(N_glatt, L), 0.0);
+        vec3 kr = reflect(-V, N_glatt);
+        float kf = 0.04 + 0.96 * pow(1.0 - kv, 5.0);
+        float kd = verteilung_ggx(max(dot(N_glatt, H), 0.0), 0.06);
+        float kg = geometrie_smith(kv, max(kl, 1e-4), 0.06);
+        vec3 klar = vec3(kd * kg * kf / max(4.0 * kv * max(kl, 1e-4), 1e-6))
+                    * sonne_farbe * kl * schatten;
+        klar += himmel(kr, 0.08) * kf * mix(0.35, 1.0, smoothstep(-0.15, 0.1, kr.z));
         farbe = farbe * (1.0 - klarlack * kf) + klarlack * klar;
     }
 
-    farbe += emission;
+    farbe += emission * (hat_emissionskarte > 0.5
+                         ? nach_linear(texture(emissionskarte, tuv).rgb) : vec3(1.0));
 
     /* --- Nebel ------------------------------------------------------------ */
     float abstand = length(kamera_position - welt_position);
@@ -699,7 +733,9 @@ def matrix_setzen(p, name: str, m: np.ndarray) -> None:
 def _vorgaben(p) -> None:
     for name, wert in (
         ("basisfarbe", 0), ("metallic_rauheit", 1), ("himmel_karte", 2),
-        ("schatten_karte", 3),
+        ("schatten_karte", 3), ("verdeckungskarte", 4), ("normalkarte", 6),
+        ("emissionskarte", 7), ("hat_normalkarte", 0.0), ("normal_staerke", 1.0),
+        ("hat_emissionskarte", 0.0), ("hat_verdeckung", 0.0),
         ("hat_basisfarbe", 0.0), ("hat_metallic_rauheit", 0.0),
         ("hat_himmel", 0.0), ("hat_schatten", 0.0),
         ("grundton", (0.5, 0.5, 0.5)), ("metallic_faktor", 1.0),

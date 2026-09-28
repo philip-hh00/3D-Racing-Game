@@ -156,6 +156,20 @@ def material_setzen(p, hm: mesh.HochgeladenesMaterial) -> None:
         hm.basisfarbe.use(0)
     if hm.metallic_rauheit is not None:
         hm.metallic_rauheit.use(1)
+    # Detailtexturen (Fahrzeuge): Einheiten 4, 6, 7 — siehe shader._vorgaben.
+    normal = getattr(hm, "normalkarte", None)
+    leucht = getattr(hm, "emissionskarte", None)
+    ao = getattr(hm, "verdeckung", None)
+    shader.setzen(p, "hat_normalkarte", 1.0 if normal is not None else 0.0)
+    shader.setzen(p, "hat_emissionskarte", 1.0 if leucht is not None else 0.0)
+    shader.setzen(p, "hat_verdeckung", 1.0 if ao is not None else 0.0)
+    if normal is not None:
+        shader.setzen(p, "normal_staerke", float(m.normal_staerke))
+        normal.use(6)
+    if leucht is not None:
+        leucht.use(7)
+    if ao is not None:
+        ao.use(4)
 
 
 class Dekozeichner:

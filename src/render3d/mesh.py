@@ -67,6 +67,13 @@ class Material:
     beidseitig: bool = False
     basisfarbe: "Image.Image | None" = None
     metallic_rauheit: "Image.Image | None" = None
+    #: Tangentenraum-Normalen (OpenGL-Konvention, wie Blender backt).
+    normalkarte: "Image.Image | None" = None
+    normal_staerke: float = 1.0
+    #: Leuchtbild (sRGB), mit ``emission`` multipliziert — LED-Muster.
+    emissionskarte: "Image.Image | None" = None
+    #: Umgebungsverdeckung im Rotkanal (glTF ``occlusionTexture``).
+    verdeckung: "Image.Image | None" = None
 
     @property
     def durchsichtig(self) -> bool:
@@ -273,6 +280,13 @@ class _Leser:
             mat.basisfarbe = self.bild(pbr["baseColorTexture"]["index"])
         if "metallicRoughnessTexture" in pbr:
             mat.metallic_rauheit = self.bild(pbr["metallicRoughnessTexture"]["index"])
+        if "normalTexture" in m:
+            mat.normalkarte = self.bild(m["normalTexture"]["index"])
+            mat.normal_staerke = float(m["normalTexture"].get("scale", 1.0))
+        if "emissiveTexture" in m:
+            mat.emissionskarte = self.bild(m["emissiveTexture"]["index"])
+        if "occlusionTexture" in m:
+            mat.verdeckung = self.bild(m["occlusionTexture"]["index"])
         return mat
 
 
@@ -397,6 +411,9 @@ class HochgeladenesMaterial:
     daten: Material
     basisfarbe: "moderngl.Texture | None" = None
     metallic_rauheit: "moderngl.Texture | None" = None
+    normalkarte: "moderngl.Texture | None" = None
+    emissionskarte: "moderngl.Texture | None" = None
+    verdeckung: "moderngl.Texture | None" = None
 
 
 @dataclass
@@ -520,7 +537,10 @@ def materialien_hochladen(ctx, materialien: list[Material]) -> list[Hochgeladene
                                   basisfarbe=textur_hochladen(
                                       ctx, m.basisfarbe,
                                       schwelle=m.schwelle if m.modus == "MASK" else None),
-                                  metallic_rauheit=textur_hochladen(ctx, m.metallic_rauheit))
+                                  metallic_rauheit=textur_hochladen(ctx, m.metallic_rauheit),
+                                  normalkarte=textur_hochladen(ctx, m.normalkarte),
+                                  emissionskarte=textur_hochladen(ctx, m.emissionskarte),
+                                  verdeckung=textur_hochladen(ctx, m.verdeckung))
             for m in materialien]
 
 
