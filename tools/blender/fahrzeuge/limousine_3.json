@@ -105,7 +105,7 @@
   "u": 0.672,
   "v": 0.995
  },
- "felge": "zehn",
+ "felge": "vielspeichen",
  "felgenfarbe": [
   60,
   62,
@@ -736,11 +736,14 @@
  "teile": {
   "reifen": {
    "profil": "strasse",
-   "bloecke": 26
+   "bloecke": 26,
+   "modell": "GRAND TOUR S"
   },
   "felge": {
    "radmuttern": 5,
-   "nabenkappe": "emblem"
+   "nabenkappe": "emblem",
+   "diamant": true,
+   "speichen": 16
   },
   "bremse": {
    "art": "gelocht"

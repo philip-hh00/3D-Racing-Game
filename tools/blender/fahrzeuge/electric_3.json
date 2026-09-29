@@ -945,11 +945,13 @@
  "teile": {
   "reifen": {
    "profil": "strasse",
-   "bloecke": 28
+   "bloecke": 28,
+   "modell": "E-GRIP"
   },
   "felge": {
    "radmuttern": 5,
-   "nabenkappe": "emblem"
+   "nabenkappe": "emblem",
+   "diamant": true
   },
   "bremse": {
    "art": "glatt"

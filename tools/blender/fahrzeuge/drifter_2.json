@@ -4964,11 +4964,15 @@
  "teile": {
   "reifen": {
    "profil": "sport",
-   "bloecke": 24
+   "bloecke": 24,
+   "modell": "DRIFT PRO",
+   "schrift": "weiss"
   },
   "felge": {
    "radmuttern": 5,
-   "nabenkappe": "emblem"
+   "nabenkappe": "emblem",
+   "schuessel_m": 0.035,
+   "nieten": 40
   },
   "bremse": {
    "art": "geschlitzt"

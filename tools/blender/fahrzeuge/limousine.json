@@ -734,7 +734,8 @@
  "teile": {
   "reifen": {
    "profil": "strasse",
-   "bloecke": 26
+   "bloecke": 26,
+   "modell": "GRAND TOUR"
   },
   "felge": {
    "radmuttern": 5,

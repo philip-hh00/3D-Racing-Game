@@ -105,7 +105,7 @@
   "u": 0.66,
   "v": 0.995
  },
- "felge": "fuenf",
+ "felge": "doppelspeichen",
  "felgenfarbe": [
   200,
   202,
@@ -724,7 +724,8 @@
  "teile": {
   "reifen": {
    "profil": "strasse",
-   "bloecke": 26
+   "bloecke": 26,
+   "modell": "GRAND TOUR"
   },
   "felge": {
    "radmuttern": 5,

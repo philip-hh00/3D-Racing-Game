@@ -1409,7 +1409,8 @@
    "nabenkappe": "emblem"
   },
   "bremse": {
-   "art": "geschlitzt"
+   "art": "geschlitzt",
+   "scheibe": "keramik"
   },
   "spiegel": {
    "art": "fuss",

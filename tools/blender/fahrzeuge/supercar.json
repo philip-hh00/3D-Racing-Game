@@ -1987,10 +1987,12 @@
   },
   "felge": {
    "radmuttern": 5,
-   "nabenkappe": "emblem"
+   "nabenkappe": "emblem",
+   "mutter_mat": "titan"
   },
   "bremse": {
-   "art": "gelocht"
+   "art": "gelocht",
+   "scheibe": "keramik"
   },
   "spiegel": {
    "art": "stiel",

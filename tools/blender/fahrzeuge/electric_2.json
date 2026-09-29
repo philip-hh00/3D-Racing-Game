@@ -5,7 +5,7 @@
   180,
   188
  ],
- "felge": "turbine",
+ "felge": "aero",
  "felgenfarbe": [
   85,
   88,
@@ -917,7 +917,8 @@
  "teile": {
   "reifen": {
    "profil": "strasse",
-   "bloecke": 26
+   "bloecke": 26,
+   "modell": "E-GRIP ECO"
   },
   "felge": {
    "radmuttern": 5,

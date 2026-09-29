@@ -864,7 +864,8 @@
   },
   "felge": {
    "radmuttern": 5,
-   "nabenkappe": "emblem"
+   "nabenkappe": "emblem",
+   "diamant": true
   },
   "bremse": {
    "art": "glatt"

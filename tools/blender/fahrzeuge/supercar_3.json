@@ -1716,7 +1716,8 @@
    "nabenkappe": "glatt"
   },
   "bremse": {
-   "art": "gelocht"
+   "art": "gelocht",
+   "scheibe": "keramik"
   },
   "spiegel": {
    "art": "stiel",

@@ -1264,6 +1264,9 @@ def radlaeufe(karosserie, fo: Form, p, mats):
             for pol in schale.data.polygons:
                 pol.use_smooth = True
             teile.append(schale)
+            # Rippen, Federbein, Querlenker, Welle (teile_rad.radhaus_teile)
+            teile += tr.radhaus_teile(schale, achse_x, seite, ms.rad_r, r, innen, mats,
+                                      p.get("_lod", 0))
     bpy.data.objects.remove(referenz, do_unlink=True)
     return teile
 
@@ -1994,19 +1997,9 @@ def _emblem_klein(p, mats):
 def rad_neu(ms: Masse, p, mats):
     """Rad aus der Bibliothek: Profilreifen, Felge mit Muttern und Kappe,
     Bremsscheibe. Liefert (Teile, Speichenform)."""
-    tp = p["teile"]
-    rr = p.get("zoll", 17) * 0.0254 / 2
-    reif = tr.reifen(ms.rad_r, ms.reifen_b, rr, tp.get("reifen") or {}, mats)
-    tf = tp.get("felge") or {}
-    if p.get("felge", "fuenf") in tr.MUSTER:
-        fteile, form = tr.felge(p, tf, mats, rr, ms.reifen_b, _emblem_klein(p, mats))
-        bremse = tr.bremsscheibe(rr, form, tp.get("bremse") or {}, mats)
-    else:
-        # Aero- und Turbinenfelgen bleiben wie bisher (samt Scheibe).
-        fteile = felge(ms, p, mats, rr)
-        form = tr.speichenform(p, tf, rr, ms.reifen_b)
-        bremse = []
-    return [reif] + fteile + bremse, form
+    # Einmal je Auto gebaut und gebacken (Texturen rad_reifen, rad_metall),
+    # danach Kopien — siehe teile_rad.rad.
+    return tr.rad(ms, p, mats, _emblem_klein(p, mats))
 
 
 def rad_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int):
@@ -2017,8 +2010,7 @@ def rad_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int):
         teile = [reif] + felge(ms, p, mats, rr)
     ob = g.verbinden(teile, name)
     if seite < 0:
-        ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
-        ob.data.flip_normals()
+        tr.spiegeln(ob)             # Flankenschrift bleibt lesbar
     achse_x = ms.achse_vorn if vorn > 0 else ms.achse_hinten
     nabe = Vector((achse_x, seite * ms.spur(achse_x), ms.rad_r))
     ob.location = nabe
@@ -2029,16 +2021,14 @@ def sattel_bauen(ms: Masse, p, mats, name: str, vorn: int, seite: int, rr: float
     """Bremssattel: lenkt mit, dreht aber nicht mit dem Rad."""
     tp = p.get("teile")
     if tp is not None:
-        form = tr.speichenform(p, tp.get("felge") or {}, rr, ms.reifen_b)
-        ob = tr.bremssattel(name, rr, form, tp.get("bremse") or {}, tp.get("sattel") or {}, mats)
+        ob = tr.sattel(name, ms, p, mats)
     else:
         r = rr - 0.07
         ob = kasten(name, (0, 0, 0), (0.1, 0.07, 0.16), mats["sattel"], fase=0.015)
         ob.data.transform(Matrix.Translation((-r * 0.7, 0.02, r * 0.7)))
         ob.data.transform(Matrix.Rotation(math.radians(-10 if vorn > 0 else 10), 4, "Y"))
     if seite < 0:
-        ob.data.transform(Matrix.Diagonal((1, -1, 1, 1)))
-        ob.data.flip_normals()
+        tr.spiegeln(ob)             # Sattelschrift bleibt lesbar
     achse_x = ms.achse_vorn if vorn > 0 else ms.achse_hinten
     ob.location = (achse_x, seite * ms.spur(achse_x), ms.rad_r)
     return ob

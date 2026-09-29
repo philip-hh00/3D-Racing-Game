@@ -864,7 +864,8 @@
  "teile": {
   "reifen": {
    "profil": "sport",
-   "bloecke": 26
+   "bloecke": 26,
+   "modell": "E-GRIP"
   },
   "felge": {
    "radmuttern": 5,
