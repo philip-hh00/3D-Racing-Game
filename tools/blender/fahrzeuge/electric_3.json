@@ -612,7 +612,8 @@
      }
     ],
     "einheit": {
-     "typ": "winkel"
+     "typ": "winkel",
+     "stil": "klassisch"
     }
    }
   },

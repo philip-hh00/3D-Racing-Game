@@ -88,10 +88,9 @@ class _Stufe:
         for vao, vao_s, _m in self.stuecke:
             vao.release()
             vao_s.release()
-        for m in self.materialien:
-            for t in (m.basisfarbe, m.metallic_rauheit):
-                if t is not None:
-                    t.release()
+        # Geteilte Texturen (mesh.materialien_hochladen) nur einmal freigeben.
+        for t in {id(t): t for m in self.materialien for t in mesh._texturen(m)}.values():
+            t.release()
         for p in self.puffer:
             p.release()
         for b in (self.instanzen, self.instanzen_schatten):

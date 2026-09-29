@@ -979,6 +979,10 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
         # die Front/das Heck) laufen zwei unabhängig aufgebaute Bänder sonst
         # sichtbar auseinander, statt wie eine einzige Leuchte zu wirken.
         haupt_zt = max(teilflaechen, key=lambda zt: sum(abs(tb.flaeche2(p)) for p in zone_polygone(zt, ms)))
+        if einheit and einheit.get("ansicht"):
+            # Die Teilfläche, die man aus der Verfolgerkamera sieht (etwa das Heck).
+            haupt_zt = next((zt for zt in teilflaechen if zt["ansicht"] == einheit["ansicht"]),
+                            haupt_zt)
         for zt in teilflaechen:
             ansicht = zt["ansicht"]
             polys = zone_polygone(zt, ms)
@@ -988,9 +992,12 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
                 for links in _zonenseiten(ansicht):
                     def proj(a, b, _l=links, _a=ansicht):
                         return treffer.ansicht(_a, a, b, boden, _l)
-                    if einheit and zt is haupt_zt:
+                    if einheit and (zt is haupt_zt or einheit.get("ansicht") == "alle"):
                         teile += tl.einheit_bauen(poly, einheit, proj, ansicht, mats,
-                                                  leuchten_tiefe(z), links)
+                                                  leuchten_tiefe(z), links,
+                                                  treffer=treffer, boden=boden,
+                                                  teilpolys={t["ansicht"]: zone_polygone(t, ms)
+                                                             for t in teilflaechen})
                     elif zt is z:
                         for led in leds:
                             if "ringe" in led or "quer" in led:
@@ -998,6 +1005,9 @@ def leuchten_bauen(ob_haut, treffer, fo: Form, zonen: list, mats, leuchtdaten: d
                     if pj and pj.get("ansicht", z["ansicht"]) == ansicht:
                         teile += _projektoren_bauen(poly, pj, proj, mats,
                                                     gespiegelt and ansicht == "oben")
+        if einheit and abdeckung and deckel.get(nr):
+            # Deckglas der Einheit: bündig, mit Glaskante, je Kammer getönt.
+            teile += tl.deckglas_bauen(deckel[nr], einheit, mats)
     return teile
 
 
@@ -2236,10 +2246,13 @@ def lod1_parameter(p: dict) -> dict:
         le = z.get("leuchte")
         if le:
             le.pop("projektoren", None)
-            # Die eigenständige Einheit (Kammern, Wabe, mehrere Segmente)
-            # entfällt in LOD1: einfache Fassung, flache Streuscheibe über dem
-            # eingefärbten Gehäuseboden.
-            le.pop("einheit", None)
+            # Die Leuchteneinheit bleibt, aber einfach: Böden, Lichtleiter und
+            # Deckglas ohne Hochpoly und Stege, mit dem verkleinerten Atlas der
+            # vollen Stufe (teile_leuchte.atlas_anwenden).
+            if (le.get("einheit") or {}).get("stil") == "klassisch":
+                le.pop("einheit")       # wie früher: einfache Fassung
+            elif le.get("einheit"):
+                le["einheit"]["_lod"] = 1
             leds = le.get("led") or []
             le["led"] = (leds if isinstance(leds, list) else [leds])[:1]
         zonen.append(z)
@@ -2287,7 +2300,9 @@ def modell_bauen(key: str, p: dict):
         innen = ti.innenraum(fo, p, tp.get("innenraum") or {}, mats)
     else:
         innen = innenraum(fo, p, mats)
-    karo = g.verbinden([karosserie] + lamellen + radhaeuser + anbau + innen, "karosserie")
+    karo_teile = [karosserie] + lamellen + radhaeuser + anbau + innen
+    tl.atlas_anwenden(karo_teile, p)  # Leuchten: UV, Hochpoly backen, Atlas an die Materialien
+    karo = g.verbinden(karo_teile, "karosserie")
     ms.hoehe = max(v.co.z for v in karo.data.vertices)
 
     raeder, naben, saettel = [], {}, []

@@ -350,3 +350,23 @@ def test_normal_emissions_und_verdeckungstextur_werden_gelesen(tmp_path):
     m = mesh.laden(pfad).materialien[0]
     assert m.normalkarte is not None and m.emissionskarte is not None
     assert m.verdeckung is not None
+
+
+def test_materialien_mit_demselben_bild_teilen_sich_eine_textur():
+    """Der Leuchtenatlas eines Autos hängt an mehreren Materialien; im
+    Grafikspeicher darf er trotzdem nur einmal liegen."""
+    pytest.importorskip("moderngl")
+    ctx = _standalone_kontext()
+    if ctx is None:
+        pytest.skip("Kein OpenGL-Standalone-Kontext auf dieser Maschine verfuegbar")
+    try:
+        atlas = Image.new("RGB", (8, 8), (128, 128, 255))
+        mats = [mesh.Material(name=n, normalkarte=atlas, emissionskarte=atlas)
+                for n in ("bremslicht", "licht_hinten")]
+        hoch = mesh.materialien_hochladen(ctx, mats)
+        assert hoch[0].normalkarte is hoch[1].normalkarte
+        assert hoch[0].normalkarte is hoch[0].emissionskarte
+        modell = mesh.Modell(teile=[], materialien=hoch)
+        modell.freigeben()          # jede Textur genau einmal
+    finally:
+        ctx.release()

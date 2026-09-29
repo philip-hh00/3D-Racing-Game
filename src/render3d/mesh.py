@@ -440,13 +440,17 @@ class Modell:
         for t in self.teile:
             for s in t.stuecke:
                 s.vao.release()
-        for m in self.materialien:
-            for tex in (m.basisfarbe, m.metallic_rauheit):
-                if tex is not None:
-                    tex.release()
+        # Materialien teilen sich Texturen (Atlas der Leuchten): jede nur einmal.
+        for tex in {id(t): t for m in self.materialien for t in _texturen(m)}.values():
+            tex.release()
         for p in self.puffer:
             p.release()
         self.teile, self.materialien, self.puffer = [], [], []
+
+
+def _texturen(m: "HochgeladenesMaterial") -> list:
+    return [t for t in (m.basisfarbe, m.metallic_rauheit, m.normalkarte, m.emissionskarte,
+                        m.verdeckung) if t is not None]
 
 
 def _deckung_skaliert(alpha: np.ndarray, faktor: float, schwelle: float) -> float:
@@ -533,14 +537,25 @@ def stueck_hochladen(ctx, programm, stueck: Stueck, puffer: list):
 
 
 def materialien_hochladen(ctx, materialien: list[Material]) -> list[HochgeladenesMaterial]:
+    """Texturen je Bild nur einmal hochladen: die Leuchten eines Autos teilen
+    sich einen Atlas über ein halbes Dutzend Materialien (``_Leser.bild``
+    liefert für dieselbe Quelle dasselbe Bild)."""
+    geladen: dict = {}
+
+    def hoch(bild, schwelle=None):
+        if bild is None:
+            return None
+        k = (id(bild), schwelle)
+        if k not in geladen:
+            geladen[k] = textur_hochladen(ctx, bild, schwelle=schwelle)
+        return geladen[k]
     return [HochgeladenesMaterial(daten=m,
-                                  basisfarbe=textur_hochladen(
-                                      ctx, m.basisfarbe,
-                                      schwelle=m.schwelle if m.modus == "MASK" else None),
-                                  metallic_rauheit=textur_hochladen(ctx, m.metallic_rauheit),
-                                  normalkarte=textur_hochladen(ctx, m.normalkarte),
-                                  emissionskarte=textur_hochladen(ctx, m.emissionskarte),
-                                  verdeckung=textur_hochladen(ctx, m.verdeckung))
+                                  basisfarbe=hoch(m.basisfarbe,
+                                                  m.schwelle if m.modus == "MASK" else None),
+                                  metallic_rauheit=hoch(m.metallic_rauheit),
+                                  normalkarte=hoch(m.normalkarte),
+                                  emissionskarte=hoch(m.emissionskarte),
+                                  verdeckung=hoch(m.verdeckung))
             for m in materialien]
 
 

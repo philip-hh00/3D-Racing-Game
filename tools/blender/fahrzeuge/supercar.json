@@ -1156,7 +1156,8 @@
      "breite_m": 0.008
     },
     "einheit": {
-     "typ": "ring"
+     "typ": "ring",
+     "stil": "klassisch"
     }
    }
   },
@@ -1260,7 +1261,8 @@
      "breite_m": 0.008
     },
     "einheit": {
-     "typ": "ring"
+     "typ": "ring",
+     "stil": "klassisch"
     }
    }
   },
