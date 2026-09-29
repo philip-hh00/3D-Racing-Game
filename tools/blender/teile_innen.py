@@ -17,6 +17,7 @@ from mathutils import Matrix
 
 import gemeinsam as g
 import teile as t
+import teile_oberflaeche as to
 
 #: Emblemform je Fahrzeugfamilie (Schlüssel vor dem ersten ``_``).
 FAMILIENFORM = {"rookie": "sechseck", "limousine": "oval", "supercar": "delta",
@@ -176,13 +177,19 @@ def _gruppe(teile, name, drehung_y: float, ort):
 
 
 def sitz(art: str, lehne_h: float, mats, akzent):
-    """Ein Sitz, Ursprung vorn mittig unter der Sitzfläche, Blick nach +X."""
-    im = mats["innenraum"]
+    """Ein Sitz, Ursprung vorn mittig unter der Sitzfläche, Blick nach +X.
+
+    Wangen und Rahmen in ``leder`` (genarbt), die Mitten in ``polster``
+    (abgesteppt, Kanäle mit Doppelnaht aus der Normalentextur)."""
+    im = mats.get("leder", mats["innenraum"])
+    mitte = mats.get("polster", akzent)
     teile = [t.kasten("sitz", (-0.24, 0, 0.05), (0.48, 0.44, 0.1), im, fase=0.035)]
     if art == "schale":
         for s in (1, -1):
             teile.append(t.kasten("wange", (-0.22, s * 0.2, 0.1), (0.44, 0.07, 0.08), im, fase=0.03))
-        teile.append(t.kasten("sitzmitte", (-0.24, 0, 0.102), (0.4, 0.2, 0.012), akzent, fase=0.004))
+        teile.append(t.kasten("sitzmitte", (-0.24, 0, 0.102), (0.4, 0.2, 0.012), mitte, fase=0.004))
+    else:
+        teile.append(t.kasten("sitzmitte", (-0.25, 0, 0.1), (0.38, 0.3, 0.012), mitte, fase=0.005))
     # Lehne: in eigenen Koordinaten aufgebaut, dann nach hinten geneigt.
     lehne = [t.kasten("lehne", (0, 0, lehne_h / 2), (0.1, 0.44, lehne_h), im, fase=0.04)]
     if art == "schale":
@@ -190,9 +197,11 @@ def sitz(art: str, lehne_h: float, mats, akzent):
             lehne.append(t.kasten("lehnenwange", (0.05, s * 0.2, lehne_h * 0.4), (0.12, 0.07, lehne_h * 0.72),
                                   im, fase=0.03))
         lehne.append(t.kasten("lehnenmitte", (0.052, 0, lehne_h * 0.45), (0.01, 0.2, lehne_h * 0.6),
-                              akzent, fase=0.003))
+                              mitte, fase=0.003))
         lehne.append(t.kasten("kopfteil", (0, 0, lehne_h + 0.1), (0.09, 0.26, 0.2), im, fase=0.04))
     else:
+        lehne.append(t.kasten("lehnenmitte", (0.05, 0, lehne_h * 0.47), (0.01, 0.3, lehne_h * 0.66),
+                              mitte, fase=0.004))
         lehne.append(t.kasten("kopfstuetze", (0.01, 0, lehne_h + 0.1), (0.09, 0.26, 0.14), im, fase=0.035))
         for s in (1, -1):
             lehne.append(t.zylinder_x("stange", (0, s * 0.07, lehne_h + 0.02), 0.006, 0.01,
@@ -203,12 +212,12 @@ def sitz(art: str, lehne_h: float, mats, akzent):
 
 def lenkrad(mats):
     """Lenkrad mit drei Speichen, Prall­topf und Säule; Ursprung in der
-    Radmitte, Radebene um 25° nach vorn geneigt, Säule nach vorn unten."""
+    Radmitte, Radebene um 25° nach vorn geneigt, Säule nach vorn unten. Kranz in Leder."""
     im = mats["innenraum"]
     bpy.ops.mesh.primitive_torus_add(major_radius=0.175, minor_radius=0.017,
                                      major_segments=28, minor_segments=8)
     kranz = bpy.context.object
-    kranz.data.materials.append(im)
+    kranz.data.materials.append(mats.get("leder", im))
     for p in kranz.data.polygons:
         p.use_smooth = True
     teile = [kranz]
@@ -244,17 +253,47 @@ def innenraum(fo, p, ti: dict, mats):
     if motor:
         # Der Innenraum beginnt vor dem Motorraum (Mittelmotor unter Glas).
         u_hinten = max(u_hinten, motor["u"][1] + 0.005)
+    # Der Boden liegt unter der Gürtellinie, so tief, dass Sitze mit echter
+    # Lehne unters Dach passen: durchs Glas sieht man in einen Raum, nicht
+    # auf eine Platte in Fensterhöhe. ``tiefe_m`` überschreibt die Schätzung.
+    u_m = (u_hinten + u_vorn) / 2
+    tiefe = ti.get("tiefe_m")
+    if tiefe is None:
+        tiefe = min(0.42, max(0.2, 0.92 - (fo.oben(u_m, 0) - fo.zd(u_m))))
+
+    def boden(u):
+        return max(fo.zd(u) - tiefe, fo.zu(u) + 0.12)
+
     n = 30
     punkte, flaechen = [], []
     for i in range(n + 1):
         u = u_hinten + (u_vorn - u_hinten) * i / n
-        z = fo.zd(u) - 0.02
+        z = boden(u)
         w_i = fo.ws(u) - 0.03
         punkte += [(ms.x(u), w_i, z), (ms.x(u), -w_i, z)]
         if i:
             a = 2 * (i - 1)
             flaechen.append((a, a + 1, a + 3, a + 2))
     teile.append(g.objekt_aus_daten("wanne", punkte, flaechen, [im]))
+    # Türverkleidungen vom Boden bis unter die Gürtellinie, mit Armlehne —
+    # sonst sieht man durchs Fenster die lackierte Innenseite der Haut.
+    for seite in (1, -1):
+        punkte, flaechen = [], []
+        for i in range(n + 1):
+            u = u_hinten + (u_vorn - u_hinten) * i / n
+            x = ms.x(u)
+            w_i = seite * (fo.ws(u) - 0.035)
+            zo = fo.zd(u) - 0.015
+            za = zo - 0.17
+            punkte += [(x, w_i, boden(u)), (x, w_i, za), (x, w_i - seite * 0.06, za + 0.01),
+                       (x, w_i - seite * 0.06, za + 0.04), (x, w_i, za + 0.05), (x, w_i, zo)]
+            if i:
+                a = 6 * (i - 1)
+                for j in range(5):
+                    q = (a + j, a + j + 1, a + j + 7, a + j + 6)
+                    flaechen.append(q[::-1] if seite > 0 else q)
+        tv = g.objekt_aus_daten("tuerverkleidung", punkte, flaechen, [im])
+        teile.append(tv)
 
     def armaturbreite(u):
         return min(fo.ws(u) - 0.06, fo.wg(u) - 0.1)
@@ -272,46 +311,75 @@ def innenraum(fo, p, ti: dict, mats):
     z_a = fo.zd(u_armatur)
     w_a = armaturbreite(u_armatur)
     # Armaturenbrett: Körper, gepolsterte Oberkante, Instrumentenhutze, Bildschirm, Düsen
-    teile.append(t.kasten("armatur", (x_a - 0.2, 0, z_a + 0.02), (0.4, w_a * 2, 0.14), im, fase=0.04))
+    z_b = boden(u_armatur)
+    teile.append(t.kasten("armatur", (x_a - 0.2, 0, (z_a + 0.09 + z_b) / 2), (0.4, w_a * 2, z_a + 0.09 - z_b),
+                          im, fase=0.04))
     teile.append(t.kasten("armaturleiste", (x_a - 0.4, 0, z_a + 0.03), (0.03, w_a * 2 - 0.08, 0.035),
                           akzent, fase=0.01))
     teile.append(t.kasten("hutze", (x_a - 0.34, w_a * 0.45, z_a + 0.12), (0.16, 0.3, 0.07), im, fase=0.03))
-    teile.append(t.kasten("instrumente", (x_a - 0.415, w_a * 0.45, z_a + 0.1), (0.006, 0.24, 0.06),
-                          mats["zierteil"], fase=0.002))
-    teile.append(t.kasten("bildschirm", (x_a - 0.4, 0, z_a + 0.13), (0.012, 0.24, 0.13),
-                          mats["zierteil"], fase=0.004, drehung=(0, math.radians(-12), 0)))
+    # Kombiinstrument und Bildschirm leuchten aus dem Atlas anzeige.png.
+    instr = t.kasten("instrumente", (x_a - 0.415, w_a * 0.45, z_a + 0.1), (0.006, 0.24, 0.06),
+                     mats.get("anzeige", mats["zierteil"]), fase=0.002)
+    to.anzeige_uv(instr, 0.5, 1.0)
+    teile.append(instr)
+    schirm = t.kasten("bildschirm", (x_a - 0.4, 0, z_a + 0.13), (0.012, 0.24, 0.13),
+                      mats.get("anzeige", mats["zierteil"]), fase=0.004, drehung=(0, math.radians(-12), 0))
+    to.anzeige_uv(schirm, 0.0, 0.5)
+    teile.append(schirm)
     for y in (-w_a * 0.75, w_a * 0.75, -0.16, 0.16):
         teile.append(t.kasten("duese", (x_a - 0.405, y, z_a + 0.06), (0.01, 0.08, 0.035),
                               mats["kunststoff"], fase=0.003))
     # Mittelkonsole mit Wählhebel
     x_sitz = x_a - 0.8
     laenge = max(0.3, x_a - 0.3 - (x_sitz - 0.45))
-    teile.append(t.kasten("konsole", (x_a - 0.3 - laenge / 2, 0, fo.zd(ms.u(x_a - 0.5)) + 0.07),
-                          (laenge, 0.2, 0.16), im, fase=0.03))
-    teile.append(t.kasten("konsolenblende", (x_a - 0.3 - laenge / 2, 0, fo.zd(ms.u(x_a - 0.5)) + 0.151),
+    u_k = ms.u(x_a - 0.3 - laenge / 2)
+    z_k = min(fo.zd(u_k) - 0.06, boden(u_k) + 0.3)
+    teile.append(t.kasten("konsole", (x_a - 0.3 - laenge / 2, 0, (z_k + boden(u_k)) / 2),
+                          (laenge, 0.2, z_k - boden(u_k)), im, fase=0.03))
+    teile.append(t.kasten("konsolenblende", (x_a - 0.3 - laenge / 2, 0, z_k + 0.001),
                           (laenge * 0.8, 0.14, 0.006), akzent, fase=0.002))
-    teile.append(t.kugel("waehlhebel", (x_a - 0.55, 0, fo.zd(ms.u(x_a - 0.55)) + 0.2), (0.04, 0.035, 0.05),
+    teile.append(t.kugel("waehlhebel", (x_a - 0.55, 0, z_k + 0.05), (0.04, 0.035, 0.05),
                          mats["zierteil"], segmente=10, ringe=6))
     # Sitze
     reihen = k.get("sitzreihen", 2)
+    x_wand = ms.x(u_hinten)
     for r in range(reihen):
         xs = x_a - 0.56 - r * 0.85
         u_s = ms.u(xs - 0.24)
         if u_s - 0.35 / ms.laenge < u_hinten + 0.02:
             break
-        z_s = fo.zd(u_s) - 0.02
+        x_wand = max(ms.x(u_hinten), xs - 0.62)
+        z_s = boden(u_s) + 0.14
         w_s = min(fo.ws(u_s) - 0.08, fo.wg(u_s) - 0.05)
         dach = min(fo.oben(u_s - 0.35 / ms.laenge, w_s * 0.75), fo.oben(u_s, w_s * 0.75))
         platz = dach - z_s - 0.1
-        lehne_h = min(0.56, platz - 0.24 if art == "schale" else platz - 0.2)
+        lehne_h = min(0.6, platz - 0.24 if art == "schale" else platz - 0.2)
         if lehne_h < 0.22:
             break
         for seite in (1, -1):
             s = sitz(art if r == 0 else "komfort", lehne_h, mats, akzent)
             s.data.transform(Matrix.Translation((xs, seite * w_s * 0.5, z_s)))
             teile.append(s)
+    # Rückwand hinter der letzten Sitzreihe und Hutablage bis zum Heck: der
+    # Innenraum ist ein geschlossener Raum, kein Blick in den hohlen Kofferraum.
+    u_w = ms.u(x_wand)
+    w_w = fo.ws(u_w) - 0.035
+    z_o = fo.zd(u_w) - 0.02
+    teile.append(g.objekt_aus_daten("rueckwand", [(x_wand, -w_w, boden(u_w)), (x_wand, w_w, boden(u_w)),
+                                                  (x_wand, w_w, z_o), (x_wand, -w_w, z_o)],
+                                    [(0, 1, 2, 3)], [im]))
+    if x_wand > ms.x(u_hinten) + 0.03:
+        punkte, flaechen = [], []
+        for i in range(9):
+            u = u_hinten + (u_w - u_hinten) * i / 8
+            w_i = fo.ws(u) - 0.035
+            punkte += [(ms.x(u), -w_i, fo.zd(u) - 0.02), (ms.x(u), w_i, fo.zd(u) - 0.02)]
+            if i:
+                a = 2 * (i - 1)
+                flaechen.append((a, a + 1, a + 3, a + 2))
+        teile.append(g.objekt_aus_daten("hutablage", punkte, flaechen, [im]))
     lr = lenkrad(mats)
-    lr.data.transform(Matrix.Translation((x_a - 0.46, w_a * 0.45, z_a + 0.13)))
+    lr.data.transform(Matrix.Translation((x_a - 0.46, w_a * 0.45, z_a + 0.06)))
     teile.append(lr)
     return teile
 

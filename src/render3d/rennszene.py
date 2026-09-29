@@ -443,12 +443,38 @@ def bremslicht_emission(emission, bremse: float) -> tuple[float, float, float]:
     return tuple(float(c) * faktor for c in emission)
 
 
+#: Strang L (shader.py): Metallic, ab dem die Flakes voll glitzern — die
+#: Werkstatt setzt für „metallic“ 0.55 (lack.werte_3d).
+FLAKES_VOLL_AB = 0.5
+#: Scheiben mit Fresnel-Durchsicht. Leuchtenabdeckungen bleiben, wie sie sind.
+GLAS_MIT_FRESNEL = ("glas", "motorglas")
+
+
+def lack_effekt(name: str, metallic_werk: float, lack: Lackwerte | None) -> tuple:
+    """``lack_effekt`` für den Shader: (Flakes, Orangenhaut, Scheibe).
+
+    Flakes folgen dem Metallic der Lackierung — der aus der Werkstatt, sonst
+    dem Werkslack des Modells; Uni-Lack glitzert nicht. ``lack2`` ohne
+    Zweitfarbe behält seinen Werkslack und damit auch dessen Metallic.
+    """
+    if name in ("lack", "lack2"):
+        metallic = metallic_werk
+        if lack is not None and (name == "lack" or lack.zweitfarbe is not None):
+            metallic = lack.metallic
+        flakes = min(1.0, max(0.0, float(metallic) / FLAKES_VOLL_AB))
+        return (round(flakes, 3), 1.0, 0.0)
+    if name in GLAS_MIT_FRESNEL:
+        return (0.0, 0.0, 1.0)
+    return (0.0, 0.0, 0.0)
+
+
 def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None,
                          bremse: float = 0.0) -> None:
     """Material setzen; ``lack`` und ``lack2`` bekommen die Lackierung,
     ``bremslicht`` leuchtet nach dem Bremspedal."""
     material_setzen(p, hm)
     name = hm.daten.name
+    shader.setzen(p, "lack_effekt", lack_effekt(name, hm.daten.metallic, lack))   # Strang L
     if name == "bremslicht":
         shader.setzen(p, "emission", bremslicht_emission(hm.daten.emission, bremse))
         return
@@ -538,6 +564,8 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                     u_normale.write(b[1])
                 zuletzt = name
             vao.render()
+    # Strang L: nach dem Auto zeichnet dasselbe Programm Strecke und Gelände.
+    shader.setzen(p, "lack_effekt", (0.0, 0.0, 0.0))
 
 
 # ---------------------------------------------------------------------------

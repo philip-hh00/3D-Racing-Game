@@ -498,6 +498,111 @@ float gelaende_sicht(vec3 p) {
 }
 /* === Strang W2: Gelaendeschatten (Ende) ================================= */
 
+/* === Strang L: Autolack und Scheiben (Anfang) =============================
+   Nur fuer die Fahrzeugmaterialien lack/lack2 und glas, gesetzt von
+   rennszene.lack_material_setzen (auch die Werkstatt-Vorschau zeichnet so).
+   Alle anderen Flaechen haben lack_effekt = 0 und laufen am Block vorbei.
+   Auf Lack und Glas ist uv in Metern (Wuerfelprojektion aus
+   tools/blender/teile_oberflaeche.py): Flakes und Orangenhaut haften an der
+   Karosserie, statt beim Fahren ueber sie zu schwimmen.
+     x  Flakes, 0..1 — aus dem Metallic der Lackierung (Uni-Lack: 0)
+     y  Orangenhaut unter dem Klarlack, 0..1
+     z  1: Scheibe — Spiegelung nach Fresnel, Durchsicht nimmt zum
+        flachen Blickwinkel hin ab (statt fester Deckkraft) */
+uniform vec3 lack_effekt;
+
+uint l_pcg(uint v) {
+    uint s = v * 747796405u + 2891336453u;
+    uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+    return (w >> 22u) ^ w;
+}
+
+/* Drei Zufallszahlen 0..1 je Gitterzelle — ganzzahlig, damit es auch bei
+   zehntausend Zellen je Meter nicht in Mustern endet wie ein sin-Hash. */
+vec3 l_zufall(vec2 zelle, float stufe) {
+    ivec2 i = ivec2(zelle);
+    uint h = l_pcg(uint(i.x) + l_pcg(uint(i.y) + l_pcg(uint(stufe) + 91u)));
+    return vec3(float(h & 1023u), float((h >> 10u) & 1023u), float((h >> 20u) & 1023u)) / 1023.0;
+}
+
+/* Wertrauschen mit Ableitung: (Wert, d/dx, d/dy). */
+vec3 l_rauschen(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = p - i;
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    vec2 du = 6.0 * f * (1.0 - f);
+    float a = l_zufall(i, 0.0).x;
+    float b = l_zufall(i + vec2(1.0, 0.0), 0.0).x;
+    float c = l_zufall(i + vec2(0.0, 1.0), 0.0).x;
+    float d = l_zufall(i + vec2(1.0, 1.0), 0.0).x;
+    float k = a - b - c + d;
+    return vec3(a + (b - a) * u.x + (c - a) * u.y + k * u.x * u.y,
+                du * vec2(b - a + k * u.y, c - a + k * u.x));
+}
+
+/* Richtungen von u und v auf der Flaeche (Welt), aus den Ableitungen wie
+   normal_aus_karte. Auf dem Lack ist uv metrisch, die Laengen sind ~1. */
+mat3 l_rahmen(vec3 N) {
+    vec3 dp1 = dFdx(welt_position);
+    vec3 dp2 = dFdy(welt_position);
+    vec2 duv1 = dFdx(uv);
+    vec2 duv2 = dFdy(uv);
+    vec3 dp2senk = cross(dp2, N);
+    vec3 dp1senk = cross(N, dp1);
+    vec3 T = dp2senk * duv1.x + dp1senk * duv2.x;
+    vec3 B = dp2senk * duv1.y + dp1senk * duv2.y;
+    float m = max(dot(T, T), dot(B, B));
+    if (m < 1e-24) return mat3(0.0);
+    float inv = inversesqrt(m);
+    return mat3(T * inv, B * inv, N);
+}
+
+/* Groesse eines Bildpunkts auf der Flaeche in Metern (0: keine uv). */
+float l_fuss() {
+    return max(length(dFdx(uv)), length(dFdy(uv)));
+}
+
+/* Orangenhaut: die glatte Normale des Klarlacks, leicht gewellt — feine
+   Narbe (~1 cm, blendet aus, sobald sie kleiner als zwei Bildpunkte wird)
+   und die grosse Welligkeit der Bleche (~9 cm), die man in gespiegelten
+   Kanten sieht. Neigungen im Promillebereich. */
+vec3 l_orangenhaut(vec3 N, float staerke, float fuss) {
+    mat3 r = l_rahmen(N);
+    if (r[2] == vec3(0.0) || fuss <= 0.0) return N;
+    float fein = 1.0 - smoothstep(0.003, 0.007, fuss);
+    vec2 g = l_rauschen(uv / 0.011).yz * (0.0045 * fein)
+           + l_rauschen(uv / 0.09 + 17.3).yz * 0.0016;
+    return normalize(N - (r[0] * g.x + r[1] * g.y) * staerke);
+}
+
+/* Metallic-Flakes: je Zelle ein Aluplaettchen mit eigener Neigung, das die
+   Sonne einzeln zurueckwirft. Die Zellen sind gut einen Bildpunkt gross
+   (in Zweierstufen, weich ueberblendet) und haften an der Flaeche — so
+   glitzert es im Glanzbereich, ohne zu Rauschen zu zerfallen. Aus der
+   Ferne mittelt sich das zu dem, was der breite Grundlack schon zeigt. */
+vec3 l_flakes_stufe(vec3 N, vec3 H, float stufe) {
+    float zelle = 0.00045 * exp2(stufe);
+    vec3 z = l_zufall(floor(uv / zelle), stufe);
+    vec3 t = normalize(cross(N, abs(N.z) < 0.9 ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 b = cross(N, t);
+    vec3 nf = normalize(N + (t * (z.x - 0.5) + b * (z.y - 0.5)) * 0.42);
+    float glanz = pow(clamp(dot(nf, H), 0.0, 1.0), 260.0);
+    return vec3(glanz * z.z * z.z);
+}
+
+vec3 l_flakes(vec3 N, vec3 H, vec3 basis, float fuss, float abstand) {
+    if (fuss <= 0.0) return vec3(0.0);
+    float stufe = log2(max(fuss * 1.4, 0.00045) / 0.00045);
+    float s0 = floor(stufe);
+    float t = stufe - s0;
+    vec3 g = mix(l_flakes_stufe(N, H, s0), l_flakes_stufe(N, H, s0 + 1.0), t);
+    // Farbe der Plaettchen: Alu unter farbigem Lack, also getoent.
+    float hell = max(max(basis.r, basis.g), max(basis.b, 1e-3));
+    vec3 ton = mix(basis / hell, vec3(1.0), 0.2);
+    return g * ton * (1.0 - smoothstep(6.0, 22.0, abstand)) * 1.6;
+}
+/* === Strang L: Autolack und Scheiben (Ende) ============================= */
+
 void main() {
     vec2 tuv = uv * uv_skala;
     vec4 textur = texture(basisfarbe, tuv);
@@ -525,8 +630,26 @@ void main() {
 
     vec3 N = normalize(welt_normale);
     vec3 V = normalize(kamera_position - welt_position);
+    // Strang L: die Innenseite der Lackhaut (durch die Scheiben gesehen) ist
+    // rohes, dunkles Blech — kein Lack, kein Klarlack.
+    bool l_innen = lack_effekt.y > 0.0 && !gl_FrontFacing && dot(N, V) < 0.0;
+    float klar_w = l_innen ? 0.0 : klarlack;
+    if (l_innen) {
+        basis = vec3(0.012);
+        metallic = 0.0;
+        rauheit = 0.85;
+    }
     if (dot(N, V) < 0.0) N = -N;      // Rueckseiten nicht schwarz werden lassen
     vec3 N_glatt = N;                 // der Klarlack liegt glatt ueber den Details
+    // Strang L: Lack — Orangenhaut im Klarlack, Flakes und Flop im Grundlack.
+    bool l_lack = klar_w > 0.0 && (lack_effekt.x > 0.0 || lack_effekt.y > 0.0);
+    float l_f = l_lack ? l_fuss() : 0.0;
+    if (l_lack && lack_effekt.y > 0.0) N_glatt = l_orangenhaut(N, lack_effekt.y, l_f);
+    if (l_lack && lack_effekt.x > 0.0) {
+        // Flop: Metallic ist von vorn heller, im flachen Winkel dunkler.
+        float nv = clamp(dot(N, V), 0.0, 1.0);
+        basis *= 1.0 + lack_effekt.x * (0.22 * pow(nv, 3.0) - 0.4 * pow(1.0 - nv, 2.0));
+    }
     if (hat_normalkarte > 0.5) N = normal_aus_karte(N, welt_position, tuv);
     vec3 L = normalize(sonne_richtung);
     vec3 H = normalize(V + L);
@@ -545,6 +668,9 @@ void main() {
     vec3 spiegelnd = (d * g * f) / max(4.0 * n_dot_v * max(n_dot_l, 1e-4), 1e-6);
     vec3 streuend = (vec3(1.0) - f) * (1.0 - metallic) * basis / PI;
     vec3 licht = (streuend + spiegelnd) * sonne_farbe * n_dot_l * schatten;
+    if (l_lack && lack_effekt.x > 0.0)                                   // Strang L
+        licht += l_flakes(N, H, basis, l_f, length(kamera_position - welt_position))
+                 * lack_effekt.x * sonne_farbe * n_dot_l * schatten;
 
     /* --- Umgebung -------------------------------------------------------- */
     /* Streuend: der ganze Himmel ueber der Flaeche, angenaehert durch die
@@ -561,8 +687,21 @@ void main() {
 
     vec3 farbe = licht + umgebung;
 
+    /* Strang L: Scheibe. Die Spiegelung liegt auf dem Glas, sie wird nicht
+       mit der Toenung ausgeblendet; die Durchsicht nimmt zum flachen Winkel
+       hin ab. Gemischt wird SRC_ALPHA/ONE_MINUS_SRC_ALPHA, also Farbe und
+       Deckung so, dass Farbe*Deckung = Spiegelung + Toenung. */
+    if (lack_effekt.z > 0.5) {
+        float w = fr.g;
+        vec3 spiegel = spiegelnd * sonne_farbe * n_dot_l * schatten + umgebung_spiegelnd * fr;
+        vec3 toenung = streuend * sonne_farbe * n_dot_l * schatten + umgebung_streuend * (vec3(1.0) - fr);
+        float a = 1.0 - (1.0 - alpha) * (1.0 - w);
+        farbe = (spiegel + toenung * alpha) / max(a, 1e-3);
+        alpha = a;
+    }
+
     /* --- Klarlack -------------------------------------------------------- */
-    if (klarlack > 0.0) {
+    if (klar_w > 0.0) {                                  // klar_w: Strang L
         float kv = max(dot(N_glatt, V), 1e-4);
         float kl = max(dot(N_glatt, L), 0.0);
         vec3 kr = reflect(-V, N_glatt);
@@ -572,7 +711,7 @@ void main() {
         vec3 klar = vec3(kd * kg * kf / max(4.0 * kv * max(kl, 1e-4), 1e-6))
                     * sonne_farbe * kl * schatten;
         klar += himmel(kr, 0.08) * kf * mix(0.35, 1.0, smoothstep(-0.15, 0.1, kr.z));
-        farbe = farbe * (1.0 - klarlack * kf) + klarlack * klar;
+        farbe = farbe * (1.0 - klar_w * kf) + klar_w * klar;
     }
 
     farbe += emission * (hat_emissionskarte > 0.5
@@ -750,6 +889,7 @@ def _vorgaben(p) -> None:
         ("himmel_helligkeit", 1.0), ("nebel_farbe", HIMMEL_HORIZONT),
         ("nebel_dichte", 0.0), ("nebel_faktor", 1.0),
         ("sicht_an", 0.0), ("sicht_fern", 12), ("sicht_nah", 13),   # Strang W2
+        ("lack_effekt", (0.0, 0.0, 0.0)),                            # Strang L
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

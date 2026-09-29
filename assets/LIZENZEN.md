@@ -67,3 +67,14 @@ trotzdem).
 * Forest: `kloppenheim_05_puresky` — https://polyhaven.com/a/kloppenheim_05_puresky
 * Mountain: `rustig_koppie_puresky` — https://polyhaven.com/a/rustig_koppie_puresky
 * Plains: `sunflowers_puresky` — https://polyhaven.com/a/sunflowers_puresky
+
+## Fahrzeugtexturen (ambientCG)
+
+Von [ambientCG](https://ambientcg.com), Autor Lennart Demes, Lizenz **CC0 1.0**.
+Aufbereitet (verkleinert, Rauheit auf Zielwert, Kanäle für glTF) nach
+`assets/texturen/fahrzeug/`; die übrigen Dateien dort (`scheibenrand.png`,
+`polster_normal.jpg`, `anzeige.png`) rechnet `tools/fahrzeug_texturen.py` selbst.
+
+* `carbon_*` ← `Fabric004` — https://ambientcg.com/view?id=Fabric004
+* `leder_*` ← `Leather037` — https://ambientcg.com/view?id=Leather037 (auch die Narbung in `polster_normal.jpg`)
+* `narbung_*` ← `Leather026` — https://ambientcg.com/view?id=Leather026
