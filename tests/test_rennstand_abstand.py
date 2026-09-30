@@ -185,18 +185,37 @@ def test_das_ausblendband_ist_klein_genug():
         "ein breites Band würde die Fahrweise verändern, nicht nur die Sprungstelle"
 
 
-def test_ein_ki_auto_mit_halbem_tempo_ruckelt_nicht_im_gas():
-    """Der Weg des Playtests: echtes Auto, `speed_multiplier = 0.5`."""
+def test_ein_ki_auto_am_zieltempo_ruckelt_nicht_im_gas():
+    """Der Weg des Playtests: echtes Auto, das lange auf seinem Zieltempo liegt.
+
+    Auf dem Oval ändert sich das Planertempo ständig (Kurven), das Auto käme
+    nie zur Ruhe — der Test würde nur Bremszone sehen und wäre leer. Deshalb
+    bekommt der Bahnregler hier ein festes Ziel, wie es `speed_multiplier = 0.5`
+    auf freier Strecke nach dem Ziel ergibt; Lenkung und Fahrzeug sind echt.
+    """
     import ki_hilfe as H
     from test_ai import DT, _feld
+    ziel = 120.0
     welt, track, feld = _feld(lambda sp: H.strecke_laden("oval", sp), ["rookie"])
     auto = feld[0]
-    auto.controller.speed_multiplier = 0.5
+    regler = auto.controller._regler
+    echt = regler.pedale
+    regler.pedale = lambda v, v_soll: echt(v, ziel)
+
+    eingeschwungen = None
     gas = []
-    for n in range(int(8.0 / DT)):
+    for n in range(int(30.0 / DT)):
         auto.update(DT)
         welt.step(DT)
-        if n >= int(6.0 / DT):
+        if eingeschwungen is None:
+            if abs(ziel - auto.speed) < 3.0:
+                eingeschwungen = n
+        else:
             gas.append(auto.throttle)
+            if len(gas) >= int(2.0 / DT):
+                break
+    assert eingeschwungen is not None, "Zieltempo in 30 s nicht erreicht"
+    assert len(gas) >= int(2.0 / DT)
+    assert any(g > 0.0 for g in gas), "am Zieltempo muss das Auto Gas geben"
     spruenge = sum(1 for a, b in zip(gas, gas[1:]) if abs(b - a) > 0.3)
     assert spruenge == 0, f"{spruenge} Gas-Sprünge in 2 s"
