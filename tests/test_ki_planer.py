@@ -77,3 +77,30 @@ def test_seitenwunsch_wird_befolgt():
     bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 600.0, [],
                                                 Wunsch(seite=80.0, gewicht_seite=1.0))
     assert bahn.d[-1] > 40.0
+
+
+def test_wunsch_haelt_wandreserve():
+    # Ein Seitenwunsch bis an den Rand darf das Auto nicht bis auf die 6 px von
+    # ``halb_frei`` an die Wand bringen: schräg stehend ragt die Ecke darüber hinaus.
+    plan = _plan()
+    hf = plan.halb_frei
+    bahn = Planer(plan, BREITE, LAENGE).planen(
+        100.0, 0.0, 300.0, [], Wunsch(seite=hf, gewicht_seite=50.0))
+    assert np.max(np.abs(bahn.d)) <= hf - 10.0
+
+
+def test_kurzer_seitenwechsel_ist_fahrbar():
+    # Selbst wenn nur der kurze Übergang zur Wahl steht, darf der starke Seitenwunsch
+    # nicht mehr Seitenbeschleunigung verlangen, als das Auto hat (sonst bricht es
+    # aus und dreht sich).
+    class NurKurz(Planer):
+        UEBERGANG = (0.45,)
+
+    plan = _plan()
+    v = 270.0
+    bahn = NurKurz(plan, BREITE, LAENGE).planen(
+        100.0, -42.0, v, [], Wunsch(seite=85.0, gewicht_seite=10.0))
+    ds = np.diff(bahn.s)
+    steigung = np.diff(bahn.d) / ds
+    a_quer = np.abs(np.diff(steigung) / ds[1:]) * v * v
+    assert a_quer.max() <= 1.3 * plan.a_quer

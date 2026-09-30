@@ -65,6 +65,16 @@ class Planer:
     KOLLISION = 1.0e4
     FOLGE_GAIN = 1.2
     KURVE_KOSTET = 0.35     # Tempoverlust abseits der Ideallinie in Kurven
+    # Abweichungen von der Ideallinie müssen fahrbar und wandsicher sein:
+    # - Wandreserve: wer von der Ideallinie abweicht (Ausweichen, Angriff,
+    #   Nebeneinander), kommt der Wand höchstens bis ``halb_frei - WAND_RESERVE``
+    #   nahe (die Ideallinie selbst darf weiter hinaus). Das Auto steht in Kurven
+    #   schräg, seine Ecke ragt dann über die 6 px Rand von ``halb_frei`` hinaus.
+    # - Querbeschleunigung: der Seitenwechsel darf nur ``QUER_ANTEIL`` der
+    #   Seitenbeschleunigung des Autos verbrauchen (quintischer Übergang:
+    #   a = 5,77 · Δ / T²), sonst bricht das Auto aus und dreht sich.
+    WAND_RESERVE = 12.0
+    QUER_ANTEIL = 1.0
 
     def __init__(self, plan, breite_px: float, laenge_px: float) -> None:
         self.plan = plan
@@ -100,7 +110,14 @@ class Planer:
         # Kandidaten (C, K+1): Versatz-Hauptschleife, Übergang innen
         vers = np.repeat(np.asarray(versaetze, dtype=float), len(self.UEBERGANG))
         uebg = np.tile(np.asarray(self.UEBERGANG, dtype=float), len(versaetze))
-        ziel = np.clip(d_id[None, :] + vers[:, None] * hf, -hf, hf)
+        rand = np.minimum(hf, np.maximum(np.abs(d_id), hf - self.WAND_RESERVE))
+        ziel = np.clip(d_id[None, :] + vers[:, None] * hf, -rand[None, :], rand[None, :])
+        # Fahrbare Abweichung: Seitenwechsel gegen die Zeit des Übergangs begrenzen
+        dauer = np.maximum(uebg * horizont / v_ref, 0.3)
+        max_quer = self.QUER_ANTEIL * plan.a_quer * dauer ** 2 / 5.77
+        abw0 = d0 - d_id[0]
+        ziel = d_id[None, :] + abw0 + np.clip(ziel - d_id[None, :] - abw0,
+                                             -max_quer[:, None], max_quer[:, None])
         q = _quintisch(np.clip(s_rel[None, :] / (uebg[:, None] * horizont), 0.0, 1.0))
         d = d0 + (ziel - d0) * q
         if abs(d0) <= hf:

@@ -13,8 +13,10 @@ import math
 from src.ai.stufen import stufe as _stufe
 
 STUCK_SECONDS: float = 1.5
-RECOVERY_BASE_SECONDS: float = 1.5
+RECOVERY_BASE_SECONDS: float = 2.2
 RECOVERY_MAX_SECONDS: float = 4.0
+RUECKWAERTS_GAS: float = 0.7
+RECOVERY_NACHLAUF: float = 2.0
 GRID_HOLD_SECONDS: float = 3.5
 GRID_FADE_SECONDS: float = 1.5
 GRID_START_SPEED: float = 20.0
@@ -53,6 +55,7 @@ class AIController:
         self._progress_s: float | None = None
         self._no_progress_timer = 0.0
         self._recovery_attempts = 0
+        self._recovery_nachlauf = 0.0
         self._recovery_steer_sign = 1.0
 
     # -- Aufbau ------------------------------------------------------------
@@ -135,7 +138,14 @@ class AIController:
         v = float(self.vehicle.speed)
 
         if self.recovery_timer > 0.0:
-            return self._befreien(dt, pos, s)
+            ergebnis = self._befreien(dt, pos, s)
+            if self.recovery_timer <= 0.0:
+                # Neu anfahren: der Fortschritt zählt ab hier (das Zurücksetzen
+                # kostet sonst Weg, und das nächste Befreien käme zu früh).
+                # Dazu eine Gnadenfrist: erst ausrollen, dann anfahren.
+                self._progress_s = s
+                self._no_progress_timer = -STUCK_SECONDS
+            return ergebnis
 
         startspur = self._startspur(d, v, dt)
         self._plan_timer -= dt
@@ -166,6 +176,11 @@ class AIController:
         steer = self._regler.lenkung(self._bahn.xy, v)
         gas, bremse = self._regler.pedale(v, self._bahn.v_soll * self.speed_multiplier)
         self.dbg_look = self._regler.vorschau
+        if getattr(self.vehicle, "signed_speed", 0.0) < -5.0:
+            # Nach dem Rückwärtsfahren erst zum Stehen kommen, dann vorwärts:
+            # Gas gegen die Rollrichtung verpufft sonst, und der Fortschritts-
+            # zähler löst das nächste Befreien aus.
+            gas, bremse = 0.0, 1.0
         self._fortschritt(dt, s)
         return gas, bremse, steer
 
@@ -177,9 +192,16 @@ class AIController:
         angle = self.vehicle.physics.body.angle
         diff = normalize_angle(math.atan2(look[1] - pos[1], look[0] - pos[0]) - angle)
         steer = max(-1.0, min(1.0, -diff * 1.6)) * self._recovery_steer_sign
+        # Erst vorwärts fahren, wenn die Nase halbwegs zur Strecke zeigt — sonst
+        # rammt das Auto sofort wieder die Wand (höchstens ``RECOVERY_NACHLAUF`` länger).
+        if self.recovery_timer <= 0.0 and abs(diff) > 0.6 and self._recovery_nachlauf < RECOVERY_NACHLAUF:
+            self.recovery_timer = dt
+            self._recovery_nachlauf += dt
         self.dbg_state = "befreien"
         self.dbg_look = look
-        return 0.0, 1.0, steer
+        # Rückwärts herausfahren: Bremse allein bewegt ein stehendes Auto nicht
+        # (nur negatives Gas legt den Rückwärtsgang ein).
+        return -RUECKWAERTS_GAS, 0.0, steer
 
     def _fortschritt(self, dt: float, s: float) -> None:
         st = self.fahrplan.strecke
@@ -210,6 +232,7 @@ class AIController:
             self._recovery_attempts = 0
             self._hint = None
         else:
+            self._recovery_nachlauf = 0.0
             self.recovery_timer = min(RECOVERY_MAX_SECONDS,
                                       RECOVERY_BASE_SECONDS * self._recovery_attempts)
             if self._recovery_attempts > 1:

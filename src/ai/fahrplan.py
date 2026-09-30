@@ -29,6 +29,8 @@ class Fahrplan:
     kruemmung: np.ndarray
     halb_frei: float
     a_brems: float
+    #: Seitenbeschleunigung (px/s²), die das Auto in Kurven sicher aufbringt.
+    a_quer: float = 300.0
 
     def _viele(self, werte: np.ndarray, s) -> np.ndarray:
         st = self.strecke
@@ -89,6 +91,7 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     d_ideal = np.array([strecke.sd(x, y, hinweis=i)[1] for i, (x, y) in enumerate(geo.points)])
     halb_frei = max(10.0, strecke.halb - float(config.width_px) / 2.0 - RAND_PX)
     plan = Fahrplan(strecke, np.clip(d_ideal, -halb_frei, halb_frei), v,
-                    np.asarray(geo.signed_curvature, dtype=np.float64), halb_frei, float(lim.a_brake))
+                    np.asarray(geo.signed_curvature, dtype=np.float64), halb_frei, float(lim.a_brake),
+                    float(lim.a_lat))
     _CACHE[schluessel] = plan
     return plan
