@@ -163,7 +163,7 @@ class StateMachine:
 
     def _update_music(self, state_name: str | None) -> None:
         from src.core import audio
-        if state_name in ("vehicle_lab", "dev"):
+        if state_name in ("vehicle_lab",):
             audio.play_race_music()
         elif state_name in ("welcome", "menu", "car_select", "track_select", "editor"):
             audio.play_menu_music()

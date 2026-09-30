@@ -51,17 +51,6 @@ class TrackSelectState(BaseState):
         self.track_keys: list[str] = ["oval", "desert", "city", "mountain", "gp"]
         self.selected_vehicle_config: str = "rookie"
 
-        # AI opponent difficulty (applies to all AI cars equally). Persists on
-        # this reused state instance across screens.
-        self.ai_difficulty_keys: list[str] = ["easy", "medium", "hard"]
-        self.ai_difficulty_labels: dict[str, str] = {
-            "easy": "EINFACH", "medium": "MITTEL", "hard": "SCHWER",
-        }
-        self.ai_difficulty_colors: dict[str, tuple[int, int, int]] = {
-            "easy": (50, 220, 80), "medium": (255, 160, 0), "hard": (240, 50, 50),
-        }
-        self.ai_difficulty_index: int = 1  # medium
-
         # UI configuration
         self.left_panel_rect = pygame.Rect(80, 160, 480, 800)
         self.right_panel_rect = pygame.Rect(600, 160, 1240, 800)
@@ -381,25 +370,6 @@ class TrackSelectState(BaseState):
         t2 = self.hint_font.render(tr("Eigene Strecke bauen (E)"), True, (200, 200, 210))
         screen.blit(t1, (rect.x + 58, rect.y + 14))
         screen.blit(t2, (rect.x + 58, rect.y + 42))
-
-    def _draw_ai_difficulty(self, screen: pygame.Surface) -> None:
-        """Draw the KI-difficulty chooser ( ‹ MITTEL › ) below the right panel."""
-        key = self.ai_difficulty_keys[self.ai_difficulty_index]
-        color = self.ai_difficulty_colors[key]
-        cx = self.right_panel_rect.centerx
-        y = self.right_panel_rect.bottom + 14
-
-        # Label "KI-GEGNER:  ‹ MITTEL ›" on one compact line.
-        lbl = self.label_font.render(tr("KI-GEGNER:"), True, COLOR_UI_TEXT)
-        val = self.header_font.render(tr(self.ai_difficulty_labels[key]), True, color)
-        arrow_l = self.header_font.render("‹", True, COLOR_UI_ACCENT)
-        arrow_r = self.header_font.render("›", True, COLOR_UI_ACCENT)
-
-        val_rect = val.get_rect(center=(cx + 60, y + 22))
-        screen.blit(val, val_rect)
-        screen.blit(arrow_l, arrow_l.get_rect(midright=(val_rect.left - 24, val_rect.centery)))
-        screen.blit(arrow_r, arrow_r.get_rect(midleft=(val_rect.right + 24, val_rect.centery)))
-        screen.blit(lbl, lbl.get_rect(midright=(val_rect.left - 60, val_rect.centery)))
 
     def _draw_grid_background(self, screen: pygame.Surface) -> None:
         """Draw a subtle animated tech grid on the background."""

@@ -33,3 +33,12 @@ def test_uebersetzungen():
     en = json.loads((WURZEL / "data/i18n/en.json").read_text(encoding="utf-8"))
     for name in ("Anfänger", "Fortgeschritten", "Profi", "Meister"):
         assert name in en
+
+
+def test_ki_labor_ist_weg():
+    assert not (WURZEL / "src/states/dev_state.py").exists()
+    assert not (WURZEL / "src/ai/difficulty.py").exists()
+    assert not (WURZEL / "data/ai_settings").exists()
+    text = (WURZEL / "src/states/menu/settings_page.py").read_text(encoding="utf-8")
+    assert "ki_labor" not in text
+    assert "Fahrzeug-Labor" in text          # das Fahrzeuglabor bleibt

@@ -1,1 +1,1 @@
-"""AI opponent package: difficulty configs and waypoint-following controller."""
+"""AI opponent package: levels, Frenet planner, controller."""

@@ -3,7 +3,7 @@
 Allgemein  — change the driver name (validated).
 Steuerung  — rebind the driving keys (arrow keys by default).
 Video/Audio — planned rows shown as 'coming soon'.
-Dev-Mode   — the only place to launch the Fahrzeug-Labor / KI-Labor.
+Dev-Mode   — the only place to launch the Fahrzeug-Labor.
 """
 from __future__ import annotations
 
@@ -287,10 +287,8 @@ class SettingsPage(Page):
         elif name == "Dev-Mode":
             col = theme.Column(560, 240, gap=20)
             b1 = Button(pygame.Rect(0, 0, 420, 66), "Fahrzeug-Labor", "vehicle_lab")
-            b2 = Button(pygame.Rect(0, 0, 420, 66), "KI-Labor", "ki_labor")
             col.add(b1)
-            col.add(b2)
-            self._content_group = FocusGroup([b1, b2])
+            self._content_group = FocusGroup([b1])
         elif name == "Video":
             from src.core.display import RESOLUTION_LABELS, resolution_str_to_label
             res_labels = RESOLUTION_LABELS
@@ -982,8 +980,6 @@ class SettingsPage(Page):
             self.shell.beenden_bestaetigen()
         elif action == "vehicle_lab":
             self.shell.state_machine.transition("vehicle_lab", vehicle_config="rookie")
-        elif action == "ki_labor":
-            self.shell.state_machine.transition("dev")
         elif action == "grafik_advanced":
             # Open the advanced graphics settings overlay
             if self._advanced_graphics is None:

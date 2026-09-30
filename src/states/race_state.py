@@ -162,7 +162,7 @@ class RaceState(BaseState):
         self._staende: list = []
         #: Letzte Sicht als (mvp, ansichtsfenster, briefkasten). Nur fuer
         #: Werkzeuge, die Weltpunkte auf den Bildschirm rechnen muessen -
-        #: das KI-Labor zeichnet seine Wegpunkte darueber.
+        #: Werkzeuge zeichnen ihre Punkte darueber.
         self._letzte_sicht = None
         self._ghost_letzte_pos: tuple[float, float] | None = None
         self.hud: HUD | None = None
@@ -775,7 +775,7 @@ class RaceState(BaseState):
     def _render_loading(self, screen: pygame.Surface, car_name: str,
                         car_idx: int, total_cars: int,
                         iteration: int, max_iterations: int) -> None:
-        """Für das Fahrzeuglabor (DevState): derselbe Bildschirm, eigener Stand."""
+        """Für das Fahrzeuglabor (VehicleLabState): derselbe Bildschirm, eigener Stand."""
         overall = (car_idx * max_iterations + iteration) / max(1, total_cars * max_iterations)
         self._lade_zeichnen(overall, "Rennen wird vorbereitet")
 
@@ -2363,7 +2363,7 @@ class RaceState(BaseState):
         """Einen Weltpunkt (Spielpixel) auf die virtuelle Flaeche rechnen.
 
         Fuer alles, was im 2D-Weg einfach den Kameraversatz abgezogen hat und
-        jetzt durch die Projektion muss — das KI-Labor zeichnet damit seine
+        jetzt durch die Projektion muss — Werkzeuge zeichnen damit ihre
         Wegpunkte und Ideallinien ueber die 3D-Strecke.
 
         ``None``, wenn der Punkt hinter der Kamera liegt oder noch kein Bild
@@ -2494,7 +2494,7 @@ class RaceState(BaseState):
         # mehr - der Hinweis liegt oben mittig im HUD (waiting_for_field), und
         # eine zweite Zeile unten lag quer ueber Drehzahl und Tacho.
 
-        # Draw Pause menu overlay (skip for the dev/KI-Labor edit-pause, which
+        # Draw Pause menu overlay (skip for the edit-pause, which
         # uses self.paused for its own overlay and has no race pause menu).
         if self.paused and not getattr(self, "_is_edit_pause", False):
             if self._pause_view == "settings" and self._pause_settings:

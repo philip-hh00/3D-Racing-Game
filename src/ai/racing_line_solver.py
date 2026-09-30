@@ -46,41 +46,6 @@ class RacingLineGeometry:
         return max(self.curvature) if self.curvature else 0.0
 
 
-class SolvedRacingLine:
-    """Per-waypoint lateral offset + target speed the AIController reads.
-
-    Indexed by waypoint/centerline index (the two are 1:1 on every track), so it
-    plugs straight into :meth:`AIController._racing_line_point` (``offset_at``)
-    and the controller's speed-profile branch (``speed_at``). Built from the
-    solver geometry and a per-vehicle :mod:`src.ai.speed_profile`.
-    """
-
-    def __init__(
-        self,
-        offsets: list[float],
-        speeds: list[float],
-        signed_curvature: list[float] | None = None,
-        points: list[tuple[float, float]] | None = None,
-    ) -> None:
-        self.offsets = list(offsets)
-        self.speeds = list(speeds)
-        self.signed_curvature = list(signed_curvature) if signed_curvature else None
-        self.points = list(points) if points else None
-        self.n = len(self.offsets)
-
-    def offset_at(self, idx: int) -> float:
-        return self.offsets[idx % self.n] if self.n else 0.0
-
-    def speed_at(self, idx: int) -> float:
-        return self.speeds[idx % self.n] if self.speeds else 0.0
-
-    def curvature_at(self, idx: int) -> float:
-        """Signed curvature (1/px, +ve = left) of the line, 0 if unavailable."""
-        if not self.signed_curvature:
-            return 0.0
-        return self.signed_curvature[idx % len(self.signed_curvature)]
-
-
 def _centerline_normals(center: list[tuple[float, float]]) -> list[tuple[float, float]]:
     """Unit left-normal at each centerline point (from the local tangent)."""
     n = len(center)
@@ -309,40 +274,3 @@ def compute_racing_line(
     return RacingLineGeometry(
         pts, offsets, normals, curvature, signed_curvature, seg_len, half_corridor
     )
-
-
-def compute_racing_line_optimized(
-    center: list[tuple[float, float]],
-    track_width: float,
-    vehicle_config,
-    difficulty=None,
-    car_width: float = 28.0,
-    margin: float = 16.0,
-    progress_callback=None,
-) -> RacingLineGeometry:
-    """Physics-based trajectory optimizer; falls back to geometric solver on error."""
-    try:
-        from src.ai.trajectory_optimizer import optimize_trajectory, TrajectoryConfig
-        from src.ai.speed_profile import limits_from_config
-
-        grip_usage = getattr(difficulty, "grip_usage", None) if difficulty else None
-        brake_conf = getattr(difficulty, "brake_confidence", None) if difficulty else None
-        steer_conf = getattr(difficulty, "steer_confidence", None) if difficulty else None
-
-        lim = limits_from_config(vehicle_config, grip_usage=grip_usage,
-                                 brake_confidence=brake_conf, steer_confidence=steer_conf)
-        tc = TrajectoryConfig(
-            a_lat_max=lim.a_lat,
-            a_accel_max=lim.a_accel,
-            a_brake_max=lim.a_brake,
-            v_max=lim.v_max,
-            car_width=car_width,
-            margin=margin,
-            turn_speed=lim.turn_speed,
-            turn_safety=lim.turn_safety,
-        )
-        return optimize_trajectory(center, track_width, tc,
-                                   progress_callback=progress_callback)
-    except Exception:
-        return compute_racing_line(center, track_width, car_width=car_width,
-                                   margin=margin)

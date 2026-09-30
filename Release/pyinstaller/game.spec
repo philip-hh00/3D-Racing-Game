@@ -52,7 +52,6 @@ a = Analysis(
         (_w('data/tracks/*.json'), 'data/tracks'),
         (_w('data/audio'),    'data/audio'),
         (_w('data/menu'),     'data/menu'),
-        (_w('data/ai_settings'), 'data/ai_settings'),
         (_w('data/i18n'),     'data/i18n'),
         # Die 3D-Welt: Themen je Strecke und alles, was die Blender-Skripte
         # unter assets/ erzeugen (tools/blender/bauen.bat). Die GLB-Dateien

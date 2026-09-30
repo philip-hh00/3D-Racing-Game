@@ -103,7 +103,7 @@ class _Eigenstaendig(_Zustand):
 def maschine(monkeypatch):
     monkeypatch.setattr(StateMachine, "_update_music", lambda self, name: None)
     sm = StateMachine()
-    for name in ("menu", "vehicle_lab", "dev", "editor", "car_select", "race"):
+    for name in ("menu", "vehicle_lab", "editor", "car_select", "race"):
         sm.register(name, _Zustand())
     sm.register("menu", _Eigenstaendig())
     sm.transition("menu")
@@ -167,7 +167,7 @@ def test_verlauf_waechst_nicht_endlos(maschine):
     from src.core.state_machine import MAX_VERLAUF
     for _ in range(50):
         maschine.transition("editor")
-        maschine.transition("dev")
+        maschine.transition("car_select")
     assert len(maschine._verlauf) <= MAX_VERLAUF
 
 

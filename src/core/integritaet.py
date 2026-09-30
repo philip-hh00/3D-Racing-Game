@@ -32,7 +32,6 @@ LISTE = "data/settings/pruefsummen.json"
 MUSTER = (
     "data/vehicles/*.json",
     "data/tracks/*.json",
-    "data/ai_settings/**/*.json",
 )
 
 

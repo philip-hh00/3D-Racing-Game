@@ -36,7 +36,6 @@ class AIController:
         self.opponents: list = []
         self.speed_multiplier: float = 1.0
         self.rubber_band: float = 0.0
-        self.racing_line = None           # nur noch für Altaufrufer, ungenutzt
         self.fahrplan = None
         self.recovery_timer: float = 0.0
         pos = self._position()

@@ -144,7 +144,6 @@ def test_das_ki_auto_traegt_die_lackierung_bis_in_den_renderer():
     Der Weg bleibt geprueft, auch wenn er jetzt Werkslack traegt — dieselbe
     Strecke traegt naemlich auch die Lackierung des Spielers.
     """
-    from src.ai.difficulty import get_difficulty
     from src.track.track import Track
 
     raum = pymunk.Space()
@@ -153,7 +152,7 @@ def test_das_ki_auto_traegt_die_lackierung_bis_in_den_renderer():
         ai = VehicleFactory.create_ai_vehicle(
             config_key="rookie", vehicle_id=vid, start_pos=(0.0, 0.0),
             start_angle=0.0, space=raum, track=strecke,
-            difficulty=get_difficulty("medium"), lack=lack.ki_lack(vid))
+            difficulty="medium", lack=lack.ki_lack(vid))
         assert ai is not None
         assert ai.renderer.lack == lack.WERK
         assert ai.renderer.config_key == "rookie"
