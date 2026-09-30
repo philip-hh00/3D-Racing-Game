@@ -357,6 +357,9 @@ class _Flaeche:
     maske: object = None
 
 
+#: Boden unter den Autos (Spiegelung und Licht von unten): neutraler Asphalt.
+FAHRZEUG_BODEN = (0.12, 0.12, 0.125)
+
 #: Texturplatz der Gummimaske. 0–3 belegen Farbe, Rauheit, Himmel, Schatten.
 MASKE_EINHEIT = 5
 
@@ -695,6 +698,7 @@ class Rennszene:
                 shader.setzen(p, "himmel_zenit", tuple(t.himmel_zenit))
                 shader.setzen(p, "himmel_horizont", tuple(t.himmel_horizont))
                 shader.setzen(p, "boden_farbe", tuple(t.boden_farbe))
+                self._boden_thema = tuple(t.boden_farbe)
                 shader.setzen(p, "sonne_farbe", tuple(t.sonne_farbe))
                 shader.setzen(p, "himmel_helligkeit", float(t.himmel_helligkeit))
                 self.belichtung = float(t.belichtung)
@@ -1204,9 +1208,14 @@ class Rennszene:
             shader.setzen(p, "entfaerbung", 0.0)
             shader.setzen(p, "deckkraft", 1.0)
         shader.setzen(p, "uv_skala", 1.0)
+        # Autos stehen auf Asphalt: was der Lack unten spiegelt und von unten an
+        # Licht bekommt, ist grau, nicht die Grasfarbe des Themas (gemeldet
+        # 30.09.2026: gruener Stich an Heckschuerze und Schwellern).
+        shader.setzen(p, "boden_farbe", FAHRZEUG_BODEN)
 
         fahrzeugteile_zeichnen(p, modell, self._teilmatrizen(stand, fahrzeugmodell),
                                stand.lack, durchsichtig, stand.bremse)
+        shader.setzen(p, "boden_farbe", getattr(self, "_boden_thema", shader.BODEN_FARBE))
 
         self.ctx.depth_mask = True
         if stand.entfaerbt or durchsichtig:

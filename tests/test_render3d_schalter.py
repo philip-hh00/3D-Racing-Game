@@ -64,3 +64,20 @@ def test_das_gelaende_schaltet_die_karten_des_autos_ab():
         kopf = block.split("\n    def ")[0]
         if "hat_basisfarbe" in kopf:
             assert kopf.index("modell_schalter_aus") < kopf.index("hat_basisfarbe")
+
+
+def test_autos_spiegeln_asphalt_nicht_gras():
+    """Gemeldet 30.09.2026: gruener Stich an Heckschuerze und Schwellern.
+
+    Der Shader nimmt fuer alles unterhalb des Horizonts ``boden_farbe``; auf
+    Gras-Themen ist das gruen. Autos stehen aber auf Asphalt.
+    """
+    import inspect
+    from src.render3d import rennszene
+    r, g, b = rennszene.FAHRZEUG_BODEN
+    assert max(r, g, b) - min(r, g, b) < 0.02          # neutral grau
+    quelle = inspect.getsource(rennszene.Rennszene._fahrzeug_zeichnen)
+    setzen = quelle.index('"boden_farbe", FAHRZEUG_BODEN')
+    zeichnen = quelle.index("fahrzeugteile_zeichnen(")
+    zurueck = quelle.index('"boden_farbe", getattr(self, "_boden_thema"')
+    assert setzen < zeichnen < zurueck
