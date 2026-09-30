@@ -104,3 +104,22 @@ def test_kurzer_seitenwechsel_ist_fahrbar():
     steigung = np.diff(bahn.d) / ds
     a_quer = np.abs(np.diff(steigung) / ds[1:]) * v * v
     assert a_quer.max() <= 1.3 * plan.a_quer
+
+
+@pytest.mark.parametrize("v0", (400.0, 450.0, 500.0))
+@pytest.mark.parametrize("abstand", (100.0, 125.0, 150.0))
+def test_stehendes_auto_voraus_nie_mit_vollem_tempo_durch(v0, abstand):
+    # Ein stehendes Auto 100-150 px voraus in der eigenen Spur: die Bahn weicht mit
+    # Seitenabstand aus ODER das Sollziel reicht zum Anhalten davor. Nie geradeaus
+    # mit Profiltempo hindurch (auch mit der Begrenzung der Seitenbeschleunigung).
+    plan = _plan()
+    g = Gegner(s=100.0 + abstand, d=0.0, v=0.0, laenge=LAENGE, breite=BREITE)
+    bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, v0, [g], Wunsch())
+    naehe = np.abs(bahn.s - g.s) < LAENGE
+    if naehe.any():
+        weicht_aus = np.all(np.abs(bahn.d[naehe] - g.d) >= BREITE)
+    else:
+        weicht_aus = False
+    frei = max(0.0, abstand - LAENGE)
+    bremst_genug = bahn.v_soll ** 2 <= 2.0 * plan.a_brems * frei + 30.0 ** 2
+    assert weicht_aus or bremst_genug, (bahn.v_soll, bahn.d[naehe], abstand)

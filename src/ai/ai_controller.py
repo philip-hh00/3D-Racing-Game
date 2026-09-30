@@ -12,7 +12,7 @@ import math
 
 from src.ai.stufen import stufe as _stufe
 
-STUCK_SECONDS: float = 1.5
+STUCK_SECONDS: float = 1.0
 RECOVERY_BASE_SECONDS: float = 2.2
 RECOVERY_MAX_SECONDS: float = 4.0
 RUECKWAERTS_GAS: float = 0.7
@@ -199,9 +199,35 @@ class AIController:
             self._recovery_nachlauf += dt
         self.dbg_state = "befreien"
         self.dbg_look = look
+        if self._heck_belegt(pos, angle):
+            # Fair bleiben: nicht in ein Auto hinter uns hineinsetzen. Stehen bleiben
+            # (Lenkung bleibt), bis der Platz frei ist; der Zähler läuft weiter.
+            return 0.0, 1.0, steer
         # Rückwärts herausfahren: Bremse allein bewegt ein stehendes Auto nicht
         # (nur negatives Gas legt den Rückwärtsgang ein).
         return -RUECKWAERTS_GAS, 0.0, steer
+
+    def _heck_belegt(self, pos, angle: float) -> bool:
+        """Steht ein anderes Auto hinter uns (entgegen der Nase), dicht genug zum Rammen?"""
+        cfg = self.vehicle.config
+        laenge, breite = float(cfg.height_px), float(cfg.width_px)
+        hx, hy = -math.cos(angle), -math.sin(angle)       # Richtung nach hinten
+        for car in self.opponents:
+            if car is self.vehicle or getattr(car, "bereit", True) is False:
+                continue
+            try:
+                gx, gy = car.position
+            except Exception:
+                continue
+            rx, ry = gx - pos[0], gy - pos[1]
+            hinten = rx * hx + ry * hy
+            quer = abs(-rx * hy + ry * hx)
+            gcfg = getattr(car, "config", None)
+            gl = float(getattr(gcfg, "height_px", laenge))
+            gb = float(getattr(gcfg, "width_px", breite))
+            if 0.0 < hinten < 0.5 * laenge + 0.5 * gl + 1.5 * laenge and quer < 0.5 * (breite + gb) + 10.0:
+                return True
+        return False
 
     def _fortschritt(self, dt: float, s: float) -> None:
         st = self.fahrplan.strecke

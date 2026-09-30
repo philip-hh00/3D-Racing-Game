@@ -31,6 +31,36 @@ def _feststecker(strecke, seite, winkel_zur_strecke_grad):
     return welt, auto, st, hf
 
 
+def test_rueckwaerts_nicht_in_ein_auto_dahinter():
+    # Nase in der Wand, dicht dahinter steht ein zweites Auto: kein Rammen.
+    welt, track, bus = M._welt(os.path.join(H.WURZEL, "data", "tracks", "gp.json"))
+    a, b = M._autos(welt, track, ["rookie", "rookie_2"], "medium")
+    st = a.controller.fahrplan.strecke
+    hf = a.controller.fahrplan.halb_frei
+    s = 300.0
+    i = st.index(s)
+    tang = math.atan2(st.seg_dir[i][1], st.seg_dir[i][0])
+    kontakte = []
+    bus.subscribe("impact_vehicle_vehicle", lambda d: kontakte.append(d))
+    a.physics.body.position = st.xy(s, hf + 4.0)
+    a.physics.body.angle = tang + math.radians(90.0)
+    a.physics.body.velocity = (0.0, 0.0)
+    b.physics.body.position = st.xy(s, hf + 4.0 - 85.0)     # 85 px hinter a, zur Streckenmitte
+    b.physics.body.angle = tang + math.radians(90.0)
+    b.physics.body.velocity = (0.0, 0.0)
+    a.controller.opponents = [a, b]
+    for auto in (a, b):
+        auto.controller._hint = None
+        auto.controller._start_measured = True
+    kleinster = 1e9
+    for _ in range(int(5.0 / M.DT)):
+        a.update(M.DT)            # b bleibt als Hindernis stehen
+        welt.step(M.DT)
+        kleinster = min(kleinster, math.dist(a.position, b.position))
+    assert not kontakte
+    assert kleinster > 62.0
+
+
 def _fahren(welt, auto, st, sekunden):
     t, s_vor, weg = 0.0, st.sd(*auto.position)[0], 0.0
     while t < sekunden:
