@@ -74,6 +74,11 @@ class PhysicsBody:
         # Drift & Slip Live State
         self.is_drifting: bool = False
         self.slip_angle_deg: float = 0.0
+        #: Groesster Schraeglauf an den Reifen (Grad), Vorderachse gegen die
+        #: eingeschlagene Radrichtung. Anders als ``slip_angle_deg`` (am
+        #: Schwerpunkt, in engen langsamen Kurven rein geometrisch gross) waechst
+        #: er nur, wenn ein Reifen wirklich rutscht. Daran haengt das Quietschen.
+        self.reifen_schlupf_deg: float = 0.0
         self.steer_angle: float = 0.0
 
     # ---- Properties ----
@@ -227,6 +232,15 @@ class PhysicsBody:
         # Project axle velocities onto lateral unit vectors
         lateral_speed_front = vel_front.dot(front_right_world)
         lateral_speed_rear = vel_rear.dot(rear_right_world)
+
+        # Reifenschlupf je Achse: Quer- gegen Laengsgeschwindigkeit des Rades.
+        schlupf = 0.0
+        for vel, quer, seitlich in ((vel_front, front_right_world, lateral_speed_front),
+                                    (vel_rear, rear_right_world, lateral_speed_rear)):
+            laengs = abs(vel.dot(quer.perpendicular()))
+            if max(laengs, abs(seitlich)) > 20.0:
+                schlupf = max(schlupf, math.degrees(math.atan2(abs(seitlich), laengs)))
+        self.reifen_schlupf_deg = schlupf
 
         # Calculate vehicle slip angle at center of mass
         vel_center = body.velocity

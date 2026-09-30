@@ -315,7 +315,9 @@ class Track:
 
                 segment = pymunk.Segment(static_body, a, b, radius=2.0)
                 segment.collision_type = TRACK_WALL_COLLISION_TYPE
-                segment.elasticity = 0.3
+                # Leitplanke federt nicht zurueck: mit 0,3 (x 0,25 am Auto)
+                # prallte man wie ein Flummi ab (gemeldet 30.09.2026).
+                segment.elasticity = 0.0
                 segment.friction = 0.7
                 space.add(segment)
                 self.wall_segments.append(segment)

@@ -23,7 +23,7 @@
     "engine_power": 63821.38712765125,
     "max_speed": 666.1108,
     "grip": 0.74,
-    "brake_force": 65000.0,
+    "brake_force": 21666.7,
     "turn_speed": 2.05,
     "drift_threshold": 0.65,
     "drag_coefficient": 0.2,

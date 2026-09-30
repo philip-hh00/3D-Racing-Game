@@ -567,16 +567,20 @@ def _schraeglauf(fahrzeug) -> float:
     Deshalb hier drei Wege in dieser Reihenfolge: das Fahrzeug selbst (es hat
     die Eigenschaft), sein Physikteil, und zuletzt der Körper — damit ein
     Testdoppel, das den Wert dort ablegt, weiterhin bedient wird.
+
+    Seit 30.09.2026 zuerst ``reifen_schlupf_deg`` (Schlupf an den Reifen):
+    der Winkel am Schwerpunkt ist in engen, langsamen Kurven rein geometrisch
+    15–20° groß, und es quietschte bei jedem Anfahren im Einschlag.
     """
-    for quelle in (fahrzeug,
-                   getattr(fahrzeug, "physics", None),
-                   getattr(fahrzeug, "body", None)):
-        wert = getattr(quelle, "slip_angle_deg", None)
-        if wert is not None:
-            try:
-                return float(wert)
-            except (TypeError, ValueError):
-                return 0.0
+    quellen = (fahrzeug, getattr(fahrzeug, "physics", None), getattr(fahrzeug, "body", None))
+    for name in ("reifen_schlupf_deg", "slip_angle_deg"):
+        for quelle in quellen:
+            wert = getattr(quelle, name, None)
+            if wert is not None:
+                try:
+                    return float(wert)
+                except (TypeError, ValueError):
+                    return 0.0
     return 0.0
 
 

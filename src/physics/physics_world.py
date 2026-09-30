@@ -62,7 +62,16 @@ class PhysicsWorld:
             Delta time since last frame (seconds).
         """
         sub_dt: float = dt / PHYSICS_SUBSTEPS
-        for _ in range(PHYSICS_SUBSTEPS):
+        # pymunk loescht body.force/torque nach jedem Schritt, die Fahrzeuge
+        # legen ihre Kraefte aber einmal je Bild an. Ohne das Wiederherstellen
+        # wirkten Motor, Bremse und Widerstaende nur im ersten Teilschritt, also
+        # zu einem Drittel (gemeldet 30.09.2026: 0-100 km/h in 20 s).
+        kraefte = [(b, b.force, b.torque) for b in self.space.bodies
+                   if b.force.x or b.force.y or b.torque]
+        for i in range(PHYSICS_SUBSTEPS):
+            if i:
+                for b, kraft, moment in kraefte:
+                    b.force, b.torque = kraft, moment
             self.space.step(sub_dt)
 
     # ------------------------------------------------------------------
