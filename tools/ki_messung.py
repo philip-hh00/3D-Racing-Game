@@ -82,19 +82,14 @@ def solo(pfad, auto, stufe_key, runden=3, zeitlimit=400.0):
             "wand": wand[0], "fertig": len(zeiten) >= runden}
 
 
-def _ueberholungen(alt, neu):
-    """Zählt Positionswechsel (Inversionen) zwischen zwei Rankings."""
-    if alt is None:
-        return 0
-    # Zähle Paare (i, j) wo alt[i] < alt[j] aber neu[i] > neu[j]
-    inversionen = 0
-    for i in range(len(alt)):
-        for j in range(i + 1, len(alt)):
-            alt_ord = alt[i] < alt[j]
-            neu_ord = neu[i] < neu[j]
-            if alt_ord != neu_ord:
-                inversionen += 1
-    return inversionen
+def _ueberholungen(alt: list[int], neu: list[int]) -> int:
+    """Wie viele Autopaare ihre Reihenfolge getauscht haben (nur Autos in beiden Listen)."""
+    gemeinsam = [a for a in alt if a in set(neu)]
+    pos_alt = {a: k for k, a in enumerate(gemeinsam)}
+    pos_neu = {a: k for k, a in enumerate(b for b in neu if b in pos_alt)}
+    autos = list(pos_alt)
+    return sum(1 for i, a in enumerate(autos) for b in autos[i + 1:]
+               if (pos_alt[a] < pos_alt[b]) != (pos_neu[a] < pos_neu[b]))
 
 
 def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
@@ -115,6 +110,7 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
     fertig = set()
     reihenfolge = None
     ueberholungen = 0
+    naechste_messung = 5.0
     t = 0.0
     while t < zeitlimit and len(fertig) < len(wagen):
         for i, a in enumerate(wagen):
@@ -132,12 +128,12 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
                 haenger.add(i)
             if weg[i] >= ziel + weg_start[i] and i not in fertig:
                 fertig.add(i)
-        if t > 5.0:
-            # Sortiere nur noch nicht-fertige Autos; fertige Autos bleiben an ihrer Endposition
-            rangfolge = [i for i in range(len(wagen)) if i not in fertig]
-            rangfolge.sort(key=lambda i: -weg[i])
-            neu = rangfolge + list(fertig)
-            ueberholungen += _ueberholungen(reihenfolge, neu)
+        if t >= naechste_messung:
+            naechste_messung += 0.5
+            neu = sorted((i for i in range(len(wagen)) if i not in fertig),
+                         key=lambda i: -weg[i])
+            if reihenfolge is not None:
+                ueberholungen += _ueberholungen(reihenfolge, neu)
             reihenfolge = neu
     return {"ueberholungen": ueberholungen, "auto_kontakte": zaehler["auto"],
             "wand": zaehler["wand"], "haenger": len(haenger),

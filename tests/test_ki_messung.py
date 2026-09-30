@@ -27,3 +27,11 @@ def test_feld_kommt_ins_ziel():
 def test_eigene_strecken(tmp_path):
     pfade = M.eigene_strecken(str(tmp_path))
     assert len(pfade) == 2 and all(os.path.isfile(p) for p in pfade)
+
+
+def test_ueberholungen_paartausch():
+    assert M._ueberholungen([0, 1, 2], [0, 1, 2]) == 0
+    assert M._ueberholungen([0, 1, 2], [2, 0, 1]) == 2
+    assert M._ueberholungen([1, 0, 2], [1, 2, 0]) == 1
+    assert M._ueberholungen([0, 1, 2, 3], [0, 2, 1]) == 1
+    assert M._ueberholungen([0, 1], [0, 1]) == 0
