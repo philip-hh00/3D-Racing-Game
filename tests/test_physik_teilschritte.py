@@ -63,11 +63,11 @@ def _auto(key: str, kmh: float = 0.0):
     return welt, auto
 
 
-def _fahren(welt, auto, sekunden, gas=1.0, bremse=0.0, lenkung=0.0):
+def _fahren(welt, auto, sekunden, gas=1.0, bremse=0.0, lenkung=0.0, handbremse=False):
     from src.entities.vehicle import Vehicle
     groesster = 0.0
     for _ in range(int(sekunden / DT)):
-        auto.throttle, auto.brake_input, auto.steer_input, auto.handbrake = gas, bremse, lenkung, False
+        auto.throttle, auto.brake_input, auto.steer_input, auto.handbrake = gas, bremse, lenkung, handbremse
         Vehicle.update(auto, DT)
         welt.step(DT)
         groesster = max(groesster, auto.physics.reifen_schlupf_deg)
@@ -126,9 +126,12 @@ def test_anfahren_im_einschlag_rutscht_nicht():
     assert _fahren(welt, auto, 3.0, lenkung=1.0) < 8.0
 
 
-def test_untersteuern_bei_tempo_ist_schlupf():
-    welt, auto = _auto("rookie", 80.0)
-    assert _fahren(welt, auto, 3.0, lenkung=0.3) > 12.0
+def test_rutschen_mit_der_handbremse_ist_schlupf():
+    # Seit der Lenkgrenze (test_lenkung.py) schiebt ein Auto bei Tempo nicht
+    # mehr über die Vorderräder, nur weil die Taste gedrückt ist; echter
+    # Schlupf entsteht mit der Handbremse.
+    welt, auto = _auto("drifter", 90.0)
+    assert _fahren(welt, auto, 0.5, gas=0.0, lenkung=1.0, handbremse=True) > 8.0
 
 
 def test_das_quietschen_folgt_dem_reifenschlupf():

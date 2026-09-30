@@ -435,14 +435,11 @@ class Vehicle:
 
         # Steering
         is_analog = getattr(self, "is_analog", False)
-        if is_analog:
-            self.physics.apply_steering(self.steer_input, dt, is_analog=True)
-        else:
-            steer_delta = self.steering.compute_steer(
-                self.steer_input, self.speed, self.config.max_speed, dt
-            )
-            steer_delta *= steer_scale
-            self.physics.apply_steering(steer_delta, dt, is_analog=False)
+        # Eingabe -1..1 für Tastatur und Achse; die Grenze kommt aus der Haftung
+        # (PhysicsBody.max_einschlag), beim Beschleunigen etwas weniger.
+        self.physics.apply_steering(self.steer_input * steer_scale, dt,
+                                    is_analog=is_analog, grip=self.config.grip,
+                                    handbremse=bool(self.handbrake))
 
         # Drag (with potential slipstream reduction)
         self.physics.apply_drag(drag_coeff, getattr(self.config, "frontal_area", 2.2))

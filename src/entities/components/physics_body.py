@@ -79,6 +79,7 @@ class PhysicsBody:
         #: Schwerpunkt, in engen langsamen Kurven rein geometrisch gross) waechst
         #: er nur, wenn ein Reifen wirklich rutscht. Daran haengt das Quietschen.
         self.reifen_schlupf_deg: float = 0.0
+        self.hinten_schlupf_deg: float = 0.0
         self.steer_angle: float = 0.0
 
     # ---- Properties ----
@@ -105,6 +106,22 @@ class PhysicsBody:
 
     # ---- Force application ----
 
+    #: Reifen-Lastempfindlichkeit: Griff je kg sinkt mit der Achslast (mu ~ Last^-k).
+    LAST_EMPFINDLICHKEIT = 0.15
+
+    def _achspunkte(self, radstand: float) -> tuple[pymunk.Vec2d, pymunk.Vec2d]:
+        """Vorder- und Hinterachse relativ zum Schwerpunkt.
+
+        ``com_bias`` verteilt die Last (vorn ``0,5 + com_bias``). Dazu gehoert,
+        dass der Schwerpunkt naeher an der schwereren Achse liegt: vorn
+        ``L * hinten``, hinten ``L * vorn``. Standen beide Achsen gleich weit
+        weg, mussten sie in der Kurve gleich viel Seitenkraft liefern — die
+        leichtere Achse saettigte zuerst, frontlastige Autos uebersteuerten
+        (rookie drehte sich bei 150 km/h, 30.09.2026).
+        """
+        vorn = max(0.35, min(0.65, 0.5 + self.com_bias))
+        return (pymunk.Vec2d(radstand * (1.0 - vorn), 0), pymunk.Vec2d(-radstand * vorn, 0))
+
     def apply_drive_force(
         self, 
         force: float, 
@@ -123,8 +140,7 @@ class PhysicsBody:
         length = max(xs) - min(xs) if xs else 80.0
         wheelbase = length * self.wheelbase_ratio
 
-        front_local = pymunk.Vec2d(wheelbase / 2, 0)
-        rear_local = pymunk.Vec2d(-wheelbase / 2, 0)
+        front_local, rear_local = self._achspunkte(wheelbase)
 
         # Dynamic axle weight loads from weight bias and transfer
         front_frac = max(0.35, min(0.65, 0.5 + self.com_bias))
@@ -211,8 +227,7 @@ class PhysicsBody:
         wheelbase = length * self.wheelbase_ratio  # tunable (Radstand)
 
         # Local positions of front and rear axles
-        front_local = pymunk.Vec2d(wheelbase / 2, 0)
-        rear_local = pymunk.Vec2d(-wheelbase / 2, 0)
+        front_local, rear_local = self._achspunkte(wheelbase)
 
         # World velocities at the axles
         vel_front = body.velocity_at_local_point(front_local)
@@ -234,13 +249,15 @@ class PhysicsBody:
         lateral_speed_rear = vel_rear.dot(rear_right_world)
 
         # Reifenschlupf je Achse: Quer- gegen Laengsgeschwindigkeit des Rades.
-        schlupf = 0.0
+        je_achse = []
         for vel, quer, seitlich in ((vel_front, front_right_world, lateral_speed_front),
                                     (vel_rear, rear_right_world, lateral_speed_rear)):
             laengs = abs(vel.dot(quer.perpendicular()))
-            if max(laengs, abs(seitlich)) > 20.0:
-                schlupf = max(schlupf, math.degrees(math.atan2(abs(seitlich), laengs)))
-        self.reifen_schlupf_deg = schlupf
+            je_achse.append(math.degrees(math.atan2(abs(seitlich), laengs))
+                            if max(laengs, abs(seitlich)) > 20.0 else 0.0)
+        self.reifen_schlupf_deg = max(je_achse)
+        #: Schlupf der Hinterachse allein: Übersteuern/Driften (Gegenlenken).
+        self.hinten_schlupf_deg = je_achse[1]
 
         # Calculate vehicle slip angle at center of mass
         vel_center = body.velocity
@@ -295,8 +312,12 @@ class PhysicsBody:
         rear_mass_dyn = mass * rear_frac_dyn
 
         # Max lateral impulse per axle using dynamic axle load
-        max_impulse_front = effective_grip_front * front_mass_dyn * 380.0 * dt
-        max_impulse_rear = effective_grip_rear * rear_mass_dyn * 380.0 * dt
+        # Lastabhaengigkeit: die schwerer belastete Achse hat je kg etwas
+        # weniger Griff. Frontlastig untersteuert leicht, hecklastig uebersteuert.
+        max_impulse_front = (effective_grip_front * front_mass_dyn * 380.0 * dt
+                             * (front_frac_dyn / 0.5) ** -self.LAST_EMPFINDLICHKEIT)
+        max_impulse_rear = (effective_grip_rear * rear_mass_dyn * 380.0 * dt
+                            * (rear_frac_dyn / 0.5) ** -self.LAST_EMPFINDLICHKEIT)
 
         # Front axle lateral correction (apply in local coordinate space)
         desired_impulse_front = -lateral_speed_front * front_mass_dyn
@@ -337,38 +358,79 @@ class PhysicsBody:
             f_pymunk = f_newtons / 0.08
             self.body.apply_force_at_world_point(-vel.normalized() * f_pymunk, self.body.position)
 
-    def apply_steering(self, steer_val: float, dt: float, is_analog: bool = False) -> None:
-        """Update the front wheel steering angle based on steering input.
+    #: Wie weit der Höchsteinschlag über der Haftgrenze liegt: etwas darüber,
+    #: damit man ein Auto noch zum Schieben oder Driften bringen kann.
+    LENK_REIZ = 1.3
+    #: Rampe der Tastatur: Sekunden bis zum vollen Einschlag (stehend / ab
+    #: RAMPE_TEMPO px/s) und zurück zur Mitte.
+    RAMPE_AUF_S = (0.14, 0.32)
+    RAMPE_TEMPO = 700.0
+    RAMPE_AB_S = 0.14
 
-        Args:
-            steer_val: Steering angle rate change in radians (digital) or raw steer input (analog).
-            dt: Delta time of the frame.
-            is_analog: True if steering is controlled by analog gamepad axis.
+    def max_einschlag(self, grip: float, richtung: float = 0.0) -> float:
+        """Größter sinnvoller Radeinschlag (rad) bei diesem Tempo.
+
+        Die Seitenhaftung trägt höchstens ``grip * 380`` px/s² (siehe
+        ``apply_lateral_friction``); der Einschlag, der genau diesen Radius
+        fährt, ist ``atan(Radstand * a / v²)``. Darüber schieben die Vorderräder
+        nur noch. Die alte Tempokurve bleibt als Obergrenze.
+
+        ``richtung``: Vorzeichen des gewünschten Einschlags. Zeigt er in die
+        Rutschrichtung (Gegenlenken), kommt der Schlupf der Hinterachse dazu —
+        in Kurvenrichtung nicht, sonst schaukelt sich ein Heck, das kommt, von
+        selbst zum Dreher auf.
         """
         speed = self.body.velocity.length
         lock_factor = 1.0 / (1.0 + (speed / 500.0) ** 1.2)
-        max_steer = math.radians(35.0) * lock_factor
-        
+        alt = math.radians(35.0) * lock_factor
+        xs = [v.x for v in self.shape.get_vertices()]
+        radstand = (max(xs) - min(xs)) * self.wheelbase_ratio if xs else 50.0
+        a = max(grip, 0.05) * 380.0 * self.LENK_REIZ
+        griff = math.atan(radstand * a / max(speed * speed, 1e-6))
+        quer = self.body.velocity.rotated(-self.body.angle).y
+        gegen = richtung * quer > 0.0
+        drift = math.radians(min(self.hinten_schlupf_deg, 30.0)) if gegen else 0.0
+        return min(alt, griff + drift)
+
+    def apply_steering(self, steer_val: float, dt: float, is_analog: bool = False,
+                       grip: float | None = None, handbremse: bool = False) -> None:
+        """Update the front wheel steering angle based on steering input.
+
+        Args:
+            steer_val: Lenkeingabe -1..1 (Tastatur oder Achse).
+            dt: Delta time of the frame.
+            is_analog: True if steering is controlled by analog gamepad axis.
+            grip: Haftung des Fahrzeugs für die Einschlaggrenze (None: nur
+                die Tempokurve, wie früher).
+            handbremse: gezogen gilt die Tempokurve — wer das Heck mit der
+                Handbremse anstellt, will über die Haftgrenze hinaus lenken.
+        """
+        speed = self.body.velocity.length
+        if grip is None or handbremse:
+            max_steer = math.radians(35.0) / (1.0 + (speed / 500.0) ** 1.2)
+        else:
+            max_steer = self.max_einschlag(grip, steer_val)
+        target_steer = max(-1.0, min(1.0, steer_val)) * max_steer
+
         if is_analog:
             # Direct analog steering with responsiveness filter
-            target_steer = steer_val * max_steer
             responsiveness = 15.0  # Radians per second LERP tracking
             self.steer_angle += (target_steer - self.steer_angle) * responsiveness * dt
-            self.steer_angle = max(-max_steer, min(max_steer, self.steer_angle))
         else:
-            steer_delta = steer_val
-            # Keep steering angle within the speed-dependent lock limits
-            self.steer_angle = max(-max_steer, min(max_steer, self.steer_angle))
-            
-            if abs(steer_delta) > 0.0001:
-                # Accumulate steering rate towards the target lock
-                self.steer_angle = max(-max_steer, min(max_steer, self.steer_angle + steer_delta))
+            # Tastatur: weich zum Ziel, Rampe in Anteilen des Höchsteinschlags —
+            # bei Tempo ist der klein, ein fester Winkel je Sekunde wäre sofort voll.
+            zurueck = abs(target_steer) < abs(self.steer_angle) or target_steer * self.steer_angle < 0.0
+            if zurueck:
+                dauer = self.RAMPE_AB_S
             else:
-                # Self-centering steering when no input is active
-                centering_speed = 12.0  # radians per second
-                self.steer_angle -= self.steer_angle * centering_speed * dt
-                if abs(self.steer_angle) < 0.001:
-                    self.steer_angle = 0.0
+                t = min(1.0, speed / self.RAMPE_TEMPO)
+                dauer = self.RAMPE_AUF_S[0] + (self.RAMPE_AUF_S[1] - self.RAMPE_AUF_S[0]) * t
+            schritt = max(max_steer, math.radians(2.0)) / dauer * dt
+            diff = target_steer - self.steer_angle
+            self.steer_angle += max(-schritt, min(schritt, diff))
+            if target_steer == 0.0 and abs(self.steer_angle) < 0.001:
+                self.steer_angle = 0.0
+        self.steer_angle = max(-max_steer, min(max_steer, self.steer_angle))
 
     # ---- Cleanup ----
 
