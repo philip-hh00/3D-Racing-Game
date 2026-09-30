@@ -28,7 +28,7 @@
         0.80591,
         0.325
       ],
-      "dreiecke": 9932
+      "dreiecke": 10924
     },
     {
       "name": "rad_vr",
@@ -37,7 +37,7 @@
         -0.80591,
         0.325
       ],
-      "dreiecke": 9932
+      "dreiecke": 10924
     },
     {
       "name": "rad_hl",
@@ -46,7 +46,7 @@
         0.81094,
         0.325
       ],
-      "dreiecke": 9932
+      "dreiecke": 10924
     },
     {
       "name": "rad_hr",
@@ -55,7 +55,7 @@
         -0.81094,
         0.325
       ],
-      "dreiecke": 9932
+      "dreiecke": 10924
     }
   ],
   "saettel": [
@@ -69,5 +69,5 @@
     34,
     38
   ],
-  "dreiecke_karosserie": 66588
+  "dreiecke_karosserie": 83916
 }

@@ -26,6 +26,18 @@ Entscheidungen des Besitzers (gelten weiter):
 
 ### 2.1 Rookie-Rückleuchten (höchste Priorität)
 
+**Stand 30.09. abends (erledigt, wartet auf Urteil des Besitzers):**
+Seitenwandleuchte endet unter der Schulter (Oberkante außen z 0,895 m,
+Deckel 0,905 m statt Aussparung bis 1,3; rookie_3 2 cm tiefer), vorn
+nicht mehr senkrecht abgeschnitten, sondern in der Seitenansicht schräg
+auslaufend (`und` mit `"ansicht": "seite"`), `u` bis 0,10 statt 0,12.
+rookie: nur noch ein durchgehender Querlichtleiter (0,64) statt quer +
+senkrecht. rookie_2: Flügel `hoehe_m` 1,10, `endplatte_m` [0,02, 0,03]
+— Endplatte schwebt jetzt sichtbar über der Leuchte. Drifter 1–3 und
+Supercar 1–3 geprüft: kein Flügel ragt in eine Leuchte. Offen: an der
+äußeren Ecke der Winkelleuchte leicht unruhige Rillenoptik (Raster auf
+der gekrümmten Platte).
+
 Die drei Kompaktwagen `rookie`, `rookie_2`, `rookie_3`. Die übrigen Autos
 findet der Besitzer „schon ziemlich gut".
 
