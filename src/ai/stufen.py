@@ -28,15 +28,15 @@ class Stufe:
 
 
 STUFEN: dict[str, Stufe] = {
-    "easy": Stufe("easy", "Anfänger", haftung=0.74, bremsen=0.72, bremspunkt_m=8.0,
-                  wandabstand_px=40.0, kurve_schneiden=0.55, fehler_je_min=1.5,
+    "easy": Stufe("easy", "Anfänger", haftung=0.66, bremsen=0.66, bremspunkt_m=3.0,
+                  wandabstand_px=30.0, kurve_schneiden=0.45, fehler_je_min=1.5,
                   ueberholen_nur_langsame=True, bremszone_angriff=False, verteidigen=False,
                   mut=0.2, aufholhilfe=1.0),
-    "medium": Stufe("medium", "Fortgeschritten", haftung=0.83, bremsen=0.82, bremspunkt_m=4.0,
-                    wandabstand_px=32.0, kurve_schneiden=0.45, fehler_je_min=0.8,
+    "medium": Stufe("medium", "Fortgeschritten", haftung=0.80, bremsen=0.80, bremspunkt_m=2.5,
+                    wandabstand_px=27.0, kurve_schneiden=0.40, fehler_je_min=0.8,
                     ueberholen_nur_langsame=False, bremszone_angriff=False, verteidigen=False,
                     mut=0.45, aufholhilfe=0.5),
-    "hard": Stufe("hard", "Profi", haftung=0.90, bremsen=0.90, bremspunkt_m=1.5,
+    "hard": Stufe("hard", "Profi", haftung=0.88, bremsen=0.88, bremspunkt_m=1.5,
                   wandabstand_px=26.0, kurve_schneiden=0.35, fehler_je_min=0.3,
                   ueberholen_nur_langsame=False, bremszone_angriff=True, verteidigen=True,
                   mut=0.7, aufholhilfe=0.0),
