@@ -83,69 +83,81 @@ class Planer:
         self._letzter = bahn.versatz
         return bahn
 
-    def _mass(self, g, w):
-        return (0.5 * (self.laenge + g.laenge) + 15.0,
-                0.5 * (self.breite + g.breite) + w.seitenabstand)
-
     def _planen(self, s0, d0, v0, gegner, w, versaetze):
         plan = self.plan
         st = plan.strecke
         hf = plan.halb_frei
+        K = self.SCHRITTE
         v_ref = max(float(v0), 120.0)
         horizont = max(v_ref * self.HORIZONT_S, 300.0)
-        u = np.linspace(0.0, 1.0, self.SCHRITTE + 1)
-        s_rel = u * horizont
+        s_rel = np.linspace(0.0, horizont, K + 1)
         s_abs = s0 + s_rel
         d_id = plan.d_viele(s_abs) + w.versatz
-        k_id = np.abs(plan.k_viele(s_abs))
+        k_id = np.clip(np.abs(plan.k_viele(s_abs)) * 400.0, 0.0, 1.0)
         v_prof = plan.v_viele(s_abs + w.spaeter_bremsen_px) * w.tempo
         seg = np.diff(s_rel)
-        rel0 = [(st.ds(s0, g.s), g) for g in gegner]
-        gz = [(r0, g) + self._mass(g, w) for r0, g in rel0]
-        beste = None
-        for versatz in versaetze:
-            ziel = np.clip(d_id + versatz * hf, -hf, hf)
-            for uebergang in self.UEBERGANG:
-                q = _quintisch(np.clip(s_rel / (uebergang * horizont), 0.0, 1.0))
-                d = d0 + (ziel - d0) * q
-                if abs(d0) <= hf:
-                    d = np.clip(d, -hf, hf)
-                abw = np.abs(d - d_id) / (2.0 * hf)
-                v = v_prof * (1.0 - self.KURVE_KOSTET * abw * np.clip(k_id * 400.0, 0.0, 1.0))
-                v = np.maximum(v, 30.0)
-                # Schritt für Schritt: Folgen begrenzt das Tempo, dieses Tempo
-                # bestimmt wieder die Zeit und damit, wo der Gegner dann steht.
-                v_eff = v.copy()
-                t = np.zeros(self.SCHRITTE + 1)
-                for k in range(self.SCHRITTE + 1):
-                    vk = float(v_eff[k])
-                    tk = 0.0 if k == 0 else t[k - 1] + seg[k - 1] / max(0.5 * (v_eff[k - 1] + vk), 5.0)
-                    for r0, g, laengs, quer in gz:
-                        if abs(d[k] - g.d) < quer:
-                            rel = r0 + g.v * tk - s_rel[k]
-                            if rel > 0.0:
-                                vk = min(vk, g.v + max(0.0, rel - laengs) * self.FOLGE_GAIN)
-                    v_eff[k] = max(vk, 0.0)
-                    if k:
-                        t[k] = t[k - 1] + seg[k - 1] / max(0.5 * (v_eff[k - 1] + v_eff[k]), 5.0)
-                kollision = 0.0
-                for r0, g in rel0:
-                    rel = r0 + g.v * t - s_rel
-                    laengs, quer = self._mass(g, w)
-                    treffer = (np.abs(d - g.d) < quer) & (np.abs(rel) < laengs)
-                    if treffer.any():
-                        erster = int(np.argmax(treffer))
-                        kollision += self.KOLLISION * (1.0 + self.SCHRITTE - erster)
-                v_soll = float(np.min(np.sqrt(v_eff * v_eff + 2.0 * plan.a_brems * s_rel)))
-                gefolgt = bool(np.any(v_eff[:self.SCHRITTE // 2 + 1] < v[:self.SCHRITTE // 2 + 1] - 1e-6))
-                zeit = float(t[-1]) / (horizont / v_ref)
-                kosten = (zeit + kollision
-                          + self.W_IDEAL * float(np.mean(((d - d_id) / hf) ** 2))
-                          + self.W_WECHSEL * (versatz - self._letzter) ** 2
-                          + self.W_WAND * float(np.sum(np.maximum(0.0, np.abs(d) - hf) ** 2)) / hf ** 2)
-                if w.seite is not None:
-                    kosten += self.W_SEITE * w.gewicht_seite * ((d[-1] - w.seite) / hf) ** 2
-                if beste is None or kosten < beste[0]:
-                    beste = (kosten, (d, v_soll, versatz, gefolgt))
-        kosten, (d, v_soll, versatz, gefolgt) = beste
-        return kosten, Bahn(s_abs, d, st.xy_viele(s_abs, d), float(v_soll), float(versatz), bool(gefolgt))
+
+        # Kandidaten (C, K+1): Versatz-Hauptschleife, Übergang innen
+        vers = np.repeat(np.asarray(versaetze, dtype=float), len(self.UEBERGANG))
+        uebg = np.tile(np.asarray(self.UEBERGANG, dtype=float), len(versaetze))
+        ziel = np.clip(d_id[None, :] + vers[:, None] * hf, -hf, hf)
+        q = _quintisch(np.clip(s_rel[None, :] / (uebg[:, None] * horizont), 0.0, 1.0))
+        d = d0 + (ziel - d0) * q
+        if abs(d0) <= hf:
+            d = np.clip(d, -hf, hf)
+        abw = np.abs(d - d_id) / (2.0 * hf)
+        v = np.maximum(v_prof * (1.0 - self.KURVE_KOSTET * abw * k_id), 30.0)
+        C = len(vers)
+
+        # Gegner, die nie eine Rolle spielen, fallen weg
+        r0l, gvl, gdl, lgl, qul = [], [], [], [], []
+        for g in gegner:
+            r0 = st.ds(s0, g.s)
+            laengs = 0.5 * (self.laenge + g.laenge) + 15.0
+            if abs(r0) > horizont + 2.0 * laengs or (r0 < -laengs and g.v <= v0):
+                continue
+            r0l.append(r0)
+            gvl.append(g.v)
+            gdl.append(g.d)
+            lgl.append(laengs)
+            qul.append(0.5 * (self.breite + g.breite) + w.seitenabstand)
+        G = len(r0l)
+
+        v_eff = v.copy()
+        t = np.zeros((C, K + 1))
+        kollision = np.zeros(C)
+        if G:
+            r0a, gva, gda = np.array(r0l), np.array(gvl), np.array(gdl)
+            lga, qua = np.array(lgl), np.array(qul)
+            in_spur = np.abs(d[:, :, None] - gda) < qua           # (C, K+1, G)
+            basis = r0a[None, :] - s_rel[:, None]                  # (K+1, G)
+            for k in range(K + 1):
+                if k:
+                    tk = t[:, k - 1] + seg[k - 1] / np.maximum(0.5 * (v_eff[:, k - 1] + v[:, k]), 5.0)
+                else:
+                    tk = t[:, 0]
+                rel = basis[k] + gva * tk[:, None]
+                hinter = in_spur[:, k, :] & (rel > 0.0)
+                cap = np.where(hinter, gva + np.maximum(0.0, rel - lga) * self.FOLGE_GAIN, np.inf).min(axis=1)
+                v_eff[:, k] = np.maximum(np.minimum(v[:, k], cap), 0.0)
+                if k:
+                    t[:, k] = t[:, k - 1] + seg[k - 1] / np.maximum(0.5 * (v_eff[:, k - 1] + v_eff[:, k]), 5.0)
+            rel = basis[None] + gva * t[:, :, None]
+            treffer = in_spur & (np.abs(rel) < lga)
+            erster = np.argmax(treffer, axis=1)                    # (C, G)
+            kollision = (self.KOLLISION * (1.0 + K - erster) * treffer.any(axis=1)).sum(axis=1)
+        else:
+            t[:, 1:] = np.cumsum(seg / np.maximum(0.5 * (v[:, 1:] + v[:, :-1]), 5.0), axis=1)
+
+        zeit = t[:, -1] / (horizont / v_ref)
+        kosten = (zeit + kollision
+                  + self.W_IDEAL * np.mean(((d - d_id) / hf) ** 2, axis=1)
+                  + self.W_WECHSEL * (vers - self._letzter) ** 2
+                  + self.W_WAND * np.sum(np.maximum(0.0, np.abs(d) - hf) ** 2, axis=1) / hf ** 2)
+        if w.seite is not None:
+            kosten = kosten + self.W_SEITE * w.gewicht_seite * ((d[:, -1] - w.seite) / hf) ** 2
+        b = int(np.argmin(kosten))
+        h = K // 2 + 1
+        gefolgt = bool(np.any(v_eff[b, :h] < v[b, :h] - 1e-6))
+        v_soll = float(np.min(np.sqrt(v_eff[b] ** 2 + 2.0 * plan.a_brems * s_rel)))
+        return float(kosten[b]), Bahn(s_abs, d[b], st.xy_viele(s_abs, d[b]), v_soll, float(vers[b]), gefolgt)
