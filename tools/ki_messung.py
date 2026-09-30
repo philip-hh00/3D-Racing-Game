@@ -34,7 +34,7 @@ def _welt(pfad):
         VehicleFactory.load_all_configs(os.path.join(WURZEL, "data", "vehicles"))
     welt = PhysicsWorld()
     track = Track(pfad, welt.space)
-    bus = EventBus()
+    bus = EventBus.create_isolated()
     CollisionHandler(welt.space, bus)
     return welt, track, bus
 
@@ -82,6 +82,21 @@ def solo(pfad, auto, stufe_key, runden=3, zeitlimit=400.0):
             "wand": wand[0], "fertig": len(zeiten) >= runden}
 
 
+def _ueberholungen(alt, neu):
+    """Zählt Positionswechsel (Inversionen) zwischen zwei Rankings."""
+    if alt is None:
+        return 0
+    # Zähle Paare (i, j) wo alt[i] < alt[j] aber neu[i] > neu[j]
+    inversionen = 0
+    for i in range(len(alt)):
+        for j in range(i + 1, len(alt)):
+            alt_ord = alt[i] < alt[j]
+            neu_ord = neu[i] < neu[j]
+            if alt_ord != neu_ord:
+                inversionen += 1
+    return inversionen
+
+
 def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
     welt, track, bus = _welt(pfad)
     wagen = _autos(welt, track, autos, stufe_key)
@@ -90,16 +105,20 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
     bus.subscribe("impact_vehicle_wall", lambda d: zaehler.__setitem__("wand", zaehler["wand"] + 1))
     bus.subscribe("impact_vehicle_vehicle", lambda d: zaehler.__setitem__("auto", zaehler["auto"] + 1))
     s_vor = [st.sd(*a.position)[0] for a in wagen]
-    weg = [0.0] * len(wagen)
+    s_start = s_vor[:]  # Grid-Positionen speichern
+    # Initialisiere weg mit Grid-Offset relativ zu Auto 0
+    weg_start = [st.ds(s_start[0], s_start[i]) for i in range(len(wagen))]
+    weg = [w for w in weg_start]
     ziel = runden * st.laenge
     stand = [0.0] * len(wagen)          # Zeit ohne Fortschritt
     haenger = set()
+    fertig = set()
     reihenfolge = None
     ueberholungen = 0
     t = 0.0
-    while t < zeitlimit and min(weg) < ziel:
-        for a in wagen:
-            if weg[wagen.index(a)] < ziel:
+    while t < zeitlimit and len(fertig) < len(wagen):
+        for i, a in enumerate(wagen):
+            if i not in fertig and weg[i] < ziel + weg_start[i]:
                 a.update(DT)
         welt.step(DT)
         t += DT
@@ -109,16 +128,20 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
             weg[i] += schritt
             s_vor[i] = s
             stand[i] = 0.0 if schritt > 20.0 * DT else stand[i] + DT
-            if stand[i] > 5.0 and weg[i] < ziel:
+            if stand[i] > 5.0 and weg[i] < ziel + weg_start[i]:
                 haenger.add(i)
+            if weg[i] >= ziel + weg_start[i] and i not in fertig:
+                fertig.add(i)
         if t > 5.0:
-            neu = sorted(range(len(wagen)), key=lambda i: -weg[i])
-            if reihenfolge is not None:
-                ueberholungen += sum(1 for a, b in zip(reihenfolge, neu) if a != b) // 2
+            # Sortiere nur noch nicht-fertige Autos; fertige Autos bleiben an ihrer Endposition
+            rangfolge = [i for i in range(len(wagen)) if i not in fertig]
+            rangfolge.sort(key=lambda i: -weg[i])
+            neu = rangfolge + list(fertig)
+            ueberholungen += _ueberholungen(reihenfolge, neu)
             reihenfolge = neu
     return {"ueberholungen": ueberholungen, "auto_kontakte": zaehler["auto"],
             "wand": zaehler["wand"], "haenger": len(haenger),
-            "im_ziel": sum(1 for w in weg if w >= ziel), "anzahl": len(wagen)}
+            "im_ziel": len(fertig), "anzahl": len(wagen)}
 
 
 def eigene_strecken(ordner):
