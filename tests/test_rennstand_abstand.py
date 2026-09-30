@@ -141,3 +141,62 @@ def test_der_abstand_haengt_nicht_mehr_an_der_rennzeit():
         t.current_lap_time = 7.5
     werte = [rennen._abstand_sekunden(v, 1) for v in (2, 3)]
     assert werte[0] > 0.0 and werte[1] > werte[0]
+
+
+# ---------------------------------------------------------------------------
+# Die Drehzahl nach der Ziellinie (Playtest 05.08.2026)
+# ---------------------------------------------------------------------------
+# „Nachdem man die Ziellinie überquert hat spielt die Drehzahl etwas verrückt
+#  liegt wahrscheinlich an der KI übernahme."
+#
+# Die Vermutung stimmte im Auslöser, nicht in der Ursache: die KI übernimmt
+# tatsächlich, aber der Fehler steckt im Tempo-Regler. Nach dem Ziel setzt
+# `speed_multiplier = 0.5` ein niedriges, konstantes Ziel auf freier Strecke —
+# erst dort liegt ein Auto lange genug **genau** auf seinem Zieltempo, dass eine
+# Sprungstelle im Gas dauernd getroffen wird. Der Bahnregler blendet das Gas
+# deshalb über ``GAS_BAND`` weich aus; diese Tests halten das fest.
+
+def _gas(speed_err: float) -> float:
+    """Der Gasanteil des Bahnreglers für einen Tempofehler (Soll minus Ist)."""
+    from src.ai.regler import Bahnregler
+    return Bahnregler.pedale(object.__new__(Bahnregler), 100.0, 100.0 + speed_err)[0]
+
+
+def test_das_gas_faellt_am_zielpunkt_nicht_mehr_ins_leere():
+    assert _gas(0.001) < 0.01, "kurz vor dem Ziel muss das Gas fast weg sein"
+
+
+def test_das_gas_geht_stetig_gegen_null():
+    """Keine Stufe — größte Änderung zwischen zwei Schritten von 0,05 px/s."""
+    werte = [_gas(-1.0 + i * 0.05) for i in range(221)]   # -1 bis +10 px/s
+    sprung = max(abs(b - a) for a, b in zip(werte, werte[1:]))
+    assert sprung < 0.02, f"Stufe von {sprung:.3f} im Ausblendband"
+
+
+def test_das_gas_waechst_mit_dem_tempofehler():
+    werte = [_gas(i * 0.05) for i in range(1, 221)]
+    assert all(b >= a for a, b in zip(werte, werte[1:]))
+    assert _gas(6.0) > _gas(3.0) > _gas(0.5) > 0.0
+
+
+def test_das_ausblendband_ist_klein_genug():
+    from src.ai.regler import Bahnregler
+    assert Bahnregler.GAS_BAND <= 8.0, \
+        "ein breites Band würde die Fahrweise verändern, nicht nur die Sprungstelle"
+
+
+def test_ein_ki_auto_mit_halbem_tempo_ruckelt_nicht_im_gas():
+    """Der Weg des Playtests: echtes Auto, `speed_multiplier = 0.5`."""
+    import ki_hilfe as H
+    from test_ai import DT, _feld
+    welt, track, feld = _feld(lambda sp: H.strecke_laden("oval", sp), ["rookie"])
+    auto = feld[0]
+    auto.controller.speed_multiplier = 0.5
+    gas = []
+    for n in range(int(8.0 / DT)):
+        auto.update(DT)
+        welt.step(DT)
+        if n >= int(6.0 / DT):
+            gas.append(auto.throttle)
+    spruenge = sum(1 for a, b in zip(gas, gas[1:]) if abs(b - a) > 0.3)
+    assert spruenge == 0, f"{spruenge} Gas-Sprünge in 2 s"
