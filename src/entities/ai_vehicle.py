@@ -8,7 +8,6 @@ import pymunk
 from src.entities.vehicle import Vehicle, VehicleConfig
 
 if TYPE_CHECKING:
-    from src.ai.difficulty import DifficultyConfig
     from src.track.track import Track
 
 
@@ -27,7 +26,7 @@ class AIVehicle(Vehicle):
         start_angle: float,
         space: pymunk.Space,
         track: Track,
-        difficulty: "DifficultyConfig",
+        difficulty,  # Stufe, Schluessel oder Name (siehe src/ai/stufen.py)
         lack: str = "werk",
         config_key: str = "",
     ) -> None:

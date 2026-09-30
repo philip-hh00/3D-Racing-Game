@@ -14,7 +14,6 @@ from src.entities.ai_vehicle import AIVehicle
 if TYPE_CHECKING:
     import pymunk
     from src.track.track import Track
-    from src.ai.difficulty import DifficultyConfig
 
 
 class VehicleFactory:
@@ -104,7 +103,7 @@ class VehicleFactory:
         start_angle: float,
         space: pymunk.Space,
         track: Track,
-        difficulty: DifficultyConfig,
+        difficulty,
         color_primary: tuple[int, int, int] | None = None,
         lack: str | None = None,
     ) -> AIVehicle | None:
@@ -117,7 +116,7 @@ class VehicleFactory:
             start_angle:   Spawn heading in radians.
             space:         The pymunk space.
             track:         Track reference for waypoint navigation.
-            difficulty:    Difficulty preset shaping the driving behaviour.
+            difficulty:    Stufe, Schluessel oder Name (siehe src/ai/stufen.py).
             color_primary: Body colour for the *procedural* fallback — sichtbar
                 nur bei einem Fahrzeug ohne PNG. Fuer sichtbare Farbe: *lack*.
             lack:          Lackkennung. None heisst Werkslack — die KI erbt

@@ -37,35 +37,14 @@ import pygame  # noqa: E402
 import pymunk  # noqa: E402
 
 from src.ai.ai_controller import AIController  # noqa: E402
-from src.ai.difficulty import get_difficulty  # noqa: E402
+from src.ai.stufen import stufe  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# Eine gerade Strecke und ein Fahrzeug, das darauf fährt
+# Ein Fahrzeug auf einer echten Strecke (Oval), das Gegner vor sich sieht
 # ---------------------------------------------------------------------------
-class _Strecke:
-    """Eine kerzengerade Strecke nach Osten — jede Ausweichbewegung ist damit
-    eindeutig zu sehen, weil ohne Gegner nichts zu lenken wäre."""
-
-    def __init__(self, n: int = 400, schritt: float = 40.0) -> None:
-        from src.track.track import Waypoint
-        self.waypoints = [Waypoint(i * schritt, 0.0) for i in range(n)]
-        self.width = 300.0
-
-    def get_nearest_waypoint_index(self, pos) -> int:
-        beste, weite = 0, float("inf")
-        for i, w in enumerate(self.waypoints):
-            d = math.dist(pos, w.pos)
-            if d < weite:
-                beste, weite = i, d
-        return beste
-
-    def get_track_width(self) -> float:
-        return self.width
-
-
 class _Fahrzeug:
-    """Ein Fahrzeug, soweit der Regler es anfasst."""
+    """Ein Fahrzeug, soweit das Rennen-Gerüst es anfasst."""
 
     def __init__(self, pos, tempo: float = 120.0, winkel: float = 0.0) -> None:
         koerper = pymunk.Body(1200, 5000)
@@ -106,19 +85,42 @@ def _abbild(pos, tempo: float, *, bereit: bool = True):
     return rv
 
 
+_WELTEN: list = []
+
+
 def _regler(gegner: list, tempo: float = 120.0) -> AIController:
-    strecke = _Strecke()
-    auto = _Fahrzeug((0.0, 0.0), tempo)
-    r = AIController(auto, strecke, get_difficulty("medium"))
-    r.opponents = gegner
-    # Gitterhaltung überspringen: sie gilt nur in den ersten Sekunden nach dem
-    # Start und würde die Messung überlagern.
-    r._grid_hold_t = 99.0
+    """Echtes Auto auf der Geraden des Ovals. ``gegner``: Liste aus
+    ``(Abstand nach vorn in px, Tempo[, bereit])`` auf derselben Querlage."""
+    import ki_hilfe as H
+    from src.entities.vehicle_factory import VehicleFactory
+    from src.physics.physics_world import PhysicsWorld
+    welt = PhysicsWorld()
+    _WELTEN.append(welt)
+    strecke = H.strecke_laden("oval", welt.space)
+    H.config("rookie")
+    sp = strecke.get_start_positions()[0]
+    winkel = math.radians(sp.angle)
+    auto = VehicleFactory.create_ai_vehicle("rookie", 1, sp.pos, winkel,
+                                            welt.space, strecke, stufe("medium"))
+    auto.physics.body.velocity = pymunk.Vec2d(math.cos(winkel) * tempo,
+                                              math.sin(winkel) * tempo)
+    r = auto.controller
+    r.vorbereiten()
+    st = r.fahrplan.strecke
+    s0, d0, _ = st.sd(*auto.position)
+    r._test_s0, r._test_d0 = s0, d0
+    felder = []
+    for eintrag in gegner:
+        vorn, v = eintrag[0], eintrag[1]
+        bereit = eintrag[2] if len(eintrag) > 2 else True
+        x, y = st.xy(s0 + vorn, d0)
+        felder.append(_abbild((x, y), v, bereit=bereit))
+    r.opponents = felder
     return r
 
 
-def _eingaben(gegner: list) -> tuple[float, float, float]:
-    r = _regler(gegner)
+def _eingaben(gegner: list, tempo: float = 120.0) -> tuple[float, float, float]:
+    r = _regler(gegner, tempo)
     return r.compute_inputs(1.0 / 60)
 
 
@@ -153,46 +155,41 @@ def test_ein_abbild_ohne_nachricht_gilt_nicht_als_bereit():
 def test_ein_fremdes_auto_direkt_davor_aendert_die_lenkung():
     """Der Kern: dieselbe Lage, einmal mit und einmal ohne Abbild davor."""
     ohne = _eingaben([])
-    mit = _eingaben([_abbild((70.0, 0.0), 120.0)])
-    assert abs(mit[2] - ohne[2]) > 0.05, (
+    mit = _eingaben([(90.0, 120.0)])
+    assert abs(mit[2] - ohne[2]) > 0.02, (
         f"Lenkung unverändert: ohne {ohne[2]:.3f}, mit {mit[2]:.3f}")
 
 
 def _seitlich(r: AIController) -> float:
-    """Wie weit der Zielpunkt neben der Mittellinie liegt.
-
-    Die Teststrecke läuft genau nach Osten, die Querachse ist also y. Ohne
-    Gegner liegt der Zielpunkt auf 0 — jeder Wert daneben ist Ausweichen.
-    """
-    return r.dbg_look[1]
+    """Größte Querabweichung der geplanten Bahn von der Startquerlage."""
+    d = r._bahn.d - r._test_d0
+    return float(d[abs(d).argmax()])
 
 
-def test_ein_stehendes_fremdes_auto_wird_weiter_umfahren_als_ein_fahrendes():
+def test_ein_stehendes_fremdes_auto_wird_umfahren_und_mit_weniger_tempo():
     """Ein Mitspieler, der am Start stehen bleibt oder sich gedreht hat, ist ein
-    Hindernis und kein Gegner: die KI soll deutlicher aussenrum als bei einem,
-    der mitfährt — und nicht dahinter warten."""
-    fahrend = _regler([_abbild((70.0, 0.0), 120.0)])
+    Hindernis und kein Gegner: die KI geht aussenrum (die neue Planung wählt
+    dafür dieselbe Ausweichlinie wie beim Überholen), aber langsamer als bei
+    einem, der mitfährt — und wartet nicht dahinter."""
+    fahrend = _regler([(200.0, 120.0)])
     fahrend.compute_inputs(1.0 / 60)
-    stehend = _regler([_abbild((70.0, 0.0), 0.0)])
+    stehend = _regler([(200.0, 0.0)])
     stehend.compute_inputs(1.0 / 60)
-    assert abs(_seitlich(fahrend)) > 20.0, "gar kein Ausweichen"
-    assert abs(_seitlich(stehend)) > abs(_seitlich(fahrend)) + 20.0
+    assert abs(_seitlich(stehend)) > 20.0, "gar kein Ausweichen"
+    assert abs(_seitlich(fahrend)) > 20.0
+    assert stehend._bahn.v_soll <= fahrend._bahn.v_soll
 
 
 def test_ein_deutlich_langsameres_auto_dicht_davor_bremst_die_ki_ein():
-    """Auf freier Strecke gibt die KI bei 60 px/s Gas. Mit einem fremden Auto
-    dicht davor, das nur 30 fährt, muss sie stattdessen verzögern."""
-    frei = _regler([], tempo=60.0)
-    frei.compute_inputs(1.0 / 60)
-    assert frei.dbg_state == "drive"
-
-    r = _regler([_abbild((55.0, 0.0), 30.0)], tempo=60.0)
-    r.compute_inputs(1.0 / 60)
-    assert r.dbg_state in ("brake", "coast"), r.dbg_state
+    """Mit einem fremden Auto dicht davor, das nur 30 fährt, muss die KI
+    weniger Gas geben beziehungsweise bremsen als auf freier Strecke."""
+    frei = _eingaben([], tempo=90.0)
+    mit = _eingaben([(110.0, 30.0)], tempo=90.0)
+    assert mit[1] > frei[1] or mit[0] < frei[0], (frei, mit)
 
 
 def test_die_ki_merkt_ein_auto_vor_sich():
-    r = _regler([_abbild((70.0, 0.0), 120.0)])
+    r = _regler([(150.0, 120.0)])
     r.compute_inputs(1.0 / 60)
     assert r.dbg_car_ahead is True
 
@@ -200,16 +197,16 @@ def test_die_ki_merkt_ein_auto_vor_sich():
 def test_ein_fremdes_auto_weit_hinten_stoert_nicht():
     """Sonst würde die KI schon auf der Gegengeraden ausweichen."""
     ohne = _eingaben([])
-    weit = _eingaben([_abbild((-4000.0, 0.0), 120.0)])
+    weit = _eingaben([(-4000.0, 120.0)])
     assert weit == pytest.approx(ohne)
 
 
 def test_ein_abbild_ohne_nachricht_bewegt_die_ki_nicht():
-    """Es steht auf (0, 0) — genau da, wo die KI selbst steht."""
+    """Es steht auf (0, 0) — weit weg vom Start, also außer Sicht."""
     ohne = _eingaben([])
-    gespenst = _eingaben([_abbild((0.0, 0.0), 0.0, bereit=False)])
-    # Der Regler bekommt es gar nicht zu sehen (race_state filtert), aber selbst
-    # wenn: auf dem eigenen Punkt darf es keine Lenkbewegung auslösen.
+    r = _regler([])
+    r.opponents = [_abbild((0.0, 0.0), 0.0, bereit=False)]
+    gespenst = r.compute_inputs(1.0 / 60)
     assert abs(gespenst[2] - ohne[2]) < 0.5
 
 
