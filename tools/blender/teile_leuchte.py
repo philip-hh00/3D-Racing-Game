@@ -29,6 +29,8 @@ in ``tools/blender/fahrzeuge/<key>.json``::
                    (Anteile entlang der langen Achse; Standard je ``typ``),
       "achse": 0|1 (Standard: die längere Ausdehnung des Umrisses),
       "rand_m": 0.005 (Kammersteg), "steg_hoehe": 0.7 (Anteil der Tiefe),
+      "optik": {"schlusslicht": "rillen"|"waben", "bremslicht": "rillen"|"led"}
+               (Standard: ruhige Streurillen, "rillen_m": 0.004 Teilung),
       "waben_m": 0.006 (Kissenoptik), "led_m": 0.0075 (Punktmatrix),
       "stil": "klassisch" (die bisherige Einheit, ``teile_leuchte_klassisch``),
       "glas": "rot"|"rauch"|"klar" (Deckglas), "klar": ["rueckfahr"] (Kammern
@@ -140,6 +142,7 @@ STAERKE = {"licht_hinten": 6.0, "bremslicht": 6.0, "licht_vorn": 6.0, "leuchte_i
 PEGEL = {
     "waben_grund": 0.0, "waben_seite": 0.03, "waben_kern": 0.11,
     "led_grund": 0.1, "led_kegel": 0.25, "led_linse": 0.6,
+    "rille_s_flanke": 0.02, "rille_s_kamm": 0.035, "rille_b_flanke": 0.1, "rille_b_kamm": 0.15,
     "leiter_kern": 1.0, "leiter_flanke": 0.45, "leiter_unten": 0.12,
     "halo": 0.16,
 }
@@ -745,6 +748,21 @@ def _vorlage_led(abstand: float):
     return punkte, flaechen, mi
 
 
+def _vorlage_welle(laenge: float, breite: float, h: float, n: int = 6):
+    """Stück einer flachen Zylinderrille entlang x (0 Flanke, 1 Kamm)."""
+    l2 = laenge / 2 * 1.04
+    punkte = []
+    for j in range(n + 1):
+        y = -breite / 2 + breite * j / n
+        z = h * math.sin(math.pi * j / n)
+        punkte += [(-l2, y, z), (l2, y, z)]
+    flaechen, mi = [], []
+    for j in range(n):
+        flaechen.append((2 * j, 2 * j + 1, 2 * j + 3, 2 * j + 2))
+        mi.append(1 if 0 < j < n - 1 else 0)
+    return punkte, flaechen, mi
+
+
 def _vorlage_facette(w: float, h: float, versatz):
     """Facette: flache Pyramide mit verschobener Spitze (Chromreflektor)."""
     d = w / 2
@@ -792,7 +810,19 @@ def _optik(einh: Einheit, art: str, platte, drin, proj, mats, einheit: dict):
     rot = _emissionsfarbe(mats["licht_hinten"])
     brems = _emissionsfarbe(mats["bremslicht"])
     null = (0.0, 0.0, 0.0)
-    if art == "schlusslicht":
+    optik = (einheit.get("optik") or {}).get(art, "rillen")
+    if art in ("schlusslicht", "bremslicht") and optik == "rillen":
+        # Ruhige Fläche: flache, waagerechte Streurillen hinter glattem Glas
+        # (Zylinderoptik). Liest sich aus der Nähe als Licht, nicht als Lochblech.
+        teilung = einheit.get("rillen_m", 0.004)
+        farbe = rot if art == "schlusslicht" else brems
+        flanke, kamm = ((PEGEL["rille_s_flanke"], PEGEL["rille_s_kamm"]) if art == "schlusslicht"
+                        else (PEGEL["rille_b_flanke"], PEGEL["rille_b_kamm"]))
+        orte = _raster(einh, platte, drin, proj, 0.004, teilung)
+        ob = _stempeln("_quelle_rille", orte, _vorlage_welle(0.0042, teilung, 0.00018),
+                       [_quellmat(farbe, flanke), _quellmat(_kern(farbe, 0.1), kamm)])
+        grund = _quellmat(farbe, flanke * 0.6)
+    elif art == "schlusslicht":
         m = einheit.get("waben_m", 0.006)
         r = m / math.sqrt(3)
         orte = _versetzt(einh, platte, drin, proj, 1.5 * r, math.sqrt(3) * r)
@@ -800,7 +830,7 @@ def _optik(einh: Einheit, art: str, platte, drin, proj, mats, einheit: dict):
                        [_quellmat(rot, PEGEL["waben_seite"]),
                         _quellmat(_kern(rot, 0.12), PEGEL["waben_kern"])])
         grund = _quellmat(rot, PEGEL["waben_grund"])
-    elif art == "bremslicht":
+    elif art == "bremslicht":            # "optik": {"bremslicht": "led"}
         m = einheit.get("led_m", 0.0075)
         orte = _raster(einh, platte, drin, proj, m, m * 0.866, versatz_zeile=0.5)
         ob = _stempeln("_quelle_led", orte, _vorlage_led(m),
@@ -808,7 +838,7 @@ def _optik(einh: Einheit, art: str, platte, drin, proj, mats, einheit: dict):
                         _quellmat(_kern(brems, 0.2), PEGEL["led_linse"])])
         grund = _quellmat(brems, PEGEL["led_grund"])
     elif art in ("blinker", "rueckfahr", "chrom"):
-        w = 0.0042
+        w = 0.009
         orte = _raster(einh, platte, drin, proj, w, w)
         # Jede Facette mit eigener Neigung: gestreute Spiegelungen wie ein
         # echter Facettenreflektor (fest aus der Lage, nicht zufällig).
@@ -816,7 +846,7 @@ def _optik(einh: Einheit, art: str, platte, drin, proj, mats, einheit: dict):
         for gruppe in range(4):
             vers = [(0.45, 0.2), (-0.3, 0.45), (0.2, -0.45), (-0.45, -0.25)][gruppe]
             teil = [o for i, o in enumerate(orte) if (i * 7 + (i // 13) * 3) % 4 == gruppe]
-            obs.append(_stempeln("_quelle_facette", teil, _vorlage_facette(w, 0.00045, vers),
+            obs.append(_stempeln("_quelle_facette", teil, _vorlage_facette(w, 0.00015, vers),
                                  [_quellmat(null, 0.0)]))
         obs = [o for o in obs if o is not None]
         ob = g.verbinden(obs, "_quelle_facette") if obs else None

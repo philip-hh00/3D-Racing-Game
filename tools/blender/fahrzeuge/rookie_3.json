@@ -416,151 +416,110 @@
    }
   },
   {
-   "ansicht": "oben",
+   "ansicht": "hinten",
    "punkte": [
     [
-     0.038,
-     0.53
+     0.535,
+     0.765
     ],
     [
-     0.045,
-     0.515
+     0.79,
+     0.77
     ],
     [
-     0.057,
-     0.53
+     0.84,
+     0.795
     ],
     [
-     0.075,
-     0.6
+     0.86,
+     0.835
     ],
     [
-     0.09,
-     0.68
+     0.865,
+     0.945
     ],
     [
-     0.105,
-     0.76
+     0.78,
+     0.885
     ],
     [
-     0.12,
-     0.825
-    ],
-    [
-     0.1,
-     0.83
-    ],
-    [
-     0.08,
-     0.78
-    ],
-    [
-     0.063,
-     0.7
-    ],
-    [
-     0.048,
-     0.62
+     0.535,
+     0.875
     ]
    ],
    "spiegeln": true,
-   "mat": "kunststoff",
+   "mat": "rueckstrahler",
    "leuchte": {
     "tiefe_m": 0.02,
     "rand_m": 0.005,
     "abdeckung": "streuscheibe",
     "einheit": {
      "typ": "winkel",
-     "ansicht": "alle",
      "glas": "rauch",
-     "waben_m": 0.009,
-     "led_m": 0.011,
-     "steg_hoehe": 0.35,
-     "je_ansicht": {
-      "hinten": {
-       "segmente": [
-        [
-         "bremslicht",
-         0.4
-        ],
-        [
-         "schlusslicht",
-         0.4
-        ],
-        [
-         "blinker",
-         0.2
-        ]
+     "steg_hoehe": 0.3,
+     "segmente": [
+      [
+       "bremslicht",
+       0.72
+      ],
+      [
+       "blinker",
+       0.28
+      ]
+     ],
+     "lichtleiter": [
+      {
+       "quer": [
+        0.6
        ],
-       "lichtleiter": [
-        {
-         "quer": [
-          0.6
-         ],
-         "abstand_m": 0.006
-        }
-       ]
-      },
-      "oben": {
-       "segmente": [
-        [
-         "schlusslicht",
-         1.0
-        ]
-       ],
-       "lichtleiter": []
+       "abstand_m": 0.006
       }
-     }
+     ]
     },
     "rand_mat": "zierteil",
-    "boden_mat": "kunststoff"
+    "boden_mat": "rueckstrahler"
    },
-   "n_min": 0.25,
-   "oder": [
+   "und": [
     {
      "ansicht": "hinten",
      "punkte": [
       [
-       0.535,
-       0.79
+       0.0,
+       0.0
       ],
       [
-       0.79,
-       0.795
+       1.3,
+       0.0
       ],
       [
-       0.84,
-       0.8200000000000001
+       1.3,
+       1.3
       ],
       [
-       0.86,
-       0.8600000000000001
+       0.76,
+       1.3
       ],
       [
-       0.865,
-       0.965
+       0.72,
+       0.884
       ],
       [
-       0.78,
-       0.925
-      ],
-      [
-       0.535,
-       0.915
+       0.0,
+       0.884
       ]
-     ],
-     "u": [
-      -0.1,
-      0.12
-     ],
-     "n_min": 0.1
+     ]
     }
-   ]
+   ],
+   "u": [
+    -0.1,
+    0.12
+   ],
+   "n_min": 0.1
   },
   {
    "ansicht": "hinten",
    "spiegeln": true,
-   "mat": "kunststoff",
+   "mat": "rueckstrahler",
    "u": [
     -0.1,
     0.12
@@ -569,42 +528,40 @@
    "punkte": [
     [
      0.19,
-     0.8
+     0.775
     ],
     [
      0.48,
-     0.79
+     0.765
     ],
     [
      0.48,
-     0.915
+     0.875
     ],
     [
      0.17,
-     0.918
+     0.878
     ],
     [
      0.16,
-     0.885
+     0.845
     ],
     [
      0.17,
-     0.8200000000000001
+     0.795
     ]
    ],
    "leuchte": {
     "tiefe_m": 0.024,
     "rand_m": 0.005,
     "rand_mat": "zierteil",
-    "boden_mat": "kunststoff",
+    "boden_mat": "rueckstrahler",
     "abdeckung": "streuscheibe",
     "teil": "heckklappe",
     "einheit": {
      "typ": "band",
      "glas": "rauch",
-     "waben_m": 0.009,
-     "led_m": 0.011,
-     "steg_hoehe": 0.35,
+     "steg_hoehe": 0.3,
      "segmente": [
       [
        "rueckfahr",

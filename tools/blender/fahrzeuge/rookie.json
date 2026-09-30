@@ -409,166 +409,116 @@
    }
   },
   {
-   "ansicht": "oben",
+   "ansicht": "hinten",
    "punkte": [
     [
-     0.047,
-     0.4
-    ],
-    [
-     0.052,
-     0.36
-    ],
-    [
-     0.06,
-     0.37
-    ],
-    [
-     0.07,
-     0.48
-    ],
-    [
-     0.085,
-     0.62
-    ],
-    [
-     0.105,
-     0.72
-    ],
-    [
-     0.132,
+     0.535,
      0.785
     ],
     [
-     0.13,
-     0.81
+     0.8,
+     0.79
     ],
     [
-     0.1,
-     0.8
+     0.85,
+     0.8150000000000001
     ],
     [
-     0.075,
-     0.7
+     0.87,
+     0.855
     ],
     [
-     0.058,
-     0.58
+     0.875,
+     0.965
     ],
     [
-     0.05,
-     0.48
+     0.79,
+     0.915
+    ],
+    [
+     0.535,
+     0.905
     ]
    ],
    "spiegeln": true,
-   "mat": "kunststoff",
+   "mat": "rueckstrahler",
    "leuchte": {
     "tiefe_m": 0.02,
     "rand_m": 0.005,
     "abdeckung": "streuscheibe",
     "einheit": {
      "typ": "winkel",
-     "ansicht": "alle",
      "glas": "rauch",
-     "waben_m": 0.009,
-     "led_m": 0.011,
-     "steg_hoehe": 0.35,
-     "je_ansicht": {
-      "hinten": {
-       "segmente": [
-        [
-         "bremslicht",
-         0.34
-        ],
-        [
-         "schlusslicht",
-         0.46
-        ],
-        [
-         "blinker",
-         0.2
-        ]
+     "steg_hoehe": 0.3,
+     "segmente": [
+      [
+       "bremslicht",
+       0.72
+      ],
+      [
+       "blinker",
+       0.28
+      ]
+     ],
+     "lichtleiter": [
+      {
+       "quer": [
+        0.68
        ],
-       "lichtleiter": [
-        {
-         "quer": [
-          0.68
-         ],
-         "abstand_m": 0.006
-        },
-        {
-         "senkrecht": [
-          0.86
-         ],
-         "abstand_m": 0.006
-        }
-       ]
+       "abstand_m": 0.006
       },
-      "oben": {
-       "segmente": [
-        [
-         "schlusslicht",
-         1.0
-        ]
+      {
+       "senkrecht": [
+        0.86
        ],
-       "lichtleiter": [
-        {
-         "verlauf": "rand",
-         "abstand_m": 0.008
-        }
-       ]
+       "abstand_m": 0.006
       }
-     }
+     ]
     },
-    "boden_mat": "kunststoff",
+    "boden_mat": "rueckstrahler",
     "rand_mat": "zierteil"
    },
-   "n_min": 0.25,
-   "oder": [
+   "und": [
     {
      "ansicht": "hinten",
      "punkte": [
       [
-       0.535,
-       0.8
+       0.0,
+       0.0
       ],
       [
-       0.8,
-       0.805
+       1.3,
+       0.0
       ],
       [
-       0.85,
-       0.8300000000000001
+       1.3,
+       1.3
       ],
       [
-       0.87,
-       0.8700000000000001
+       0.68,
+       1.3
       ],
       [
-       0.875,
-       0.975
+       0.62,
+       0.91
       ],
       [
-       0.79,
-       0.9450000000000001
-      ],
-      [
-       0.535,
-       0.935
+       0.0,
+       0.91
       ]
-     ],
-     "u": [
-      -0.1,
-      0.12
-     ],
-     "n_min": 0.1
+     ]
     }
-   ]
+   ],
+   "u": [
+    -0.1,
+    0.12
+   ],
+   "n_min": 0.1
   },
   {
    "ansicht": "hinten",
    "spiegeln": true,
-   "mat": "kunststoff",
+   "mat": "rueckstrahler",
    "u": [
     -0.1,
     0.12
@@ -577,50 +527,48 @@
    "punkte": [
     [
      0.16999999999999998,
-     0.81
+     0.795
     ],
     [
      0.48,
-     0.8
+     0.785
     ],
     [
      0.48,
-     0.935
-    ],
-    [
-     0.15,
-     0.9380000000000001
-    ],
-    [
-     0.13999999999999999,
      0.905
     ],
     [
      0.15,
-     0.8300000000000001
+     0.908
+    ],
+    [
+     0.13999999999999999,
+     0.875
+    ],
+    [
+     0.15,
+     0.8150000000000001
     ]
    ],
    "leuchte": {
     "tiefe_m": 0.024,
     "rand_m": 0.005,
     "rand_mat": "zierteil",
-    "boden_mat": "kunststoff",
+    "boden_mat": "rueckstrahler",
     "abdeckung": "streuscheibe",
     "teil": "heckklappe",
     "einheit": {
      "typ": "band",
      "glas": "rauch",
-     "waben_m": 0.009,
-     "led_m": 0.011,
-     "steg_hoehe": 0.35,
+     "steg_hoehe": 0.3,
      "segmente": [
       [
        "rueckfahr",
-       0.34
+       0.3
       ],
       [
        "schlusslicht",
-       0.66
+       0.7
       ]
      ],
      "lichtleiter": [
