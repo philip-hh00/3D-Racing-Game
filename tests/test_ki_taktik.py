@@ -87,3 +87,44 @@ def test_anfaenger_verteidigt_nicht():
     plan = _plan(kurve_bei=600.0)
     w = _taktik("easy", plan).entscheiden(150.0, 0.0, 600.0, [Gegner(40.0, 0.0, 610.0, L, B)])
     assert w.zustand == "frei"
+
+
+def test_dicht_folgen_ist_nicht_nebeneinander():
+    """Dicht hinter jemandem in der gleichen Spur ist nicht nebeneinander."""
+    plan = _plan()
+    t = _taktik("hard", plan)
+    # Gegner ist 50 px vorne (bumper gap ~ -12), aber nur 5 px lateral versetzt
+    # → sollte nicht "neben" sein, sondern "windschatten"
+    w = t.entscheiden(100.0, 0.0, 600.0, [Gegner(150.0, 5.0, 590.0, L, B)])
+    assert w.zustand == "windschatten"
+    assert w.darf_ausscheren is True
+
+
+def test_verteidigung_haelt_auch_ohne_verfolger():
+    """Wenn Verteidigung committed, bleibt sie bis zur Zone auch ohne Verfolger."""
+    plan = _plan(kurve_bei=600.0, links=False)
+    t = _taktik("expert", plan)
+    hinten = [Gegner(40.0, 0.0, 610.0, L, B)]
+    # Erste Entscheidung mit Verfolger: Verteidigung committen
+    w1 = t.entscheiden(150.0, 0.0, 600.0, hinten)
+    assert w1.zustand == "verteidigen"
+    seite_committed = w1.seite
+    # Zweite Entscheidung bei s=220 ohne Gegner: Verteidigung sollte bestehen bleiben
+    w2 = t.entscheiden(220.0, seite_committed, 600.0, [])
+    assert w2.zustand == "verteidigen"
+    assert w2.seite == seite_committed
+
+
+def test_verteidigung_endet_nach_der_zone():
+    """Verteidigung endet, sobald die Zone passiert ist."""
+    plan = _plan(kurve_bei=600.0, links=False)
+    t = _taktik("expert", plan)
+    hinten = [Gegner(40.0, 0.0, 610.0, L, B)]
+    # Erste Entscheidung mit Verfolger: Verteidigung committen
+    w1 = t.entscheiden(150.0, 0.0, 600.0, hinten)
+    assert w1.zustand == "verteidigen"
+    verteidigt_bis = t._verteidigt_bis
+    # Zweite Entscheidung nach der Zone: Verteidigung sollte beendet sein
+    s_nach_zone = verteidigt_bis + 50.0
+    w2 = t.entscheiden(s_nach_zone, w1.seite, 600.0, [])
+    assert w2.zustand == "frei"

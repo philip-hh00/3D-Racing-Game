@@ -46,7 +46,7 @@ class Taktik:
         stufe = self.stufe
         w = Wunsch(seitenabstand=8.0 + (1.0 - stufe.mut) * 22.0)
         rel = [(st.ds(s, g.s), g) for g in gegner]
-        neben = [(r, g) for r, g in rel if abs(r) < 0.5 * (self.laenge + g.laenge) + 10.0]
+        neben = [(r, g) for r, g in rel if abs(r) < 0.5 * (self.laenge + g.laenge) + 10.0 and abs(d - g.d) >= 0.5 * (self.breite + g.breite)]
         vorne = [(r, g) for r, g in rel if 0.0 < r < BEREICH_VORNE and (r, g) not in neben]
         hinten = [(r, g) for r, g in rel if -BEREICH_HINTEN < r < 0.0 and (r, g) not in neben]
         if self._verteidigt_bis is not None and st.ds(s, self._verteidigt_bis) <= 0.0:
@@ -70,12 +70,12 @@ class Taktik:
                 w.gewicht_seite = self.pers.angriff
                 w.spaeter_bremsen_px = 60.0 * self.pers.angriff
             return w
+        if self._verteidigt_bis is not None:
+            w.zustand = "verteidigen"
+            w.seite = self._verteidigt_seite
+            w.gewicht_seite = 1.0
+            return w
         if hinten and stufe.verteidigen:
-            if self._verteidigt_bis is not None:
-                w.zustand = "verteidigen"
-                w.seite = self._verteidigt_seite
-                w.gewicht_seite = 1.0
-                return w
             _, g = max(hinten, key=lambda rg: rg[0])
             bz = self.bremszone(s, v)
             if bz is not None and bz[0] < 600.0 and g.v >= v - 20.0:
