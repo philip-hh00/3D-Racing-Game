@@ -97,7 +97,16 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
     wagen = _autos(welt, track, autos, stufe_key)
     st = wagen[0].controller.fahrplan.strecke
     zaehler = {"wand": 0, "auto": 0}
-    bus.subscribe("impact_vehicle_wall", lambda d: zaehler.__setitem__("wand", zaehler["wand"] + 1))
+    koerper = {id(a.physics.body): i for i, a in enumerate(wagen)}
+    fertig = set()
+
+    def wand_beruehrt(d):
+        # Nur Berührungen vor dem Ziel zählen: wer fertig ist, fährt weiter seine
+        # Runden (wie im Spiel), wird aber nicht mehr bewertet.
+        if koerper.get(d.get("vehicle_body_id")) not in fertig:
+            zaehler["wand"] += 1
+
+    bus.subscribe("impact_vehicle_wall", wand_beruehrt)
     bus.subscribe("impact_vehicle_vehicle", lambda d: zaehler.__setitem__("auto", zaehler["auto"] + 1))
     s_vor = [st.sd(*a.position)[0] for a in wagen]
     s_start = s_vor[:]  # Grid-Positionen speichern
@@ -107,15 +116,15 @@ def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
     ziel = runden * st.laenge
     stand = [0.0] * len(wagen)          # Zeit ohne Fortschritt
     haenger = set()
-    fertig = set()
     reihenfolge = None
     ueberholungen = 0
     naechste_messung = 5.0
     t = 0.0
     while t < zeitlimit and len(fertig) < len(wagen):
         for i, a in enumerate(wagen):
-            if i not in fertig and weg[i] < ziel + weg_start[i]:
-                a.update(DT)
+            # Auch Fertige weiter fahren lassen: ohne Eingaben rollten sie früher
+            # ungelenkt in die Wand (und zählten als Aufprall) und blockierten die Strecke.
+            a.update(DT)
         welt.step(DT)
         t += DT
         for i, a in enumerate(wagen):
