@@ -5,6 +5,8 @@
   238,
   240
  ],
+ "lack_metallic": 0.3,
+ "lack_rauheit": 0.24,
  "felge": "turbine",
  "felgenfarbe": [
   200,

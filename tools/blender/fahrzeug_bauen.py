@@ -68,6 +68,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gemeinsam as g  # noqa: E402
 import teile as tb  # noqa: E402
 import teile_innen as ti  # noqa: E402
+import teile_oberflaeche as to  # noqa: E402
 import teile_leuchte as tl  # noqa: E402
 import teile_rad as tr  # noqa: E402
 
@@ -162,9 +163,14 @@ def materialien(p):
     lack = p["lack"]
     lack2 = p.get("lack2", [18, 18, 20])
     fl = p.get("felgenfarbe", [200, 202, 205])
-    return {
-        "lack": g.material("lack", [c / 255 for c in lack], 0.0, 0.3, klarlack=1.0),
-        "lack2": g.material("lack2", [c / 255 for c in lack2], 0.0, 0.32, klarlack=1.0),
+    mats = {
+        # Werkslack: Metallic > 0 bringt im Spiel Flakes (shader.py, Strang L).
+        "lack": g.material("lack", [c / 255 for c in lack], p.get("lack_metallic", 0.0),
+                           p.get("lack_rauheit", 0.3), klarlack=1.0),
+        "lack2": g.material("lack2", [c / 255 for c in lack2], p.get("lack2_metallic", 0.0),
+                            p.get("lack2_rauheit", 0.32), klarlack=1.0),
+        # Getöntes Glas; Tönung, Deckung und Keramikrand kommen aus
+        # scheibenrand.png (teile_oberflaeche.materialien_ergaenzen).
         "glas": g.material("glas", (0.05, 0.06, 0.075), 0.0, 0.03, alpha=0.8),
         "chrom": g.material("chrom", (0.92, 0.92, 0.93), 1.0, 0.08),
         "felge": g.material("felge", [c / 255 for c in fl], 1.0, p.get("felgenrauheit", 0.22)),
@@ -206,6 +212,9 @@ def materialien(p):
         # Gebürstetes Aluminium (Ansaugbrücke unter der Glasabdeckung).
         "alu": g.material("alu", (0.8, 0.81, 0.83), 1.0, 0.3),
     }
+    # Leder, Polster, Anzeigen; Texturen für Carbon, Kunststoff, Glas (nicht in LOD1).
+    to.materialien_ergaenzen(mats, p)
+    return mats
 
 
 # ---------------------------------------------------------------------------
@@ -2295,6 +2304,7 @@ def modell_bauen(key: str, p: dict):
         if ob is not None:
             lamellen.append(ob)
     anbau = anbauteile(karosserie, fo, p, mats) + radlauf_lippen(karosserie, fo, p, mats)
+    anbau += to.kleinteile(karosserie, fo, p, mats)
     tp = p.get("teile")
     if tp is not None and tp.get("innenraum", {}) is not False:
         innen = ti.innenraum(fo, p, tp.get("innenraum") or {}, mats)
@@ -2303,6 +2313,7 @@ def modell_bauen(key: str, p: dict):
     karo_teile = [karosserie] + lamellen + radhaeuser + anbau + innen
     tl.atlas_anwenden(karo_teile, p)  # Leuchten: UV, Hochpoly backen, Atlas an die Materialien
     karo = g.verbinden(karo_teile, "karosserie")
+    to.oberflaechen(karo)           # Keramikrand der Scheiben, UV für Lack und Texturen
     ms.hoehe = max(v.co.z for v in karo.data.vertices)
 
     raeder, naben, saettel = [], {}, []
