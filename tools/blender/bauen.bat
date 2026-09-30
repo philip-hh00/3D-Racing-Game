@@ -32,6 +32,8 @@ echo === Himmel ===
 "%BLENDER%" -b -P tools\blender\himmel_bauen.py || goto fehler
 
 :fahrzeuge
+echo === Fahrzeugtexturen (ambientCG, erzeugt) ===
+"%PY%" tools\fahrzeug_texturen.py || goto fehler
 echo === Fahrzeuge ===
 "%BLENDER%" -b -P tools\blender\fahrzeug_bauen.py -- --fahrzeug alle || goto fehler
 if "%TEIL%"=="fahrzeuge" goto ende
