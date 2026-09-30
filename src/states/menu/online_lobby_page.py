@@ -39,8 +39,8 @@ _LOBBY       = "lobby"
 #: die Serie ein, die Uebersicht fuehrt sie.
 _GP_OVERVIEW = "gp_overview"
 
-_DIFF_KEYS   = ["easy", "medium", "hard"]
-_DIFF_LABELS = [tr("Einfach"), tr("Mittel"), tr("Schwer")]
+_DIFF_KEYS   = ["easy", "medium", "hard", "expert"]
+_DIFF_LABELS = [tr("Anfänger"), tr("Fortgeschritten"), tr("Profi"), tr("Meister")]
 
 _MODE_KEYS    = ["Rennen", "Team-Zeitfahren", "Grand Prix"]   # internal values of self._selected_mode
 #: Fahrzeuge je Lobby. Team-Zeitfahren braucht gerade Zahlen, deshalb wird

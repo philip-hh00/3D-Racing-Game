@@ -34,8 +34,8 @@ MODE_DESCRIPTIONS = {
     "Grand Prix": "Mehrere Rennen, ein Champion. Sammle Punkte über alle Strecken — der Beste gewinnt die Serie.",
 }
 
-DIFFICULTY_KEYS = ["easy", "medium", "hard"]
-DIFFICULTY_LABELS = {"easy": "Einfach", "medium": "Mittel", "hard": "Schwer"}
+DIFFICULTY_KEYS = ["easy", "medium", "hard", "expert"]
+DIFFICULTY_LABELS = {"easy": "Anfänger", "medium": "Fortgeschritten", "hard": "Profi", "expert": "Meister"}
 
 # Input device specs for local players.
 INPUT_SPECS = ["keyboard", "pad0", "pad1"]
@@ -56,7 +56,7 @@ def available_input_specs() -> list[str]:
 class AIDriver:
     name: str
     vehicle: str = "random"     # "random" or concrete vehicle config key
-    difficulty: str = "medium"  # "easy", "medium", "hard"
+    difficulty: str = "medium"  # "easy", "medium", "hard", "expert"
     team: str = "A"             # "A" or "B"
 
 

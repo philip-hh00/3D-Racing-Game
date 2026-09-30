@@ -152,7 +152,6 @@ class RaceState(BaseState):
         self.track: Track | None = None
         self.player: PlayerVehicle | None = None
         self.ai_vehicles: list[Any] = []
-        self._line_geo = None
         #: Die 3D-Welt. ``None``, wenn kein OpenGL da ist (Testlauf) - dann
         #: wird keine Welt gezeichnet, alles andere laeuft weiter.
         self.szene = None
@@ -509,7 +508,6 @@ class RaceState(BaseState):
         # Post-finish state: player AI takeover + which cars got the 0.5 slowdown
         self._player_ai_ids: set[int] = set()
         self._finish_applied: set[int] = set()
-        self._takeover_lines = {}
 
         # Initialize Race Manager with all humans and AI opponents.
         total_laps = kwargs.get("total_laps") or race_setup.current().laps
@@ -543,15 +541,13 @@ class RaceState(BaseState):
         # Precompute the AI-takeover racing line for every human car during the
         # loading screen, so crossing the finish line doesn't stall ~350ms on a
         # synchronous solve.
-        from src.ai.difficulty import get_difficulty as _get_diff
-        _hard = _get_diff("hard")
+        from src.ai.fahrplan import fahrplan_bauen
+        from src.ai.stufen import STUFEN
         for _hp in self._humans:
-            _ck = getattr(_hp.config, "name", id(_hp.config))
-            if _ck not in self._takeover_lines:
-                try:
-                    self._takeover_lines[_ck] = self._build_racing_line_for(_hp.config, _hard)
-                except Exception:
-                    pass
+            try:
+                fahrplan_bauen(self.track, _hp.config, STUFEN["expert"])
+            except Exception:
+                pass
             self._lade_melden("uebernahme", (self._humans.index(_hp) + 1) / len(self._humans))
         self._ladeanzeige_beenden()
 
@@ -574,8 +570,6 @@ class RaceState(BaseState):
 
     def _build_racing_lines_optimized(self) -> None:
         """Compute per-vehicle physics-optimised trajectory with a loading screen."""
-        from src.ai.racing_line_solver import compute_racing_line_optimized, SolvedRacingLine
-        from src.ai.speed_profile import limits_from_config, compute_speed_profile
         from src.core import race_setup
 
         setup = race_setup.current()
@@ -603,7 +597,6 @@ class RaceState(BaseState):
                 self._lade_melden("ghost", 1.0)
 
         if not self.track or not self.ai_vehicles:
-            self._line_geo = None
             # Gaeste haben kein KI-Roster und damit nichts zu rechnen. Sie warten
             # aber trotzdem auf die anderen - dafuer brauchen sie denselben
             # Hintergrund wie der Host, sonst startet ihr Bildschirm optisch
@@ -613,43 +606,9 @@ class RaceState(BaseState):
                 self._ladevideo_behalten = True
             return
 
-        center = self.track.centerline
-        if not center or len(center) < 3:
-            center = [(wp.x, wp.y) for wp in self.track.waypoints]
-
         total = len(self.ai_vehicles)
-
         for car_idx, ai in enumerate(self.ai_vehicles):
-            diff = ai.controller.difficulty
-            margin = getattr(diff, "wall_margin", 24.0)
-            adjusted_margin = margin + max(0.0, (ai.config.height_px - 48.0) * 0.5)
-
-            def _progress(it, max_it, _ci=car_idx):
-                self._lade_melden("linien", (_ci + it / max(1, max_it)) / total)
-
-            geo = compute_racing_line_optimized(
-                center, self.track.track_width,
-                vehicle_config=ai.config,
-                difficulty=diff,
-                car_width=ai.config.width_px,
-                margin=adjusted_margin,
-                progress_callback=_progress,
-            )
-
-            if car_idx == 0:
-                self._line_geo = geo
-
-            grip_usage = getattr(diff, "grip_usage", None)
-            brake_confidence = getattr(diff, "brake_confidence", None)
-            steer_confidence = getattr(diff, "steer_confidence", None)
-
-            lim = limits_from_config(ai.config, grip_usage=grip_usage,
-                                     brake_confidence=brake_confidence,
-                                     steer_confidence=steer_confidence)
-            profile = compute_speed_profile(geo, lim)
-            ai.controller.racing_line = SolvedRacingLine(
-                geo.offsets, profile, geo.signed_curvature, geo.points
-            )
+            ai.controller.vorbereiten()
             self._lade_melden("linien", (car_idx + 1) / total)
 
     def _open_loading_video(self) -> None:
@@ -671,28 +630,6 @@ class RaceState(BaseState):
         if vid is not None:
             vid.close()
         self._load_video = None
-
-    def _build_racing_line_for(self, config, difficulty):
-        """Build a SolvedRacingLine for one vehicle config (used for player takeover)."""
-        from src.ai.racing_line_solver import compute_racing_line_optimized, SolvedRacingLine
-        from src.ai.speed_profile import limits_from_config, compute_speed_profile
-        center = self.track.centerline
-        if not center or len(center) < 3:
-            center = [(wp.x, wp.y) for wp in self.track.waypoints]
-        margin = getattr(difficulty, "wall_margin", 24.0) + max(0.0, (config.height_px - 48.0) * 0.5)
-        geo = compute_racing_line_optimized(
-            center, self.track.track_width,
-            vehicle_config=config, difficulty=difficulty,
-            car_width=config.width_px, margin=margin,
-        )
-        lim = limits_from_config(
-            config,
-            grip_usage=getattr(difficulty, "grip_usage", None),
-            brake_confidence=getattr(difficulty, "brake_confidence", None),
-            steer_confidence=getattr(difficulty, "steer_confidence", None),
-        )
-        profile = compute_speed_profile(geo, lim)
-        return SolvedRacingLine(geo.offsets, profile, geo.signed_curvature, geo.points)
 
     def _apply_finish_effects(self) -> None:
         """After each vehicle finishes: hand the player to the AI and slow all
@@ -718,15 +655,8 @@ class RaceState(BaseState):
         if vehicle is None or vehicle.id in self._player_ai_ids:
             return
         from src.ai.ai_controller import AIController
-        from src.ai.difficulty import get_difficulty
-        diff = get_difficulty("hard")
-        ctrl = AIController(vehicle, self.track, diff)
-        _ck = getattr(vehicle.config, "name", id(vehicle.config))
-        line = getattr(self, "_takeover_lines", {}).get(_ck)
-        if line is None:
-            # Fallback: not precomputed (shouldn't happen) — solve now.
-            line = self._build_racing_line_for(vehicle.config, diff)
-        ctrl.racing_line = line
+        ctrl = AIController(vehicle, self.track, "expert")
+        ctrl.vorbereiten()
         # Dieselbe Liste wie alle anderen Regler — ein uebernommenes Spielerauto
         # faehrt sonst blind durch ein Feld, das es beim Start gab.
         if self._ai_feld is None:
@@ -940,11 +870,11 @@ class RaceState(BaseState):
     def _spawn_ai_vehicles(self, start_positions, kwargs: dict, human_count: int = 1) -> list:
         """Create AI opponents on grid slots after the human player(s)."""
         from src.entities.vehicle_factory import VehicleFactory
-        from src.ai.difficulty import get_difficulty
+        from src.ai.stufen import stufe
         from src.core import race_setup
 
         setup = race_setup.current()
-        difficulty = get_difficulty(kwargs.get("difficulty") or setup.ai_difficulty)
+        difficulty = stufe(kwargs.get("difficulty") or setup.ai_difficulty)
         from src.core import lack
 
         # AI opponents fill the field up to the requested size, but never more
@@ -969,10 +899,10 @@ class RaceState(BaseState):
                 if cfg_key == "random":
                     import random
                     cfg_key = random.choice(ai_keys)
-                difficulty = get_difficulty(driver.difficulty)
+                difficulty = stufe(driver.difficulty)
             else:
                 cfg_key = ai_keys[i % len(ai_keys)]
-                difficulty = get_difficulty(setup.ai_difficulty)
+                difficulty = stufe(setup.ai_difficulty)
             vid = i + 1 + human_count
             ai = VehicleFactory.create_ai_vehicle(
                 config_key=cfg_key,
@@ -1084,10 +1014,12 @@ class RaceState(BaseState):
             self._mitschnitt_hinweis = (tr("Mitschnitt läuft — F9 beendet ihn."), 4.0)
 
     def _update_rubber_banding(self) -> None:
-        """Give trailing AI (with rubber-banding enabled) a small throttle boost.
+        """Abstand jeder KI zum besten Menschen an die Regler melden.
 
-        Progress is measured as ``current_lap * num_waypoints + waypoint_index``
-        so the gap to the leader spans laps cleanly.
+        Aufholhilfe: nur Stufen mit ``aufholhilfe > 0`` werten den Wert aus
+        (siehe ``AIController._aufholfaktor``). Der Wert ist in Runden
+        gemessen, positiv = die KI liegt hinter dem besten Menschen.
+        Fortschritt = ``current_lap * num_waypoints + waypoint_index``.
         """
         if not self.race_manager or not self.track:
             return
@@ -1098,11 +1030,14 @@ class RaceState(BaseState):
             t = trackers[vid]
             return t.current_lap * num_wp + t.waypoint_progress
 
-        leader = max(progress(v.id) for v in self.race_manager.vehicles)
+        humans = [h for h in self._humans if h.id in trackers]
+        if not humans:
+            for ai in self.ai_vehicles:
+                ai.controller.rubber_band = 0.0
+            return
+        bester = max(progress(h.id) for h in humans)
         for ai in self.ai_vehicles:
-            gap = leader - progress(ai.id)
-            # Up to +0.3 throttle, reaching full boost at half a lap behind.
-            ai.controller.rubber_band = min(0.3, gap / (num_wp * 0.5)) if gap > 0 else 0.0
+            ai.controller.rubber_band = (bester - progress(ai.id)) / num_wp
 
     # ── Klang (Block C, §C6) ────────────────────────────────────────────────
 
@@ -2836,7 +2771,7 @@ class RaceState(BaseState):
 
         # 3. Build the replacement AI car at the captured transform.
         from src.entities.vehicle_factory import VehicleFactory
-        from src.ai.difficulty import get_difficulty
+        from src.ai.stufen import stufe
         from src.core import lack
         veh = VehicleFactory.create_ai_vehicle(
             config_key=cfg_key,
@@ -2845,7 +2780,7 @@ class RaceState(BaseState):
             start_angle=angle,
             space=self.physics_world.space,
             track=self.track,
-            difficulty=get_difficulty(setup.ai_difficulty),
+            difficulty=stufe(setup.ai_difficulty),
             # Das Auto behaelt die Lackierung des Spielers, der ausgestiegen
             # ist — es ist dasselbe Auto, nur ohne Fahrer. Jede Gegenstelle
             # liest dieselbe Kennung aus dem Lobbyzustand.

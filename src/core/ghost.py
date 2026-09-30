@@ -302,7 +302,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     """Simulate a Rookie vehicle driving 1 lap to generate a seed ghost.
 
     If the simulation fails or times out, returns a fallback ghost based on
-    the racing line solver.
+    the AI plan.
     """
     import math
     import pygame
@@ -310,9 +310,8 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     from src.physics.physics_world import PhysicsWorld
     from src.track.track import Track
     from src.entities.vehicle_factory import VehicleFactory
-    from src.ai.difficulty import get_difficulty
-    from src.ai.racing_line_solver import compute_racing_line_optimized, SolvedRacingLine
-    from src.ai.speed_profile import limits_from_config, compute_speed_profile
+    import numpy as np
+    from src.ai.stufen import stufe
     from src.physics.checkpoint import Checkpoint
     from src.physics.collision_handler import CollisionHandler
     from src.core.event_bus import EventBus
@@ -352,7 +351,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
         physics_world.cleanup()
         return GhostData()
 
-    diff = get_difficulty("hard")
+    diff = stufe("expert")
 
     # Make sure vehicle configs are loaded before using the factory
     VehicleFactory.load_all_configs()
@@ -375,13 +374,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     # Activate AI driving (by default AIVehicle.ai_active=False and brakes are held)
     ai.ai_active = True
 
-    # 3. Compute racing line for the AI
-    center = temp_track.centerline
-    if not center or len(center) < 3:
-        center = [(wp.x, wp.y) for wp in temp_track.waypoints]
-
-    margin = getattr(diff, "wall_margin", 24.0)
-    adjusted_margin = margin + max(0.0, (ai.config.height_px - 48.0) * 0.5)
+    # 3. Fahrplan der KI anlegen (Ladebalken: erste Haelfte)
 
     # Gemeldet wird nur, wenn sich die **Zahl** aendert. Jeder Aufruf kostet im
     # Spiel ein gezeichnetes Bild und die Wartezeit auf den Bildwechsel; der
@@ -400,26 +393,12 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
             _zuletzt[0] = pct
             progress_callback(pct)
 
-    def _solver_progress(it, max_it):
-        # First 50% of progress bar goes to solver
-        _melden(it * 50 / max(1, max_it))
-
-    geo = compute_racing_line_optimized(
-        center, temp_track.track_width,
-        vehicle_config=ai.config,
-        difficulty=diff,
-        car_width=ai.config.width_px,
-        margin=adjusted_margin,
-        progress_callback=_solver_progress if progress_callback else None,
-    )
-
-    lim = limits_from_config(ai.config, grip_usage=getattr(diff, "grip_usage", None),
-                             brake_confidence=getattr(diff, "brake_confidence", None),
-                             steer_confidence=getattr(diff, "steer_confidence", None))
-    profile = compute_speed_profile(geo, lim)
-    ai.controller.racing_line = SolvedRacingLine(
-        geo.offsets, profile, geo.signed_curvature, geo.points
-    )
+    _melden(0)
+    ai.controller.vorbereiten()
+    _melden(50)
+    plan = ai.controller.fahrplan
+    profile = np.maximum(plan.v_ziel, 10.0)
+    punkte = plan.strecke.xy_viele(plan.strecke.s, plan.d_ideal)
 
     # 4. Initialize race manager and collision handler
     event_bus = EventBus.create_isolated()
@@ -436,10 +415,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     recorder = GhostRecorder()
     sim_time = 0.0
     # Expected lap time fallback calculation
-    expected_lap_time = sum(
-        math.sqrt((geo.points[(i+1)%len(geo.points)][0] - p[0])**2 + (geo.points[(i+1)%len(geo.points)][1] - p[1])**2) / (profile[i] if profile[i] > 10 else 10)
-        for i, p in enumerate(geo.points)
-    )
+    expected_lap_time = float(sum(plan.strecke.seg_len / np.maximum(plan.v_ziel, 10.0)))
     max_duration = min(180.0, expected_lap_time * 3.0)
 
     # Listener for checkpoint times
@@ -484,7 +460,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
 
     # If simulation timed out or failed, build fallback ghost
     if failed or race_manager.state != "finished" or not recorder.samples:
-        return build_fallback_ghost(geo, profile)
+        return build_fallback_ghost(punkte, profile)
 
     lap_time = race_manager.results[0]["finish_time"] if race_manager.results else sim_time
     return GhostData(
@@ -496,13 +472,13 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     )
 
 
-def build_fallback_ghost(geo, profile) -> GhostData:
+def build_fallback_ghost(punkte, profile) -> GhostData:
     samples = []
     t = 0.0
-    n = len(geo.points)
+    n = len(punkte)
     for i in range(n):
-        p = geo.points[i]
-        next_p = geo.points[(i + 1) % n]
+        p = punkte[i]
+        next_p = punkte[(i + 1) % n]
         angle = math.atan2(next_p[1] - p[1], next_p[0] - p[0])
         samples.append([round(t, 3), round(p[0], 1), round(p[1], 1), round(angle, 4)])
 
