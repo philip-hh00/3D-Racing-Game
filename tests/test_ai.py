@@ -90,3 +90,26 @@ def test_alte_stufennamen_gehen():
     welt, track, feld = _feld(lambda sp: H.strecke_laden("oval", sp), ["rookie"])
     ctrl = AIController(feld[0], track, "Schwer")
     assert ctrl.difficulty is STUFEN["hard"]
+
+
+def test_planen_ist_je_auto_versetzt():
+    welt, track, feld = _feld(lambda sp: H.strecke_laden("oval", sp), ["rookie", "rookie"])
+    assert feld[0].id % 6 != feld[1].id % 6
+    bilder = [[], []]
+    for i, a in enumerate(feld):
+        orig = a.controller._planer.planen
+        bild = [0]
+
+        def spion(*args, _o=orig, _l=bilder[i], _b=bild, **kw):
+            _l.append(_b[0])
+            return _o(*args, **kw)
+        a.controller._planer.planen = spion
+        a.controller._bild = bild
+    for n in range(int(0.5 / DT)):
+        for a in feld:
+            a.controller._bild[0] = n
+            a.update(DT)
+        welt.step(DT)
+    assert len(bilder[0]) >= 4 and len(bilder[1]) >= 4
+    assert set(bilder[0]) != set(bilder[1])
+    assert not (set(bilder[0]) & set(bilder[1]) == set(bilder[0]))

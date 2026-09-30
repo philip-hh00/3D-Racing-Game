@@ -47,6 +47,7 @@ class AIController:
         self._hint: int | None = None
         self._bahn = None
         self._plan_timer = 0.0
+        self._plan_versatz = 0.0
         self._start_timer = 0.0
         self._start_offset = 0.0
         self._start_measured = False
@@ -74,7 +75,7 @@ class AIController:
         self._planer = Planer(self.fahrplan, breite, laenge)
         self._taktik = Taktik(self.fahrplan, self.difficulty, self._pers, breite, laenge)
         self._regler = Bahnregler(self.vehicle)
-        self._plan_timer = (seed % 6) / 6 * self.PLAN_INTERVALL
+        self._plan_versatz = (seed % 6) / 6 * self.PLAN_INTERVALL
         if fortschritt is not None:
             fortschritt(1.0)
 
@@ -88,7 +89,7 @@ class AIController:
         st = self.fahrplan.strecke
         liste = []
         for car in self.opponents:
-            if car is self.vehicle:
+            if car is self.vehicle or getattr(car, "bereit", True) is False:
                 continue
             try:
                 gx, gy = car.position
@@ -140,7 +141,8 @@ class AIController:
         startspur = self._startspur(d, v, dt)
         self._plan_timer -= dt
         if self._bahn is None or self._plan_timer <= 0.0:
-            self._plan_timer = self.PLAN_INTERVALL
+            self._plan_timer = (self._plan_versatz if self._bahn is None
+                                else self.PLAN_INTERVALL)
             gegner = self._gegner(pos)
             w = self._taktik.entscheiden(s, d, v, gegner)
             w.tempo *= self._pers.kurve * self._aufholfaktor()

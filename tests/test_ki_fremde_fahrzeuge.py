@@ -168,16 +168,21 @@ def _seitlich(r: AIController) -> float:
 
 def test_ein_stehendes_fremdes_auto_wird_umfahren_und_mit_weniger_tempo():
     """Ein Mitspieler, der am Start stehen bleibt oder sich gedreht hat, ist ein
-    Hindernis und kein Gegner: die KI geht aussenrum (die neue Planung wählt
-    dafür dieselbe Ausweichlinie wie beim Überholen), aber langsamer als bei
-    einem, der mitfährt — und wartet nicht dahinter."""
-    fahrend = _regler([(200.0, 120.0)])
-    fahrend.compute_inputs(1.0 / 60)
-    stehend = _regler([(200.0, 0.0)])
-    stehend.compute_inputs(1.0 / 60)
+    Hindernis und kein Gegner: die KI geht aussenrum, aber deutlich langsamer
+    als bei einem, der mitfährt.
+
+    Geometrie: 150 px vor dem mit 120 px/s fahrenden Auto. Das mitfahrende Auto
+    erlaubt Zieltempo über 200 (Gas voll, keine Bremse). Beim stehenden muss die
+    Bahn vor dem Hindernis auf rund 90 herunter: das Zieltempo liegt weit
+    darunter, die KI bremst und gibt kein Gas."""
+    fahrend = _regler([(150.0, 120.0)])
+    in_fahrend = fahrend.compute_inputs(1.0 / 60)
+    stehend = _regler([(150.0, 0.0)])
+    in_stehend = stehend.compute_inputs(1.0 / 60)
     assert abs(_seitlich(stehend)) > 20.0, "gar kein Ausweichen"
     assert abs(_seitlich(fahrend)) > 20.0
-    assert stehend._bahn.v_soll <= fahrend._bahn.v_soll
+    assert stehend._bahn.v_soll < fahrend._bahn.v_soll - 50.0
+    assert in_stehend[1] > in_fahrend[1] and in_stehend[0] < in_fahrend[0]
 
 
 def test_ein_deutlich_langsameres_auto_dicht_davor_bremst_die_ki_ein():
@@ -201,13 +206,22 @@ def test_ein_fremdes_auto_weit_hinten_stoert_nicht():
     assert weit == pytest.approx(ohne)
 
 
-def test_ein_abbild_ohne_nachricht_bewegt_die_ki_nicht():
-    """Es steht auf (0, 0) — weit weg vom Start, also außer Sicht."""
+def test_ein_abbild_ohne_nachricht_wird_ignoriert():
+    """Nicht bereit heißt: Gespenst auf (0, 0). Selbst dicht vor der KI und in
+    Sichtweite darf es nichts auslösen (race_state filtert zusätzlich)."""
     ohne = _eingaben([])
-    r = _regler([])
-    r.opponents = [_abbild((0.0, 0.0), 0.0, bereit=False)]
-    gespenst = r.compute_inputs(1.0 / 60)
-    assert abs(gespenst[2] - ohne[2]) < 0.5
+    mit = _eingaben([(120.0, 0.0, False)])
+    assert mit == pytest.approx(ohne)
+
+
+def test_ein_bereites_abbild_ohne_config_wird_gesehen_ohne_absturz():
+    """Ein RemoteVehicle hat weder ``config`` noch ein echtes Fahrzeugmodell:
+    es muss mit Standardmaßen gelten und die KI sichtbar reagieren lassen."""
+    ohne = _eingaben([])
+    r = _regler([(120.0, 0.0, True)])
+    assert not hasattr(r.opponents[0], "config")
+    mit = r.compute_inputs(1.0 / 60)
+    assert mit != pytest.approx(ohne)
 
 
 # ---------------------------------------------------------------------------
