@@ -1089,6 +1089,7 @@ class Rennszene:
 
     def _flaeche_setzen(self, f: _Flaeche) -> None:
         p = self.programm
+        shader.modell_schalter_aus(p)
         shader.setzen(p, "grundton", tuple(f.farbe))
         shader.setzen(p, "hat_basisfarbe", 1.0 if f.textur is not None else 0.0)
         shader.setzen(p, "hat_metallic_rauheit", 1.0 if f.mr is not None else 0.0)

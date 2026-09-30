@@ -772,6 +772,7 @@ class Gelaendezeichner:
     def zeichnen(self) -> None:
         p = self.programm
         self._uniforms()
+        shader.modell_schalter_aus(p)
         shader.setzen(p, "gelaende", 1.0)
         shader.setzen(p, "grundton", (1.0, 1.0, 1.0))
         shader.setzen(p, "hat_basisfarbe", 0.0)
@@ -919,6 +920,7 @@ class Graszeichner:
             self._auswaehlen(m, auge)
             self._zuletzt = (auge.copy(), blick)
         p = self.programm
+        shader.modell_schalter_aus(p)
         shader.setzen(p, "hat_basisfarbe", 1.0)
         shader.setzen(p, "hat_metallic_rauheit", 0.0)
         shader.setzen(p, "grundton", (1.0, 1.0, 1.0))
@@ -1036,6 +1038,7 @@ class Fernwaldzeichner:
         if self.anzahl == 0:
             return
         p = self.programm
+        shader.modell_schalter_aus(p)
         shader.setzen(p, "hat_basisfarbe", 0.0)
         shader.setzen(p, "hat_metallic_rauheit", 0.0)
         shader.setzen(p, "grundton", self.farbe)

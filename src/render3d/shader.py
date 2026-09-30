@@ -895,6 +895,22 @@ def _vorgaben(p) -> None:
     matrix_setzen(p, "licht_mvp", np.eye(4))
 
 
+#: Material-Schalter, die nur Modelle aus GLB-Dateien setzen (deko.material_setzen,
+#: rennszene: Lack). Uniforms bleiben im Programm stehen — wer ohne sie zeichnet
+#: (Fahrbahn, Gelände), muss sie ausschalten, sonst liest er die Karten des zuletzt
+#: gezeichneten Autos: der Räder-Atlas lag als Muster auf dem Asphalt (30.09.2026).
+MODELL_SCHALTER = (
+    ("hat_normalkarte", 0.0), ("hat_emissionskarte", 0.0), ("hat_verdeckung", 0.0),
+    ("lack_effekt", (0.0, 0.0, 0.0)), ("klarlack", 0.0), ("emission", (0.0, 0.0, 0.0)),
+)
+
+
+def modell_schalter_aus(p) -> None:
+    """Karten und Lack eines zuvor gezeichneten Modells abschalten."""
+    for name, wert in MODELL_SCHALTER:
+        setzen(p, name, wert)
+
+
 def programm(ctx):
     """Das PBR-Programm für Einzelteile (Modellmatrix als Uniform)."""
     p = ctx.program(vertex_shader=VERTEX, fragment_shader=FRAGMENT)
