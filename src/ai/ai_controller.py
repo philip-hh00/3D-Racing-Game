@@ -99,12 +99,30 @@ class AIController:
                 continue
             if math.hypot(gx - pos[0], gy - pos[1]) > GEGNER_SICHT:
                 continue
-            s, d, _ = st.sd(gx, gy)
+            s, d, idx = st.sd(gx, gy)
             cfg = getattr(car, "config", None)
-            liste.append(Gegner(s, d, float(getattr(car, "speed", 0.0) or 0.0),
+            liste.append(Gegner(s, d, self._tempo_laengs(car, st, idx),
                                 float(getattr(cfg, "height_px", 62.0)),
                                 float(getattr(cfg, "width_px", 29.0))))
         return liste
+
+    @staticmethod
+    def _tempo_laengs(car, st, idx: int) -> float:
+        """Geschwindigkeit des fremden Autos entlang der Strecke (negativ: rückwärts).
+
+        Der Betrag (``speed``) hielte ein rückwärts rollendes, rutschendes oder
+        gedrehtes Auto für vorausfahrend.
+        """
+        vel = None
+        try:
+            vel = car.physics.body.velocity
+        except Exception:
+            vel = getattr(car, "velocity", None)
+        try:
+            tx, ty = st.seg_dir[idx]
+            return float(vel[0] * tx + vel[1] * ty)
+        except Exception:
+            return float(getattr(car, "speed", 0.0) or 0.0)
 
     def _aufholfaktor(self) -> float:
         a = self.difficulty.aufholhilfe
@@ -145,6 +163,7 @@ class AIController:
                 # Dazu eine Gnadenfrist: erst ausrollen, dann anfahren.
                 self._progress_s = s
                 self._no_progress_timer = -STUCK_SECONDS
+                self._bahn = None       # die alte Bahn liegt hinter dem Auto
             return ergebnis
 
         startspur = self._startspur(d, v, dt)
@@ -257,6 +276,7 @@ class AIController:
             self.recovery_timer = 0.0
             self._recovery_attempts = 0
             self._hint = None
+            self._bahn = None           # nach dem Versetzen neu planen
         else:
             self._recovery_nachlauf = 0.0
             self.recovery_timer = min(RECOVERY_MAX_SECONDS,

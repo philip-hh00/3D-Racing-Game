@@ -310,3 +310,36 @@ def test_das_feld_wird_im_rennen_je_bild_aufgefrischt():
     schleife = quelle.split("def update(self, dt: float) -> None:")[1]
     schleife = schleife.split("\n    def ")[0]
     assert "_ai_feld_auffrischen()" in schleife
+
+
+def test_rueckwaerts_fahrendes_auto_gilt_als_entgegenkommend():
+    """Das Tempo des Gegners ist die Geschwindigkeit entlang der Strecke, nicht der
+    Betrag: ein rückwärts rollendes oder quer gedrehtes Auto fährt nicht voraus."""
+    r = _regler([(150.0, -60.0)])
+    liste = r._gegner(r._position())
+    assert len(liste) == 1
+    assert liste[0].v == pytest.approx(-60.0, abs=1.0)
+    # Quer zur Strecke rutschend: kein Vorwärtstempo
+    r.opponents[0]._vel = (0.0, 80.0)
+    assert abs(r._gegner(r._position())[0].v) < 5.0
+
+
+def test_rueckwaerts_gegner_wird_vom_planer_nicht_wie_ein_vorausfahrender_behandelt():
+    fahrend = _regler([(150.0, 60.0)])
+    zurueck = _regler([(150.0, -60.0)])
+    fahrend.compute_inputs(1.0 / 60)
+    zurueck.compute_inputs(1.0 / 60)
+    # Ein Auto, das uns entgegenrollt, ist näher am Treffpunkt: der Planer darf
+    # nicht langsamer rechnen als für ein gleich schnell vorausfahrendes.
+    assert zurueck._bahn.v_soll <= fahrend._bahn.v_soll + 1.0
+
+
+def test_nach_dem_befreien_wird_neu_geplant():
+    """Die Bahn von vor dem Befreien liegt hinter dem Auto — sie darf nicht weiterverfolgt werden."""
+    r = _regler([])
+    r.compute_inputs(1.0 / 60)
+    assert r._bahn is not None
+    r.recovery_timer = 0.001
+    r.compute_inputs(1.0 / 60)
+    assert r.recovery_timer <= 0.0
+    assert r._bahn is None
