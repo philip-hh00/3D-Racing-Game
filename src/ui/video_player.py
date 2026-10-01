@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 
 import numpy as np
 import pygame
@@ -53,6 +54,7 @@ class VideoPlayer:
         self._faden: threading.Thread | None = None
         self._anfrage = threading.Event()
         self._halt = False
+        self._fehler_gemeldet = False
         self._schloss = threading.Lock()
         #: Das fertige naechste Bild des Fadens: ``(flaeche, schleife)``.
         self._fertig = None
@@ -111,6 +113,10 @@ class VideoPlayer:
         # verglichen.
         if (self._abdunkeln[0] if self._abdunkeln else None) != schluessel:
             self._abdunkeln = None if schluessel is None else (schluessel, deckkraft)
+            with self._schloss:
+                self._fertig = None          # ein schon fertiges Bild traegt den alten Ueberzug
+            if self._faden is not None:
+                self._anfrage.set()
 
     @property
     def bild_schluessel(self):
@@ -137,17 +143,38 @@ class VideoPlayer:
         return cv2.multiply(frame, faktor, scale=1.0 / 255.0), schluessel
 
     def _faden_lauf(self) -> None:
-        while True:
-            self._anfrage.wait()
-            self._anfrage.clear()
-            if self._halt:
-                return
-            try:
-                ergebnis = self._entschluesseln()
-            except Exception:
-                ergebnis = None
-            with self._schloss:
-                self._fertig = ergebnis
+        # Der Faden gibt die Aufnahme beim Beenden selbst frei: ``close`` darf
+        # sie nicht schliessen, solange er noch in ``cap.read`` steckt.
+        cap = self._cap
+        try:
+            while True:
+                self._anfrage.wait()
+                self._anfrage.clear()
+                if self._halt:
+                    return
+                try:
+                    ergebnis = self._entschluesseln()
+                except Exception as fehler:
+                    ergebnis = None
+                    if not self._fehler_gemeldet:
+                        self._fehler_gemeldet = True
+                        print(f"[video] Entschluesseln fehlgeschlagen ({self.path}): {fehler!r}")
+                if ergebnis is None:
+                    # Ein Fehlschlag darf das Video nicht einfrieren: kurz warten
+                    # und selbst neu bestellen.
+                    if self._halt:
+                        return
+                    time.sleep(0.05)
+                    self._anfrage.set()
+                    continue
+                with self._schloss:
+                    self._fertig = ergebnis
+        finally:
+            if cap is not None:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
 
     def _entschluesseln(self):
         """Ein Bild lesen, skalieren und als Flaeche liefern: ``(flaeche, schleife)``.
@@ -274,7 +301,9 @@ class VideoPlayer:
             self._halt = True
             self._anfrage.set()
             self._faden.join(timeout=2.0)
+            # Der Faden schliesst die Aufnahme selbst; auch wenn er noch haengt.
             self._faden = None
+            self._cap = None
         self._fertig = None
         if self._cap is not None:
             try:

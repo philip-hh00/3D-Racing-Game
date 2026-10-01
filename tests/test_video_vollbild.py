@@ -182,3 +182,107 @@ def test_menueschale_oeffnet_das_video_auch_in_skalierter_flaeche(skala15):
         assert ms._ueberzug_wunsch()[0] == "rand"
     finally:
         ms.exit()
+
+
+class _Wackelkapsel:
+    """Aufnahme, deren erste Lesungen scheitern."""
+
+    def __init__(self, echt, ausfaelle, art):
+        self._echt, self.rest, self.art = echt, ausfaelle, art
+        self.freigegeben = False
+
+    def read(self):
+        if self.rest > 0:
+            self.rest -= 1
+            if self.art == "fehler":
+                raise RuntimeError("kaputt")
+            return False, None
+        return self._echt.read()
+
+    def set(self, *a):
+        return False if self.rest > 0 else self._echt.set(*a)
+
+    def release(self):
+        self.freigegeben = True
+        self._echt.release()
+
+    def __getattr__(self, n):
+        return getattr(self._echt, n)
+
+
+@pytest.mark.parametrize("art", ["fehler", "leer"])
+def test_ein_fehlgeschlagenes_bild_friert_das_video_nicht_ein(clip, skala15, art):
+    v = VideoPlayer(clip, (160, 90), faden=False)
+    v.close()
+    v = VideoPlayer(clip, (160, 90), faden=True)
+    try:
+        v._cap = _Wackelkapsel(v._cap, 0, art)
+        v._cap.rest = 2
+        erstes = v.get_surface()
+        gewechselt = False
+        for _ in range(200):
+            time.sleep(0.01)
+            v.update(1 / 30 + 0.001)
+            if v.get_surface() is not erstes:
+                gewechselt = True
+                break
+        assert gewechselt
+    finally:
+        v.close()
+
+
+def test_close_gibt_die_aufnahme_nicht_frei_solange_der_faden_haengt(clip, skala15, monkeypatch):
+    import threading
+    v = VideoPlayer(clip, (160, 90), faden=True)
+    kapsel = _Wackelkapsel(v._cap, 0, "leer")
+    festhalten = threading.Event()
+    orig = kapsel.read
+
+    def haengt():
+        festhalten.wait(5)
+        return orig()
+    kapsel.read = haengt
+    time.sleep(0.2)                                   # Faden ist im Leerlauf
+    v._cap = kapsel
+    v._anfrage.set()
+    time.sleep(0.1)                                   # jetzt steckt er in read
+    # join-Wartezeit abkuerzen
+    alt_join = threading.Thread.join
+    monkeypatch.setattr(threading.Thread, "join", lambda self, timeout=None: alt_join(self, 0.1))
+    v.close()
+    assert kapsel.freigegeben is False                # close fasst sie nicht an
+    festhalten.set()
+    time.sleep(0.3)
+
+
+def test_editor_und_rennen_starten_keinen_decoderfaden():
+    import pathlib
+    for datei in ("src/states/editor_state.py", "src/states/race_state.py"):
+        text = pathlib.Path(datei).read_text(encoding="utf-8")
+        assert "VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT), faden=False)" in text
+
+
+def test_abdunkeln_wechsel_verwirft_das_fertige_bild(clip, skala15):
+    v = VideoPlayer(clip, (160, 90), faden=True, abdunkeln=("seite", 150))
+    try:
+        time.sleep(0.3)
+        assert v._fertig is not None
+        v.abdunkeln_setzen("rand", 10)
+        # das alte Bild ist verworfen (der Faden kann schon ein neues liefern)
+        if v._fertig is not None:
+            assert v._fertig[2] == "rand"
+    finally:
+        v.close()
+
+
+def test_tafelcache_hat_ein_byte_budget_und_leert_bei_skalenwechsel(skala15, monkeypatch):
+    ziel = leinwand.flaeche((400, 300), pygame.SRCALPHA)
+    theme._panel_cache.clear()
+    monkeypatch.setattr(theme, "_PANEL_BUDGET", 3 * 100 * 100 * 2 * 2 * 4)
+    for i in range(6):
+        theme.panel(ziel, pygame.Rect(0, 0, 100 + i, 100))
+    assert theme._panel_bytes() <= theme._PANEL_BUDGET
+    assert 0 < len(theme._panel_cache) < 6
+    leinwand.skala_setzen(1.0)
+    theme.panel(ziel, pygame.Rect(0, 0, 50, 50))
+    assert len(theme._panel_cache) == 1

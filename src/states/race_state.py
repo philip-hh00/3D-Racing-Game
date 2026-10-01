@@ -663,7 +663,7 @@ class RaceState(BaseState):
         self._load_video = None
         if os.path.isfile(path):
             from src.ui.video_player import VideoPlayer
-            vp = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            vp = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT), faden=False)
             self._load_video = vp if vp.ok else None
 
     def _close_loading_video(self) -> None:

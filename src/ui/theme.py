@@ -5,6 +5,8 @@ here so the whole game shares one visual language.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import pygame
 from src.ui import zeichnen, leinwand  # noqa: E402
 
@@ -215,7 +217,19 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
     return surf
 
 
-_panel_cache: dict = {}
+_panel_cache: "OrderedDict" = OrderedDict()
+_panel_skala = None
+#: Obergrenze fuer die zwischengespeicherten Tafeln (Bytes, RGBA).
+_PANEL_BUDGET = 64 * 1024 * 1024
+
+
+def _panel_kosten(key) -> int:
+    s = key[-1]
+    return int(key[0] * s) * int(key[1] * s) * 4
+
+
+def _panel_bytes() -> int:
+    return sum(_panel_kosten(k) for k in _panel_cache)
 
 
 def panel(screen: pygame.Surface, rect: pygame.Rect, *, alpha: int = 205,
@@ -225,10 +239,16 @@ def panel(screen: pygame.Surface, rect: pygame.Rect, *, alpha: int = 205,
     # Je Bild neu angelegt kostete sie in 1440p 2-3 ms je grosser Tafel — die
     # Werkstatt hat drei davon (gemessen 01.10.2026).
     key = (rect.width, rect.height, alpha, tuple(fill), radius, leinwand.skala())
+    global _panel_skala
+    if _panel_skala != key[-1]:
+        _panel_cache.clear()
+        _panel_skala = key[-1]
     surf = _panel_cache.get(key)
-    if surf is None:
-        if len(_panel_cache) >= 48:
-            _panel_cache.clear()
+    if surf is not None:
+        _panel_cache.move_to_end(key)
+    else:
+        while _panel_cache and _panel_bytes() + _panel_kosten(key) > _PANEL_BUDGET:
+            _panel_cache.popitem(last=False)
         surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
         zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
         # Vormultipliziert: ``BLEND_PREMULTIPLIED`` ist beim Blit gut ein Drittel
