@@ -1859,7 +1859,10 @@ class OnlineLobbyPage(Page):
                         "team": p.get("team", "A"),
                         # Lackierung des Mitspielers (D7) — das Rennen faerbt
                         # sein Abbild damit ein.
-                        "paint": str(p.get("paint", "") or "")}
+                        "paint": str(p.get("paint", "") or ""),
+                        # Fahrzeugwahl — der Host waermt damit die KI-Plaene vor,
+                        # falls er das Auto eines Aussteigers uebernehmen muss.
+                        "vehicle": str(p.get("vehicle", "") or "")}
             for p in self._players
         }
         # vehicle_id -> team for the host-simulated AI. The id formula mirrors

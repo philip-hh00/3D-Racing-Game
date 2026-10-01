@@ -549,6 +549,21 @@ class RaceState(BaseState):
             except Exception:
                 pass
             self._lade_melden("uebernahme", (self._humans.index(_hp) + 1) / len(self._humans))
+        # Online: Fahrplaene fuer die Autos der Mitspieler vorwaermen — faehrt einer
+        # mitten im Rennen weg, uebernimmt die KI sein Auto ohne Rechenpause.
+        if self._online and self._is_online_host():
+            from src.entities.vehicle_factory import VehicleFactory
+            from src.ai.stufen import stufe as _stufe
+            _setup = race_setup.current()
+            _schluessel = {str(p.get("vehicle", "")) for slot, p in _setup.online_players.items()
+                           if slot != self._my_online_slot}
+            for _key in sorted(_schluessel):
+                try:
+                    _cfg = VehicleFactory.get_config(_key)
+                    if _cfg:
+                        fahrplan_bauen(self.track, _cfg, _stufe(_setup.ai_difficulty))
+                except Exception:
+                    pass
         self._ladeanzeige_beenden()
 
         # Online: tell the server we're done loading. The countdown stays frozen
@@ -2800,6 +2815,19 @@ class RaceState(BaseState):
         veh.is_takeover = True
         if self.race_manager.state in ("racing", "finishing"):
             veh.ai_active = True
+
+        # 5b. Die Ersatz-KI sieht dasselbe Feld wie alle anderen (sonst faehrt sie
+        # blind) und baut ihren Plan jetzt, nicht mitten im Rennen (~350 ms Ruckler).
+        if self._ai_feld is None:
+            self._ai_feld = []
+            self._ai_feld_auffrischen()
+        ctrl = getattr(veh, "controller", None)
+        if ctrl is not None:
+            ctrl.opponents = self._ai_feld
+            try:
+                ctrl.vorbereiten()
+            except Exception:
+                pass
 
         # 6. Splice into the race with the human's lap progress preserved.
         # Estimate current lap elapsed time from track waypoint ratio and race time.
