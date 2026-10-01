@@ -34,6 +34,12 @@ if TYPE_CHECKING:
 TAB_H = 108
 
 # (display label, background image stem, kind)
+#: Schluessel der Ueberzuege, die das Video schon im Entschluesselungsfaden
+#: bekommt (src/ui/video_player.py, ``abdunkeln_setzen``).
+_UEBERZUG_SEITE = "seite"
+_UEBERZUG_RAND = "rand"
+_SEITE_DECKKRAFT = 150
+
 _TABS = [
     ("EINZELSPIELER",      "Einzelspieler",       "single"),
     ("MEHRSPIELER LOKAL",  "Mehrspieler_Lokal",   "mp_local"),
@@ -164,6 +170,8 @@ class MenuShellState(BaseState):
         self._video = None
         self._video_stem: str | None = None
         self._fade_from: pygame.Surface | None = None
+        self._seiten_deckel = None          # (skala, flaeche)
+        self._rand_alpha = None             # Alphawerte der Randabdunklung
 
         self._announcement: dict | None = None
         self._ann_ok_rect: pygame.Rect | None = None
@@ -294,7 +302,8 @@ class MenuShellState(BaseState):
             # to the PNG/gradient background so the tab bar still renders.
             try:
                 from src.ui.video_player import VideoPlayer
-                self._video = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT))
+                self._video = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT),
+                                          abdunkeln=self._ueberzug_wunsch())
                 if not self._video.ok:
                     self._video = None
             except Exception:
@@ -365,11 +374,11 @@ class MenuShellState(BaseState):
                            (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), center=True)
             return
 
+        schluessel = self._video_ueberzug(stem)
         if in_page:
             screen.blit(frame, (0, 0))
-            dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            dark.fill((0, 0, 0, 150))
-            screen.blit(dark, (0, 0))
+            if schluessel != _UEBERZUG_SEITE:
+                screen.blit(self._seitenueberzug(), (0, 0))
             return
 
         # Top level: full frame with a crossfade from the snapshot.
@@ -380,7 +389,43 @@ class MenuShellState(BaseState):
             screen.blit(fc, (0, 0))
         else:
             screen.blit(frame, (0, 0))
-        screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+        if schluessel != _UEBERZUG_RAND:
+            screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+
+    def _seitenueberzug(self) -> pygame.Surface:
+        """Der Abdunkler hinter einer Seite — einmal angelegt, nicht je Bild.
+
+        Er wurde bei jedem Bild neu als Vollbildflaeche angelegt, gefuellt und
+        geblittet: in 1440p 5 ms allein fuers Anlegen (gemessen 01.10.2026).
+        """
+        s = leinwand.skala()
+        if self._seiten_deckel is None or self._seiten_deckel[0] != s:
+            dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+            dark.fill((0, 0, 0, _SEITE_DECKKRAFT))
+            self._seiten_deckel = (s, dark)
+        return self._seiten_deckel[1]
+
+    def _ueberzug_wunsch(self):
+        """``(schluessel, deckkraft)`` fuer das Video: Seite offen = flach dunkel,
+        sonst die Randabdunklung der Tafelansicht."""
+        if self.page_stack:
+            return (_UEBERZUG_SEITE, _SEITE_DECKKRAFT)
+        if self._rand_alpha is None:
+            v = theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120)
+            # Auf eine gewoehnliche Flaeche kopieren: ``Flaeche.get_size``
+            # meldet das Raster, surfarray braucht die Bildpunkte.
+            roh = pygame.Surface(pygame.Surface.get_size(v), pygame.SRCALPHA)
+            pygame.Surface.blit(roh, v, (0, 0), None, pygame.BLEND_RGBA_ADD)
+            self._rand_alpha = pygame.surfarray.array_alpha(roh).T.copy()
+        return (_UEBERZUG_RAND, self._rand_alpha)
+
+    def _video_ueberzug(self, stem: str):
+        """Dem Videofaden den passenden Ueberzug auftragen; liefert, welcher im
+        aktuellen Bild schon steckt (``None``: keiner, oder kein Video)."""
+        if stem != self._video_stem or self._video is None:
+            return None
+        self._video.abdunkeln_setzen(*self._ueberzug_wunsch())
+        return self._video.bild_schluessel
 
     # ------------------------------------------------------------------
     # Tab bar

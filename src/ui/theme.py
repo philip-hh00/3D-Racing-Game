@@ -5,6 +5,8 @@ here so the whole game shares one visual language.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
+
 import pygame
 from src.ui import zeichnen, leinwand  # noqa: E402
 
@@ -215,12 +217,51 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
     return surf
 
 
+_panel_cache: "OrderedDict" = OrderedDict()
+_panel_skala = None
+#: Obergrenze fuer die zwischengespeicherten Tafeln (Bytes, RGBA).
+_PANEL_BUDGET = 64 * 1024 * 1024
+
+
+def _panel_kosten(key) -> int:
+    s = key[-1]
+    return int(key[0] * s) * int(key[1] * s) * 4
+
+
+def _panel_bytes() -> int:
+    return sum(_panel_kosten(k) for k in _panel_cache)
+
+
 def panel(screen: pygame.Surface, rect: pygame.Rect, *, alpha: int = 205,
           border: tuple = BORDER, radius: int = 8, fill: tuple = PANEL) -> None:
     """Semi-transparent card with a border."""
-    surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
-    zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
-    screen.blit(surf, rect.topleft)
+    # Die Karte (Flaeche + Rundung) steht je Groesse/Farbe/Skala nur einmal.
+    # Je Bild neu angelegt kostete sie in 1440p 2-3 ms je grosser Tafel — die
+    # Werkstatt hat drei davon (gemessen 01.10.2026).
+    key = (rect.width, rect.height, alpha, tuple(fill), radius, leinwand.skala())
+    global _panel_skala
+    if _panel_skala != key[-1]:
+        _panel_cache.clear()
+        _panel_skala = key[-1]
+    surf = _panel_cache.get(key)
+    if surf is not None:
+        _panel_cache.move_to_end(key)
+    else:
+        while _panel_cache and _panel_bytes() + _panel_kosten(key) > _PANEL_BUDGET:
+            _panel_cache.popitem(last=False)
+        surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
+        zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
+        # Vormultipliziert: ``BLEND_PREMULTIPLIED`` ist beim Blit gut ein Drittel
+        # schneller als die gewoehnliche Alphamischung und ergibt dasselbe.
+        vormul = 0
+        try:
+            surf = leinwand._flaeche_aus(surf.premul_alpha(), leinwand.skala())
+            vormul = pygame.BLEND_PREMULTIPLIED
+        except (AttributeError, pygame.error):      # pragma: no cover - altes pygame
+            pass
+        surf = (surf, vormul)
+        _panel_cache[key] = surf
+    screen.blit(surf[0], rect.topleft, special_flags=surf[1])
     zeichnen.rect(screen, border, rect, 2, border_radius=radius)
 
 

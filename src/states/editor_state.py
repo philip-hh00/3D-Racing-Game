@@ -1546,7 +1546,7 @@ class EditorState(BaseState):
         path = os.path.join("data", "menu", f"{stem}.mp4")
         if os.path.isfile(path):
             from src.ui.video_player import VideoPlayer
-            self._video = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT))
+            self._video = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT), faden=False)
             if not self._video.ok:
                 self._video = None
 

@@ -800,14 +800,14 @@ class WerkstattPage(Page):
             return False
         try:
             ergebnis = vorschau.bild(self._key(), lack.werte_3d(kenn), self.winkel,
-                                     (kasten.width, kasten.height))
+                                     leinwand.px_groesse(kasten.size))
         except Exception as fehler:                    # pragma: no cover - Treiber
             print(f"[Werkstatt] 3D-Vorschau fehlgeschlagen: {fehler}")
             return False
         if ergebnis is None:
             return False
         pixel, groesse = ergebnis
-        screen.blit(pygame.image.frombuffer(pixel, groesse, "RGBA"), kasten.topleft)
+        screen.blit(leinwand.aus_rgba(pixel, groesse), kasten.topleft)
         return True
 
     def _auto_zeichnen(self, screen, bild: pygame.Surface, kasten: pygame.Rect,

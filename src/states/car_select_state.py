@@ -663,14 +663,15 @@ class CarSelectState(BaseState):
         kasten.center = (self.turntable_center[0], self.turntable_center[1] - 10)
         try:
             ergebnis = vorschau.bild(key, lack.werte_3d(_prof.current().paint(key)),
-                                     math.degrees(winkel_rad), kasten.size)
+                                     math.degrees(winkel_rad),
+                                     leinwand.px_groesse(kasten.size))
         except Exception as fehler:                    # pragma: no cover - Treiber
             print(f"[CarSelect] 3D-Vorschau fehlgeschlagen: {fehler}")
             return False
         if ergebnis is None:
             return False
         pixel, groesse = ergebnis
-        screen.blit(pygame.image.frombuffer(pixel, groesse, "RGBA"), kasten.topleft)
+        screen.blit(leinwand.aus_rgba(pixel, groesse), kasten.topleft)
         return True
 
     def _details_text_zeichnen(self, screen: pygame.Surface, config) -> None:
