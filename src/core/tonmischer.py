@@ -42,6 +42,7 @@ ganz kurzes Nachlassen statt als Knacken — und der Zähler
 from __future__ import annotations
 
 import threading
+import time
 
 import numpy as np
 
@@ -168,6 +169,22 @@ class Mischer:
         self.ausgegeben = 0
         self.erzeugt = 0
 
+        #: Messwerte fuers Protokoll (Fund 01.10.2026: Starvation des Erzeugers).
+        #: ``geraete_unterlaeufe`` zaehlt, was PortAudio selbst meldet
+        #: (``status.output_underflow``); ``unterlaeufe`` zaehlt, was der Ring
+        #: nicht liefern konnte. ``max_abruf`` ist der groesste Abruf des
+        #: Treibers (Frames), ``erzeugen_max_ms`` das teuerste Stueck.
+        self.geraete_unterlaeufe = 0
+        self.max_abruf = 0
+        self.erzeugen_max_ms = 0.0
+        self.erzeugen_summe_ms = 0.0
+        self.erzeugen_zahl = 0
+        self.erzeugen_spaet = 0
+        #: Verlaeufe von 0 nach 1 je Blocklaenge. Eine Stimme braucht je Seite
+        #: einen Verlauf je Stueck; ``np.linspace`` ist dafuer erstaunlich teuer
+        #: und gibt dem GIL jedes Mal Gelegenheit zu wechseln.
+        self._rampen: dict[int, np.ndarray] = {}
+
     # ── Spielfaden ──────────────────────────────────────────────────────────
     def stimme_anlegen(self, erzeuger, links: float = 0.0,
                        rechts: float = 0.0) -> Stimme:
@@ -196,6 +213,49 @@ class Mischer:
         return self.fuellstand < self.vorrat
 
     def erzeugen(self) -> int:
+        """Ein Stück erzeugen und messen (siehe :meth:`_erzeugen_stueck`)."""
+        anfang = time.perf_counter()
+        n = self._erzeugen_stueck()
+        if n > 0:
+            ms = 1000.0 * (time.perf_counter() - anfang)
+            self.erzeugen_zahl += 1
+            self.erzeugen_summe_ms += ms
+            if ms > self.erzeugen_max_ms:
+                self.erzeugen_max_ms = ms
+            # Zu spaet heisst: laenger gebraucht, als das Stueck Echtzeit dauert.
+            if ms > 1000.0 * n / max(1, self.ausgaberate):
+                self.erzeugen_spaet += 1
+        return n
+
+    def vorrat_nachfuehren(self) -> None:
+        """Den Vorrat an die tatsaechlichen Abrufe des Treibers anpassen.
+
+        Ruft der Treiber auf einmal mehr Frames ab, als der Vorrat hergibt
+        (grosse Geraetepuffer, Bluetooth), ist der Ring bei jedem Abruf zu
+        leer — Dauer-Unterlauf, obwohl der Erzeuger nichts falsch macht. Der
+        Vorrat muss deshalb mindestens zwei Abrufe plus ein Stueck tragen.
+        """
+        noetig = 2 * self.max_abruf + self.stueck
+        grenze = self.kapazitaet - self.stueck
+        if noetig > self.vorrat:
+            self.vorrat = min(noetig, grenze)
+
+    def status_melden(self, status) -> None:
+        """Aus dem Audiofaden: Statusmeldung von PortAudio zaehlen."""
+        try:
+            if status and getattr(status, "output_underflow", False):
+                self.geraete_unterlaeufe += 1
+        except Exception:
+            pass
+
+    def _rampe(self, laenge: int) -> np.ndarray:
+        r = self._rampen.get(laenge)
+        if r is None:
+            r = np.linspace(0.0, 1.0, laenge, endpoint=False, dtype=np.float32)
+            self._rampen[laenge] = r
+        return r
+
+    def _erzeugen_stueck(self) -> int:
         """Ein Stück erzeugen und in den Ring legen. Gibt die Länge zurück.
 
         Wird vom Erzeugerfaden in einer Schleife gerufen, solange
@@ -325,8 +385,7 @@ class Mischer:
                 if b != 0.0:
                     summe[:, kanal] += roh * b
             else:
-                verlauf = np.linspace(a, b, laenge, endpoint=False,
-                                      dtype=np.float32)
+                verlauf = np.float32(a) + np.float32(b - a) * self._rampe(laenge)
                 summe[:, kanal] += roh * verlauf
         stimme._ist = ziel
         return stimme.beendet and ziel == (0.0, 0.0)
@@ -349,6 +408,8 @@ class Mischer:
         Synthese, keine Sperre, kein Warten. Was hier hängt, hört man sofort.
         """
         aus = np.empty((frames, 2), dtype=np.float32)
+        if frames > self.max_abruf:
+            self.max_abruf = frames
         da = min(frames, self.fuellstand)
 
         if da > 0:

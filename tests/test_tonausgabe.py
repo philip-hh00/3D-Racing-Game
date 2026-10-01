@@ -434,3 +434,57 @@ def test_sounddevice_wandert_ins_buendel(spec):
               encoding="utf-8") as fh:
         inhalt = fh.read()
     assert "'sounddevice'" in inhalt, f"{spec} nimmt den Audiofaden nicht mit"
+
+
+# ── Starvation-Fund 01.10.2026 ───────────────────────────────────────────────
+
+def test_der_vorrat_folgt_der_geraterate():
+    for rate in (16000, 44100, 48000, 96000):
+        v = ta.vorrat_fuer(rate)
+        ms = 1000.0 * v / rate
+        assert 70.0 <= ms <= 130.0 or v == ta.KAPAZITAET - 2 * ta.STUECK, (rate, ms)
+        assert v < ta.KAPAZITAET
+        assert v >= 2 * ta.STUECK
+
+
+def test_der_ring_fasst_den_vorrat_samt_reserve_auch_bei_hoher_rate():
+    assert ta.vorrat_fuer(192000) + ta.STUECK <= ta.KAPAZITAET
+
+
+def test_der_zustand_nennt_stromdaten_und_zaehler():
+    z = ta.zustand()
+    for feld in ("api", "latenz_ms", "geraete_unterlaeufe", "abruf_frames",
+                 "erzeugen_max_ms", "erzeugen_mittel_ms", "erzeugen_spaet"):
+        assert feld in z, feld
+
+
+def test_die_protokollzeile_gibt_es_auch_ohne_strom():
+    assert "Audiofaden aus" in ta.protokollzeile()
+
+
+def test_mit_geraet_nennt_die_protokollzeile_gerat_und_zaehler(attrappe):
+    assert ta.starten()
+    zeile = ta.protokollzeile()
+    assert "Attrappe" in zeile and "Unterlaeufe" in zeile and "Vorrat" in zeile
+    assert ta.zustand()["vorrat_frames"] == ta.vorrat_fuer(48000)
+
+
+def test_das_wechselintervall_wird_gesetzt_und_zurueckgegeben(attrappe):
+    alt = sys.getswitchinterval()
+    assert ta.starten()
+    assert sys.getswitchinterval() == pytest.approx(ta.SCHALTINTERVALL)
+    ta.beenden()
+    assert sys.getswitchinterval() == pytest.approx(alt)
+
+
+def test_unterlaeufe_des_geraets_werden_im_rueckruf_gezaehlt(attrappe):
+    class Status:
+        output_underflow = True
+
+    assert ta.starten()
+    s = attrappe[0]
+    import numpy as np
+    s.callback(np.zeros((256, 2), dtype=np.float32), 256, None, Status())
+    assert ta.zustand()["geraete_unterlaeufe"] == 1
+    ta.zaehler_zuruecksetzen()
+    assert ta.zustand()["geraete_unterlaeufe"] == 0

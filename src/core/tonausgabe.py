@@ -48,13 +48,26 @@ from src.core import tonmischer
 #: werden kann, groß genug, dass die Synthese nicht in Kleinkram zerfällt.
 STUECK = 1024
 
-#: Vorrat im Ring. 4096 sind 85 ms: fünf Bilder Reserve bei 60 Bildern je
-#: Sekunde. Das ist das Abwägen aus dem Mischer — mehr Vorrat schützt besser,
-#: lässt den Motor aber hinter dem Gaspedal herhinken.
-VORRAT = 4096
+#: Vorrat im Ring in Millisekunden (Fund 01.10.2026: 85 ms reichten im Pulk
+#: nicht, weil der Erzeuger vom Spielfaden um bis zu 40 ms aufgehalten wurde).
+#: 100 ms sind sechs Bilder Reserve bei 60 Bildern je Sekunde — mehr Vorrat
+#: schützt besser, lässt den Motor aber hinter dem Gaspedal herhinken.
+VORRAT_MS = 100.0
+
+#: Vorrat in Abtastwerten bei 48 kHz (Ausgangswert; nach dem Öffnen des Stroms
+#: gilt :func:`vorrat_fuer` mit der tatsächlichen Rate).
+VORRAT = 4800
 
 #: Der Ring fasst mehr als den Vorrat, sonst hätte der Erzeuger nie Platz.
-KAPAZITAET = 8192
+#: Auch grosse Geraetepuffer (Abrufe von 4000+ Frames) muessen noch hineinpassen.
+KAPAZITAET = 16384
+
+#: Wie lange der GIL dem laufenden Faden gehoert, bevor ein anderer drankommt.
+#: Der Standard von 5 ms ist der Kern des Fundes vom 01.10.2026: der Erzeuger
+#: gibt den GIL bei jeder numpy-Operation ab und musste ihn danach bis zu 5 ms
+#: zurueckerbetteln, solange der Spielfaden reines Python rechnete (KI, Physik).
+#: Ein Stueck, das 3 ms kostet, brauchte so 17 ms; gemessen mit 0,5 ms: 8 ms.
+SCHALTINTERVALL = 0.0005
 
 #: Wie oft nachgesehen wird, ob das Standardgerät gewechselt hat. Eine Sekunde
 #: ist der Kompromiss: schnell genug, dass ein Umstecken sofort wirkt, selten
@@ -68,10 +81,19 @@ _halt = threading.Event()
 _grund = ""
 _rate = 0
 _geraet = ""
+_api = ""
+_latenz_ms = 0.0
 #: Name des Standardgeräts beim letzten Nachsehen — der Fingerabdruck, an dem
 #: ein Wechsel erkannt wird.
 _standard = ""
 _wechsel = 0
+_alt_intervall: float | None = None
+
+
+def vorrat_fuer(rate: int, ms: float = VORRAT_MS) -> int:
+    """Vorrat in Abtastwerten für eine Geräterate, immer unter der Kapazität."""
+    frames = int(round(int(rate) * float(ms) / 1000.0)) if rate else VORRAT
+    return max(STUECK * 2, min(frames, KAPAZITAET - 2 * STUECK))
 
 
 def verfuegbar() -> tuple[bool, str]:
@@ -112,9 +134,17 @@ def zustand() -> dict:
         "grund": grund(),
         "geraet": _geraet,
         "rate": _rate,
-        "vorrat_frames": VORRAT,
-        "vorrat_ms": round(1000.0 * VORRAT / _rate, 1) if _rate else 0.0,
+        "vorrat_frames": m.vorrat if m else VORRAT,
+        "vorrat_ms": round(1000.0 * m.vorrat / _rate, 1) if (_rate and m) else 0.0,
         "unterlaeufe": m.unterlaeufe if m else 0,
+        "geraete_unterlaeufe": m.geraete_unterlaeufe if m else 0,
+        "abruf_frames": m.max_abruf if m else 0,
+        "erzeugen_max_ms": round(m.erzeugen_max_ms, 2) if m else 0.0,
+        "erzeugen_mittel_ms": (round(m.erzeugen_summe_ms / m.erzeugen_zahl, 2)
+                               if m and m.erzeugen_zahl else 0.0),
+        "erzeugen_spaet": m.erzeugen_spaet if m else 0,
+        "api": _api,
+        "latenz_ms": _latenz_ms,
         "stimmen": m.stimmen if m else 0,
         # Gerätewechsel im Betrieb (06.08.2026). ``standard`` leer heisst: auf
         # diesem Rechner nicht feststellbar, die Wache haelt dann still.
@@ -150,6 +180,7 @@ def starten(rate: int = 48000) -> bool:
             # **Audiofaden.** Nur kopieren. Kein Rechnen, keine Sperre, kein
             # Warten, keine Ausnahme nach draussen — was hier haengt, hoert man.
             try:
+                m.status_melden(status)
                 aus[:] = m.abrufen(frames)
             except Exception:
                 aus.fill(0.0)
@@ -157,7 +188,10 @@ def starten(rate: int = 48000) -> bool:
         _strom = _strom_oeffnen(sd, rate, _rueckruf)
         _rate = int(_strom.samplerate)
         m.ausgaberate_setzen(_rate)
+        m.vorrat = vorrat_fuer(_rate)
         _geraet = _geraetename(sd, _strom)
+        _stromdaten(sd, _strom)
+        _intervall_setzen()
 
         globals()["_standard"] = standardgeraet()
 
@@ -347,6 +381,7 @@ def neu_verbinden() -> bool:
 
         def _rueckruf(aus, frames, zeit, status):
             try:
+                m.status_melden(status)
                 aus[:] = m.abrufen(frames)
             except Exception:
                 aus.fill(0.0)
@@ -355,6 +390,8 @@ def neu_verbinden() -> bool:
         _strom = neu
         _rate = int(neu.samplerate)
         m.ausgaberate_setzen(_rate)
+        m.vorrat = vorrat_fuer(_rate)
+        _stromdaten(sd, neu)
         _geraet = _geraetename(sd, neu)
         _standard = standardgeraet()
         _wechsel += 1
@@ -362,6 +399,87 @@ def neu_verbinden() -> bool:
     except Exception as exc:
         globals()["_grund"] = f"Neuverbinden fehlgeschlagen: {exc}"
         return False
+
+
+def _stromdaten(sd, strom) -> None:
+    """Host-API und Latenz des geöffneten Stroms merken (fürs Protokoll)."""
+    global _api, _latenz_ms
+    try:
+        nummer = strom.device
+        if isinstance(nummer, (list, tuple)):
+            nummer = nummer[-1]
+        _api = str(sd.query_hostapis(sd.query_devices(nummer)["hostapi"])["name"])
+    except Exception:
+        _api = ""
+    try:
+        lat = strom.latency
+        if isinstance(lat, (list, tuple)):
+            lat = lat[-1]
+        _latenz_ms = round(1000.0 * float(lat), 1)
+    except Exception:
+        _latenz_ms = 0.0
+
+
+def _intervall_setzen() -> None:
+    """GIL-Wechselintervall verkürzen (siehe :data:`SCHALTINTERVALL`)."""
+    global _alt_intervall
+    import sys
+    try:
+        if _alt_intervall is None:
+            _alt_intervall = sys.getswitchinterval()
+        sys.setswitchinterval(SCHALTINTERVALL)
+    except Exception:
+        pass
+
+
+def _intervall_zurueck() -> None:
+    global _alt_intervall
+    import sys
+    if _alt_intervall is not None:
+        try:
+            sys.setswitchinterval(_alt_intervall)
+        except Exception:
+            pass
+        _alt_intervall = None
+
+
+def _faden_vorrang() -> None:
+    """Erzeugerfaden unter Windows etwas über normal stellen (Best Effort)."""
+    import sys
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.SetThreadPriority(k.GetCurrentThread(), 1)   # ABOVE_NORMAL
+    except Exception:
+        pass
+
+
+def zaehler_zuruecksetzen() -> None:
+    """Messwerte für ein neues Rennen auf null (Vorrat bleibt)."""
+    m = _mischer
+    if m is None:
+        return
+    m.unterlaeufe = 0
+    m.geraete_unterlaeufe = 0
+    m.erzeugen_max_ms = 0.0
+    m.erzeugen_summe_ms = 0.0
+    m.erzeugen_zahl = 0
+    m.erzeugen_spaet = 0
+
+
+def protokollzeile() -> str:
+    """Eine Zeile mit Gerät, Strom und Zählern — einmal je Rennen ins Log."""
+    z = zustand()
+    if not z["laeuft"]:
+        return f"[Klang] Audiofaden aus ({z['grund']})"
+    return (f"[Klang] {z['geraet']} | {z['api']} | {z['rate']} Hz | "
+            f"Latenz {z['latenz_ms']} ms | Vorrat {z['vorrat_ms']} ms | "
+            f"Abruf max {z['abruf_frames']} | Stimmen {z['stimmen']} | "
+            f"Unterlaeufe Ring {z['unterlaeufe']} / Geraet {z['geraete_unterlaeufe']} | "
+            f"Erzeugen Mittel {z['erzeugen_mittel_ms']} ms, Max {z['erzeugen_max_ms']} ms, "
+            f"zu spaet {z['erzeugen_spaet']}")
 
 
 def _geraetename(sd, strom) -> str:
@@ -382,11 +500,13 @@ def _erzeugen_bis_halt() -> None:
     nichts.
     """
     naechste_wache = time.monotonic() + WACHE_SEKUNDEN
+    _faden_vorrang()
     while not _halt.is_set():
         m = _mischer
         if m is None:
             return
         try:
+            m.vorrat_nachfuehren()
             if m.braucht_nachschub():
                 if m.erzeugen() <= 0:
                     time.sleep(0.002)
@@ -440,6 +560,7 @@ def _aufraeumen() -> None:
     if _faden is not None:
         _faden.join(1.0)
     _faden = None
+    _intervall_zurueck()
     if _strom is not None:
         try:
             _strom.stop()
@@ -450,6 +571,8 @@ def _aufraeumen() -> None:
     _mischer = None
     _rate = 0
     _geraet = ""
+    globals()["_api"] = ""
+    globals()["_latenz_ms"] = 0.0
     globals()["_standard"] = ""
     # Der Zaehler gehoert zur Sitzung, nicht zum Modul: sonst schleppt der
     # Mitschnitt Wechsel aus einem frueheren Lauf mit.

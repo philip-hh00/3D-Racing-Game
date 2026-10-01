@@ -330,3 +330,82 @@ def test_erzeuger_und_audiofaden_gleichzeitig():
     zusammen = np.concatenate(gelesen)
     assert np.all(np.diff(zusammen) > 0), \
         "die Reihenfolge ist durcheinandergeraten oder etwas kam doppelt"
+
+
+# ── Starvation-Fund 01.10.2026: Messwerte, Vorratsanpassung, Verlaeufe ───────
+
+def test_der_verlauf_gleicht_dem_alten_linspace():
+    """Die zwischengespeicherte Rampe muss denselben Verlauf liefern wie das
+    frueher je Stimme gerechnete ``np.linspace`` — sonst klaenge es anders."""
+    import numpy as np
+    m = tm.Mischer(kapazitaet=4096, vorrat=1024, stueck=256)
+    for a, b in ((0.0, 0.7), (0.5, 0.0), (0.2, 0.9), (1.0, 1.0)):
+        neu = np.float32(a) + np.float32(b - a) * m._rampe(256)
+        alt = np.linspace(a, b, 256, endpoint=False, dtype=np.float32)
+        assert np.allclose(neu, alt, atol=1e-6)
+    assert m._rampe(256) is m._rampe(256), "die Rampe wird je Laenge nur einmal gerechnet"
+
+
+def test_stimmenausgabe_bleibt_gleich_dem_alten_weg():
+    """Zwei Stimmen mit Lautstaerkeverlauf: Summe wie die alte Rechnung."""
+    import numpy as np
+    m = tm.Mischer(kapazitaet=4096, vorrat=1024, stueck=256)
+    quelle = np.sin(np.arange(256) * 0.05).astype(np.float32)
+    s = m.stimme_anlegen(lambda n: quelle[:n].copy(), 0.0, 0.0)
+    s._ist = (0.0, 0.4)
+    s.einstellen(0.6, 0.4)
+    m.erzeugen()
+    aus = m.abrufen(256)
+    erwartet_l = quelle * np.linspace(0.0, 0.6, 256, endpoint=False, dtype=np.float32)
+    assert np.allclose(aus[:, 0], erwartet_l, atol=1e-5)
+    assert np.allclose(aus[:, 1], quelle * 0.4, atol=1e-5)
+
+
+def test_der_vorrat_waechst_mit_grossen_abrufen():
+    """Ruft der Treiber 4000 Frames auf einmal ab, muss der Vorrat das tragen,
+    sonst ist der Ring bei jedem Abruf zu leer (Dauer-Unterlauf)."""
+    m = tm.Mischer(kapazitaet=16384, vorrat=2048, stueck=1024)
+    m.abrufen(4000)
+    m.vorrat_nachfuehren()
+    assert m.vorrat >= 2 * 4000 + 1024 or m.vorrat == m.kapazitaet - m.stueck
+    assert m.vorrat < m.kapazitaet
+
+
+def test_der_vorrat_schrumpft_nicht_und_sprengt_den_ring_nicht():
+    m = tm.Mischer(kapazitaet=4096, vorrat=3000, stueck=1024)
+    m.abrufen(100)
+    m.vorrat_nachfuehren()
+    assert m.vorrat == 3000
+    m.abrufen(100000)
+    m.vorrat_nachfuehren()
+    assert m.vorrat == m.kapazitaet - m.stueck
+
+
+def test_geraete_unterlaeufe_werden_gezaehlt():
+    class Status:
+        def __init__(self, u):
+            self.output_underflow = u
+
+    m = tm.Mischer()
+    m.status_melden(None)
+    m.status_melden(Status(False))
+    assert m.geraete_unterlaeufe == 0
+    m.status_melden(Status(True))
+    m.status_melden(Status(True))
+    assert m.geraete_unterlaeufe == 2
+
+
+def test_erzeugen_misst_seine_zeit_und_meldet_zu_spaete_stuecke():
+    import time
+    m = tm.Mischer(kapazitaet=4096, vorrat=2048, stueck=480, quellrate=48000)
+
+    def langsam(n):
+        time.sleep(0.02)          # 20 ms fuer 10 ms Echtzeit -> zu spaet
+        import numpy as np
+        return np.zeros(n, dtype=np.float32)
+
+    m.stimme_anlegen(langsam, 0.5, 0.5)
+    assert m.erzeugen() == 480
+    assert m.erzeugen_zahl == 1
+    assert m.erzeugen_max_ms >= 15.0
+    assert m.erzeugen_spaet == 1

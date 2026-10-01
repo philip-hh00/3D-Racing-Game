@@ -422,6 +422,7 @@ class Rennklang:
         """
         self._schluessel = dict(schluessel)
         self._aktiv = True
+        _ton_protokoll(neu=True)
         if not _mixer_bereit():
             return
         self._freie_kanaele = list(range(sfx.EINZEL_KANAELE, _kanalzahl()))
@@ -431,6 +432,8 @@ class Rennklang:
             self._stimme_fuer(fahrzeug)
 
     def beenden(self) -> None:
+        if self._aktiv:
+            _ton_protokoll(neu=False)
         for stimme in self._stimmen.values():
             stimme.beenden()
         self._stimmen.clear()
@@ -593,6 +596,20 @@ def _kanalzahl() -> int:
     Kanalvergabe prüfen kann, ohne ein Audiogerät zu haben."""
     import pygame
     return int(pygame.mixer.get_num_channels())
+
+
+def _ton_protokoll(neu: bool) -> None:
+    """Einmal je Rennen: Gerät, Strom und Unterlauf-Zähler ins Log (Diagnose).
+
+    Beim Start werden die Zähler genullt, am Ende steht die Bilanz des Rennens.
+    """
+    try:
+        from src.core import tonausgabe
+        if neu:
+            tonausgabe.zaehler_zuruecksetzen()
+        print(tonausgabe.protokollzeile())
+    except Exception:
+        pass
 
 
 def _ringweg() -> bool:
