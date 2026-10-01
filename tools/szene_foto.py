@@ -80,7 +80,10 @@ def main() -> int:
         umgebungsordner=WURZEL / "assets" / "umgebung", platzierungen=orte, fahrzeuge=fahrzeuge)
     ladezeit = time.perf_counter() - t0
 
-    starts = strecke.get("start_positions", [])[: len(fahrzeuge)]
+    # Wie das Spiel: die Plaetze des Netzes (bis FELD_MAX, aus der Mittellinie
+    # ergaenzt), nicht nur die in der Streckendatei gespeicherten.
+    starts = [{"x": x / M_PER_PX, "y": y / M_PER_PX, "angle": math.degrees(w)}
+              for (x, y, w) in netz.start_positionen][: len(fahrzeuge)]
     if args.bei is not None:
         (x, y), gier = netz.punkt_bei(args.bei)
         starts = [{"x": x / M_PER_PX, "y": y / M_PER_PX, "angle": math.degrees(gier)}]

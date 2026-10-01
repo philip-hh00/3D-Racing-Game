@@ -1050,7 +1050,14 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
 
     mittellinie_m = np.asarray(mittellinie_px, dtype=np.float64) * M_PER_PX
 
-    breite_m = float(strecke.get("track_width", 100.0)) * M_PER_PX
+    # Wie Track: unbrauchbare Breite (Text, NaN, < 1) -> 100 px bzw. mindestens 1 px.
+    try:
+        breite_px = float(strecke.get("track_width", 100.0))
+    except (TypeError, ValueError, OverflowError):
+        breite_px = 100.0
+    if not math.isfinite(breite_px):
+        breite_px = 100.0
+    breite_m = max(1.0, breite_px) * M_PER_PX
     halbe_breite_m = breite_m / 2.0
 
     tangenten, links = _tangenten_und_links(mittellinie_m)
@@ -1092,18 +1099,17 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
 
     laenge_m = gesamt_m
 
-    start_positionen: list[tuple[float, float, float]] = []
-    for s in strecke.get("start_positions", []) or []:
-        if not isinstance(s, dict):
-            continue
-        try:
-            x_px = float(s["x"])
-            y_px = float(s["y"])
-            winkel_grad = float(s.get("angle", 0.0))
-        except (KeyError, TypeError, ValueError):
-            continue
-        start_positionen.append(
-            (x_px * M_PER_PX, y_px * M_PER_PX, math.radians(winkel_grad)))
+    # Das Spiel setzt bis zu FELD_MAX Fahrzeuge und ergaenzt fehlende Plaetze
+    # (aeltere Strecken und Editor-Strecken speichern nur 4) mit
+    # ``build_start_positions`` aus der Mittellinie — dieselben Plaetze muss
+    # das Netz markieren, sonst stehen die hinteren Autos auf unmarkierter
+    # Strasse. Dieselbe Funktion wie in ``Track`` (``start_gitter``).
+    from src.track.track_builder import start_gitter
+    start_positionen: list[tuple[float, float, float]] = [
+        (s["x"] * M_PER_PX, s["y"] * M_PER_PX, math.radians(s["angle"]))
+        for s in start_gitter(strecke.get("start_positions"), strecke.get("centerline"),
+                              strecke.get("track_width"))
+    ]
 
     return Streckennetz(baender=baender, laenge_m=laenge_m,
                          start_positionen=start_positionen,

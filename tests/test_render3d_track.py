@@ -273,6 +273,10 @@ def test_untergrund_liegt_minimal_unter_z_null_gegen_z_fighting():
 
 def test_startpositionen_anzahl_und_umrechnung_in_radiant():
     strecke = _kreis_strecke()
+    # Gespeicherte Plaetze werden uebernommen, sobald das Feld voll ist
+    # (FELD_MAX); mit weniger ergaenzt das Netz wie Track das ganze Gitter.
+    strecke["start_positions"] += [dict(strecke["start_positions"][-1])
+                                   for _ in range(8 - len(strecke["start_positions"]))]
     netz = track_mesh.bauen(strecke)
     assert len(netz.start_positionen) == len(strecke["start_positions"])
 
@@ -284,7 +288,7 @@ def test_startpositionen_anzahl_und_umrechnung_in_radiant():
 
 def test_neunzig_grad_wird_zu_pi_halbe():
     strecke = _kreis_strecke()
-    strecke["start_positions"] = [{"x": 0.0, "y": 0.0, "angle": 90.0}]
+    strecke["start_positions"] = [{"x": 0.0, "y": 0.0, "angle": 90.0}] * 8
     netz = track_mesh.bauen(strecke)
     _, _, gier_rad = netz.start_positionen[0]
     assert gier_rad == pytest.approx(math.pi / 2.0, abs=1e-9)

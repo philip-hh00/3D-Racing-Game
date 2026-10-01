@@ -239,6 +239,54 @@ def build_start_positions(
     return starts
 
 
+def _endlich(wert) -> float | None:
+    try:
+        out = float(wert)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return out if math.isfinite(out) else None
+
+
+def start_gitter(start_daten, centerline, track_width, needed: int | None = None) -> list[dict]:
+    """Startplaetze ``{x, y, angle}`` fuer mindestens ``needed`` Fahrzeuge.
+
+    Nimmt die rohen Werte aus der Streckendatei (``start_positions``,
+    ``centerline``, ``track_width``) und prueft sie selbst: beschaedigte Plaetze
+    und Punkte fallen weg, eine unbrauchbare Breite wird zu 100 px. Hat die
+    Strecke nach dem Aussortieren weniger als ``needed`` (Standard ``FELD_MAX``)
+    Plaetze, wird das ganze Gitter aus der Mittellinie neu gebaut — aeltere und
+    Editor-Strecken speichern nur 4. ``Track`` (Physik, Spawn) und das 3D-Netz
+    (Markierungen) rufen beide diese Funktion, damit sie dieselben Plaetze meinen.
+    """
+    if needed is None:
+        from src.core.race_setup import FELD_MAX
+        needed = FELD_MAX
+    plaetze: list[dict] = []
+    for s in start_daten if isinstance(start_daten, list) else []:
+        if not isinstance(s, dict):
+            continue
+        x, y = _endlich(s.get("x")), _endlich(s.get("y"))
+        if x is None or y is None:
+            continue
+        winkel = _endlich(s.get("angle"))
+        plaetze.append({"x": x, "y": y, "angle": 0.0 if winkel is None else winkel})
+    if len(plaetze) >= needed:
+        return plaetze
+    punkte: list[tuple[float, float]] = []
+    for p in centerline if isinstance(centerline, list) else []:
+        if not isinstance(p, dict):
+            continue
+        x, y = _endlich(p.get("x")), _endlich(p.get("y"))
+        if x is not None and y is not None:
+            punkte.append((x, y))
+    if len(punkte) < 2:
+        return plaetze
+    breite = _endlich(track_width)
+    if breite is None:
+        breite = 100.0
+    return build_start_positions(punkte, max(1.0, breite), count=needed)
+
+
 # ---------------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------------
