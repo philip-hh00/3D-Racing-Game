@@ -158,20 +158,42 @@ def test_stimmen_starten_nicht_phasengleich():
     assert sfx.Motorstimme("6zyl").phase == 0.0     # Labor/Standard unveraendert
 
 
-def test_gleiche_drehzahl_ergibt_unabhaengige_signale():
-    a = sfx.Motorstimme("6zyl", startphase_streuen=True)
-    if not a:
+def test_startphasen_sind_verteilt_und_reihenfolgeunabhaengig(monkeypatch):
+    """Feste Saat statt des globalen Zaehlers (sonst haengt der Test von der
+    Reihenfolge der anderen Tests ab)."""
+    if not sfx.Motorstimme("6zyl"):
         pytest.skip("keine Aufnahmen")
-    b = sfx.Motorstimme("6zyl", startphase_streuen=True)
-    x = np.concatenate([a.block(5000.0, 4096) for _ in range(6)])
-    y = np.concatenate([b.block(5000.0, 4096) for _ in range(6)])
-    assert abs(_korr(x, y)) < 0.5
-    c = sfx.Motorstimme("6zyl")
-    d = sfx.Motorstimme("6zyl")
-    u = np.concatenate([c.block(5000.0, 4096) for _ in range(2)])
-    v = np.concatenate([d.block(5000.0, 4096) for _ in range(2)])
-    # Gegenprobe: ohne Versatz laufen beide fast gleich
-    assert abs(_korr(u, v)) > abs(_korr(x[:8192], y[:8192]))
+    monkeypatch.setattr(sfx, "_streuung_nr", 0)
+    phasen = [sfx.Motorstimme("6zyl", startphase_streuen=True).phase
+              for _ in range(8)]
+    for i in range(8):
+        for j in range(i + 1, 8):
+            assert abs(phasen[i] - phasen[j]) > 0.25
+    assert all(0.0 <= p < 64.0 for p in phasen)
+
+
+def test_gleiche_drehzahl_ergibt_weniger_korrelierte_signale(monkeypatch):
+    """Ohne Zyklusstreuung (reiner Effekt der Startphase) sind zwei Stimmen
+    bei gleicher Drehzahl ohne Versatz identisch, mit Versatz im Mittel
+    deutlich unkorreliert. Mittel ueber mehrere Paare mit fester Saat."""
+    if not sfx.Motorstimme("6zyl"):
+        pytest.skip("keine Aufnahmen")
+    from src.core import motorklang
+    werte = dict(motorklang.werte("6zyl"))
+    werte["zyklusstreuung"] = 0.0
+
+    def stimme(streuen):
+        return sfx.Motorstimme("6zyl", werte=werte, startphase_streuen=streuen)
+
+    def signal(s):
+        return np.concatenate([s.block(5000.0, 4096) for _ in range(3)])
+
+    monkeypatch.setattr(sfx, "_streuung_nr", 0)
+    ohne = abs(_korr(signal(stimme(False)), signal(stimme(False))))
+    mit = [abs(_korr(signal(stimme(True)), signal(stimme(True))))
+           for _ in range(6)]
+    assert ohne > 0.95
+    assert float(np.mean(mit)) < 0.5
 
 
 def test_pulkszenario_eigener_pegel_und_spitze():
@@ -285,6 +307,87 @@ def test_mischer_rechnet_auf_geraeterate_um():
     assert f == pytest.approx(1000.0, abs=15.0)
     # kein Knacken an den Stueckgrenzen
     assert np.abs(np.diff(daten)).max() < 2 * np.pi * 1000 / 44100 * 0.5 * 1.1
+
+
+def _alias_energie(rate_aus, ton_hz, alias_hz):
+    """Energie bei alias_hz nach Umrechnung 48k -> rate_aus eines Tons."""
+    m = tonmischer.Mischer(kapazitaet=65536, vorrat=4096, stueck=1024,
+                           quellrate=48000, ausgaberate=rate_aus)
+    t = {"i": 0}
+
+    def ton(n):
+        i = np.arange(t["i"], t["i"] + n)
+        t["i"] += n
+        return (0.5 * np.sin(2 * np.pi * ton_hz * i / 48000.0)).astype(np.float32)
+
+    m.stimme_anlegen(ton, 1.0, 1.0)
+    for _ in range(30):
+        m.erzeugen()
+    x = m.abrufen(m.fuellstand)[200:, 0]
+    spek = np.abs(np.fft.rfft(x * np.hanning(len(x)))) / len(x)
+    k = int(round(alias_hz * len(x) / rate_aus))
+    return float(spek[k - 3:k + 4].max())
+
+
+def test_zehn_khz_ton_spiegelt_bei_16k_nicht_nach_6k():
+    """10 kHz liegt ueber der Nyquist von 16 kHz (8 kHz) und wuerde ohne
+    Tiefpass als 6 kHz hoerbar werden."""
+    alias = _alias_energie(16000, 10000.0, 6000.0)
+    referenz = _alias_energie(16000, 3000.0, 3000.0)     # Durchlass
+    assert alias < 0.02 * referenz
+
+
+def test_umrechnung_laesst_durchlassband_stehen():
+    assert _alias_energie(16000, 2000.0, 2000.0) > 0.11
+
+
+def test_umrechnung_ohne_tiefpass_bei_kleinem_verhaeltnis():
+    m = tonmischer.Mischer(quellrate=48000, ausgaberate=44100)
+    m.stimme_anlegen(lambda n: np.full(n, 0.25, np.float32), 1.0, 1.0)
+    m.erzeugen()
+    assert not hasattr(m, "_tp_rate")
+
+
+def test_rate_wird_je_erzeugen_einmal_gelesen():
+    """Wechselt die Rate mitten im Aufruf, rechnet dieser noch mit der alten."""
+    m = tonmischer.Mischer(kapazitaet=16384, vorrat=4096, stueck=1024,
+                           quellrate=48000, ausgaberate=44100)
+
+    def quelle(n):
+        m.ausgaberate_setzen(16000)       # Wechsel waehrend der Synthese
+        return np.full(n, 0.25, np.float32)
+
+    m.stimme_anlegen(quelle, 1.0, 1.0)
+    n = m.erzeugen()
+    assert n == pytest.approx(1024 * 44100 / 48000, abs=3)
+
+
+def test_start_scheitert_nach_bau_der_strom_wird_geschlossen(monkeypatch):
+    modul = types.ModuleType("sounddevice")
+    stroeme = []
+
+    class Strom:
+        def __init__(self, rate):
+            self.samplerate = rate
+            self.geschlossen = False
+
+        def start(self):
+            if self.samplerate == 48000:
+                raise RuntimeError("start fehlgeschlagen")
+
+        def close(self):
+            self.geschlossen = True
+
+    def OutputStream(*, samplerate, **kw):
+        s = Strom(samplerate)
+        stroeme.append(s)
+        return s
+
+    modul.OutputStream = OutputStream
+    modul.query_devices = lambda *a, **k: {"default_samplerate": 44100.0}
+    s = ta._strom_oeffnen(modul, 48000, lambda *a: None)
+    assert s.samplerate == 44100
+    assert stroeme[0].geschlossen is True
 
 
 def test_gleiche_rate_laeuft_unveraendert_durch():

@@ -43,6 +43,10 @@ STARTSIGNAL_VORLAUF = 3.0
 #: er wieder klar. Jetzt bleibt das eigene Auto unangetastet; nur die Gegner
 #: teilen sich dieses Budget.
 GEGNER_BUDGET = 0.8
+#: Rueckfallweg ueber den pygame-Mixer: dort summiert SDL ohne Weichbegrenzer
+#: und schneidet hart ab. Eine Stimme steuert bis 0,6 aus, also eigenes Auto
+#: 0,6 + Gegner 0,4 x 0,6 bleibt unter 1,0.
+GEGNER_BUDGET_MIXER = 0.4
 #: Höchstens so viele Gegner sind gleichzeitig zu hören (die nächsten). Mehr
 #: Motoren auf ähnlicher Schleife ergeben Brei, nicht Dichte.
 MAX_GEGNER = 3
@@ -124,7 +128,8 @@ def hoerbar_bei(positionen: list[tuple[float, float]],
     return (daempfung(d), panorama(dx))
 
 
-def pegel_zuteilen(laute: list[float], eigen: list[bool]) -> list[float]:
+def pegel_zuteilen(laute: list[float], eigen: list[bool],
+                   budget: float | None = None) -> list[float]:
     """Endpegel je Stimme: eigenes Auto unberührt, Gegner begrenzt.
 
     * Eigene Fahrzeuge (*eigen* wahr) behalten ihren Pegel — nie zurückgenommen,
@@ -150,8 +155,9 @@ def pegel_zuteilen(laute: list[float], eigen: list[bool]) -> list[float]:
             f = 1.0
         aus[i] = l * f
     summe = sum(aus[i] for i in gegner)
-    if summe > GEGNER_BUDGET:
-        k = GEGNER_BUDGET / summe
+    budget = GEGNER_BUDGET if budget is None else budget
+    if summe > budget:
+        k = budget / summe
         for i in gegner:
             aus[i] *= k
     return aus
@@ -499,7 +505,9 @@ class Rennklang:
         # nahm ein gemeinsamer Deckel auch den eigenen Motor zurück, sobald das
         # Feld zusammenrückte.
         pegel = pegel_zuteilen([e[2] for e in einstellung],
-                               [e[4] for e in einstellung])
+                               [e[4] for e in einstellung],
+                               GEGNER_BUDGET if _ringweg()
+                               else GEGNER_BUDGET_MIXER)
 
         for (stimme, upm, _l, pano, _n), laut in zip(einstellung, pegel):
             laut *= gesamt
@@ -585,6 +593,15 @@ def _kanalzahl() -> int:
     Kanalvergabe prüfen kann, ohne ein Audiogerät zu haben."""
     import pygame
     return int(pygame.mixer.get_num_channels())
+
+
+def _ringweg() -> bool:
+    """Laeuft der PortAudio-Weg (mit Weichbegrenzer) oder der pygame-Rueckfall?"""
+    try:
+        from src.core import tonausgabe
+        return tonausgabe.laeuft()
+    except Exception:
+        return False
 
 
 def _mixer_bereit() -> bool:

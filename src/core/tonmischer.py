@@ -54,6 +54,12 @@ AUSLAUF_FRAMES = 64
 #: **unverändert** (ein einzelner Motor erreicht etwa 0,6).
 KNIE = 0.7
 
+#: Beim Verkleinern der Rate um mehr als diesen Faktor wird vorher tiefpass-
+#: gefiltert (sonst spiegeln sich Anteile ueber der neuen Nyquist nach unten:
+#: Bluetooth-Freisprechgeraete mit 16/32 kHz).
+AA_AB = 1.2
+AA_TAPS = 63
+
 
 def weich_begrenzen(x: np.ndarray, knie: float = KNIE) -> np.ndarray:
     """Weiche Begrenzung der Summe auf höchstens ±1.
@@ -196,10 +202,13 @@ class Mischer:
         :meth:`braucht_nachschub` wahr ist. Gibt 0 zurück, wenn kein Platz ist.
         """
         platz = self.kapazitaet - self.fuellstand
-        umrechnen = self.ausgaberate != self.quellrate
+        # Einmal lesen: die Wache kann die Rate beim Geraetewechsel
+        # zwischendurch aendern.
+        rate = self.ausgaberate
+        umrechnen = rate != self.quellrate
         if umrechnen:
             # Quellwerte, deren umgerechnete Menge noch in den Ring passt.
-            schritt = self.quellrate / self.ausgaberate
+            schritt = self.quellrate / rate
             laenge = min(self.stueck, int(platz * schritt) - 2)
         else:
             laenge = min(self.stueck, platz)
@@ -223,7 +232,7 @@ class Mischer:
         if self.begrenzen:
             summe = weich_begrenzen(summe)
         if umrechnen:
-            summe = self._umrechnen(summe)
+            summe = self._umrechnen(summe, rate)
             laenge = len(summe)
             if laenge <= 0:
                 return 0
@@ -236,15 +245,42 @@ class Mischer:
         """Geräterate ändern (Gerätewechsel). Zustand der Umrechnung bleibt."""
         self.ausgaberate = int(rate)
 
-    def _umrechnen(self, x: np.ndarray) -> np.ndarray:
+    def _tiefpass_taps(self, rate: int) -> np.ndarray:
+        """Gefensterter Sinc-Tiefpass gegen Spiegelfrequenzen beim Verkleinern.
+
+        Eckfrequenz 0,45 x Zielrate (unter deren Nyquist), 63 Taps, auf
+        Gleichanteil 1 normiert. Wird je Rate einmal gerechnet.
+        """
+        if getattr(self, "_tp_rate", None) != rate:
+            fc = 0.45 * rate / self.quellrate        # in Zyklen je Quellwert
+            k = np.arange(AA_TAPS) - (AA_TAPS - 1) / 2.0
+            h = 2.0 * fc * np.sinc(2.0 * fc * k) * np.hanning(AA_TAPS)
+            self._tp_taps = (h / h.sum()).astype(np.float32)
+            self._tp_rate = rate
+            self._tp_rest = np.zeros((AA_TAPS - 1, 2), dtype=np.float32)
+        return self._tp_taps
+
+    def _anti_alias(self, x: np.ndarray, rate: int) -> np.ndarray:
+        taps = self._tiefpass_taps(rate)
+        ext = np.concatenate([self._tp_rest, x], axis=0)
+        aus = np.empty_like(x)
+        for c in (0, 1):
+            aus[:, c] = np.convolve(ext[:, c], taps, mode="valid")
+        self._tp_rest = ext[-(AA_TAPS - 1):].copy()
+        return aus
+
+    def _umrechnen(self, x: np.ndarray, rate: int | None = None) -> np.ndarray:
         """Lineare Umrechnung quellrate -> ausgaberate, stetig über Stücke.
 
         ``_umr_letzter`` ist der letzte Wert des Vorstücks, ``_umr_pos`` die
         Lesestelle (in Quellwerten, 0 = dieser Letzte). Dadurch gibt es an den
         Stückgrenzen weder Sprung noch Doppelwert.
         """
+        rate = rate or self.ausgaberate
         n = len(x)
-        schritt = self.quellrate / self.ausgaberate
+        schritt = self.quellrate / rate
+        if schritt > AA_AB:
+            x = self._anti_alias(x, rate)
         quelle = np.concatenate([self._umr_letzter[None, :], x], axis=0)
         pos = self._umr_pos
         k = int(np.ceil((n - pos) / schritt)) if n > pos else 0

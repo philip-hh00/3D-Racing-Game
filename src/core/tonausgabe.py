@@ -214,6 +214,7 @@ def _strom_oeffnen(sd, wunsch: int, rueckruf):
         for extra in extras:
             try:
                 kw = {} if extra is None else {"extra_settings": extra}
+                strom = None
                 strom = sd.OutputStream(samplerate=rate, channels=2,
                                         dtype="float32", blocksize=0,
                                         latency="low", callback=rueckruf, **kw)
@@ -221,6 +222,13 @@ def _strom_oeffnen(sd, wunsch: int, rueckruf):
                 return strom
             except Exception as exc:
                 letzter = exc
+                # Gebaut, aber nicht startbar: freigeben, bevor der naechste
+                # Versuch das Geraet erneut oeffnet.
+                if strom is not None:
+                    try:
+                        strom.close()
+                    except Exception:
+                        pass
     raise letzter if letzter else RuntimeError("kein Ausgabegeraet")
 
 
