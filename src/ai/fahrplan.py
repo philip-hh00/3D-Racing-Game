@@ -8,6 +8,7 @@ mit den Anteilen der Stufe.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass
 
@@ -68,14 +69,30 @@ def mittellinie(track) -> list[tuple[float, float]]:
     return mitte
 
 
+#: Fahrzeugwerte, die in Löser und Tempoprofil eingehen (siehe ``limits_from_config``).
+_CONFIG_FELDER = ("mass", "engine_power", "brake_force", "grip", "max_speed",
+                  "turn_speed", "width_px")
+
+
+def _schluessel(mitte, breite: float, config, stufe) -> tuple:
+    """Inhaltsbasierter Zwischenspeicher-Schlüssel.
+
+    Der Editor veröffentlicht dieselbe JSON-Datei oft mit gleicher Punktzahl neu,
+    und das Fahrzeuglabor ändert Werte bei gleichem Namen — Pfad und Länge
+    reichen deshalb nicht: Mittellinie, Breite und Fahrzeugwerte gehen als Inhalt ein.
+    """
+    punkte = hashlib.sha1(np.asarray(mitte, dtype=np.float64).tobytes()).hexdigest()
+    werte = tuple(float(getattr(config, f, 0.0) or 0.0) for f in _CONFIG_FELDER)
+    return (punkte, float(breite), werte, stufe.key)
+
+
 def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     from src.core.settings import M_PER_PX
     mitte = mittellinie(track)
-    schluessel = (getattr(track, "json_path", id(track)), len(mitte),
-                  getattr(config, "name", id(config)), float(config.width_px), stufe.key)
+    breite = float(track.track_width)
+    schluessel = _schluessel(mitte, breite, config, stufe)
     if schluessel in _CACHE:
         return _CACHE[schluessel]
-    breite = float(track.track_width)
     strecke = StreckeFrenet(mitte, breite)
     geo = compute_racing_line(mitte, breite, car_width=float(config.width_px),
                               margin=stufe.wandabstand_px, corner_pull=stufe.kurve_schneiden)
