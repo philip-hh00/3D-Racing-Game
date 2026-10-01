@@ -2,7 +2,15 @@
 
 Nichts davon ist einstellbar oder wird gespeichert: eine Stufe ist ein Satz
 weniger Werte, geeicht mit ``tools/ki_messung.py`` gegen die Rundenzeit von
-*Meister* (Ziel: Anfänger +11…14 %, Fortgeschritten +5…7 %, Profi +2…3,5 %).
+*Meister* (Ziel: Anfänger +15…20 %, Fortgeschritten +8…11 %, Profi +3…5 %).
+
+*Meister* fährt, was das Auto hergibt (1.10.2026: city/Kompaktwagen 21,35 s, die
+beste Menschenrunde des Besitzers war 22,09 s); die Lücken darunter kommen aus
+``haftung``/``bremsen``/``bremspunkt_m`` (auf allen Strecken ähnlich) und
+``kurve_schneiden`` (wirkt vor allem in engen Kehren, z. B. auf *city*, wo
+Haftung allein kaum Zeit macht). ``wandabstand_px`` ist für alle gleich: auf
+*city* kippt die Rundenzeit zwischen 22 und 26 px um mehr als 15 %, weil die
+Kehren dann an die Korridorgrenze stoßen — als Eichgröße ungeeignet.
 Rückmeldungen des Besitzers („Profi zu leicht") landen hier.
 """
 from __future__ import annotations
@@ -28,19 +36,19 @@ class Stufe:
 
 
 STUFEN: dict[str, Stufe] = {
-    "easy": Stufe("easy", "Anfänger", haftung=0.66, bremsen=0.66, bremspunkt_m=3.0,
-                  wandabstand_px=30.0, kurve_schneiden=0.45, fehler_je_min=1.5,
+    "easy": Stufe("easy", "Anfänger", haftung=0.60, bremsen=0.66, bremspunkt_m=3.0,
+                  wandabstand_px=22.0, kurve_schneiden=0.40, fehler_je_min=1.5,
                   ueberholen_nur_langsame=True, bremszone_angriff=False, verteidigen=False,
                   mut=0.2, aufholhilfe=1.0),
-    "medium": Stufe("medium", "Fortgeschritten", haftung=0.80, bremsen=0.80, bremspunkt_m=2.5,
-                    wandabstand_px=27.0, kurve_schneiden=0.40, fehler_je_min=0.8,
+    "medium": Stufe("medium", "Fortgeschritten", haftung=0.70, bremsen=0.80, bremspunkt_m=2.5,
+                    wandabstand_px=22.0, kurve_schneiden=0.36, fehler_je_min=0.8,
                     ueberholen_nur_langsame=False, bremszone_angriff=False, verteidigen=False,
                     mut=0.45, aufholhilfe=0.5),
-    "hard": Stufe("hard", "Profi", haftung=0.88, bremsen=0.88, bremspunkt_m=1.5,
-                  wandabstand_px=26.0, kurve_schneiden=0.35, fehler_je_min=0.3,
+    "hard": Stufe("hard", "Profi", haftung=0.78, bremsen=0.88, bremspunkt_m=1.5,
+                  wandabstand_px=22.0, kurve_schneiden=0.33, fehler_je_min=0.3,
                   ueberholen_nur_langsame=False, bremszone_angriff=True, verteidigen=True,
                   mut=0.7, aufholhilfe=0.0),
-    "expert": Stufe("expert", "Meister", haftung=0.96, bremsen=0.95, bremspunkt_m=0.0,
+    "expert": Stufe("expert", "Meister", haftung=0.88, bremsen=0.95, bremspunkt_m=0.0,
                     wandabstand_px=22.0, kurve_schneiden=0.30, fehler_je_min=0.08,
                     ueberholen_nur_langsame=False, bremszone_angriff=True, verteidigen=True,
                     mut=0.9, aufholhilfe=0.0),

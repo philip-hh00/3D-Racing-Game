@@ -14,7 +14,7 @@ import ki_hilfe as H
 sys.path.insert(0, os.path.join(H.WURZEL, "tools"))
 import ki_messung as M
 
-BAENDER = {"easy": (0.10, 0.16), "medium": (0.04, 0.08), "hard": (0.015, 0.04)}
+BAENDER = {"easy": (0.15, 0.20), "medium": (0.08, 0.11), "hard": (0.03, 0.05)}
 
 
 @pytest.mark.parametrize("strecke", ["gp", "city"])
@@ -27,6 +27,15 @@ def test_abstaende_der_stufen(strecke):
         assert e["fertig"], key
         abstand = e["beste"] / meister["beste"] - 1.0
         assert unten <= abstand <= oben, (key, round(abstand, 3))
+
+
+def test_meister_nahe_an_der_menschenrunde():
+    """city, Kompaktwagen: beste Menschenrunde des Besitzers 22,09 s (1.10.2026);
+    Meister soll höchstens 5 % darüber liegen (vorher 28,3 s), ohne Wandkontakt."""
+    pfad = os.path.join(H.WURZEL, "data", "tracks", "city.json")
+    meister = M.solo(pfad, "rookie", "expert", runden=3)
+    assert meister["fertig"] and meister["wand"] == 0
+    assert meister["beste"] <= 22.09 * 1.05, meister["beste"]
 
 
 def test_editorstrecken_ohne_haenger(tmp_path):
