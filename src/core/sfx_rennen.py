@@ -35,11 +35,22 @@ PANORAMA_WEITE = 500.0
 #: Vorlauf des Startsignals: ``race-start.wav`` ist der ganze Countdown, der
 #: lange Ton liegt bei Sekunde 3,0. So viel vor GO muss es also anfangen.
 STARTSIGNAL_VORLAUF = 3.0
-#: Obergrenze für die Summe aller Motorlautstärken. Der Mixer addiert die Kanäle
-#: und schneidet ab, was über die Vollaussteuerung geht — hörbar als Knistern.
-#: Eine Stimme steuert bis 0,60 aus; gemessen bleibt die Summe bei diesem Budget
-#: auch im dichten Pulk unter 0,75. Bis vier Fahrzeuge greift es nie ein.
-PEGELBUDGET = 2.0
+#: Obergrenze für die **Summe der Gegner**-Lautstärken (nicht des eigenen Autos).
+#: Vorher galt ein Budget von 2,0 für *alle* Stimmen gemeinsam, und der Deckel
+#: nahm dann auch das eigene Auto zurück: im Pulk (fünf Gegner in 100–300 px)
+#: fiel der eigene Motor auf 48 % (-6,4 dB), obwohl sich an ihm nichts geändert
+#: hatte — „als würden sich die Einzelklänge beeinflussen", und weiter weg wurde
+#: er wieder klar. Jetzt bleibt das eigene Auto unangetastet; nur die Gegner
+#: teilen sich dieses Budget.
+GEGNER_BUDGET = 0.8
+#: Höchstens so viele Gegner sind gleichzeitig zu hören (die nächsten). Mehr
+#: Motoren auf ähnlicher Schleife ergeben Brei, nicht Dichte.
+MAX_GEGNER = 3
+#: Ein Fahrzeug näher als das gilt als eigenes (Hörposition = eigenes Auto).
+EIGEN_RADIUS = 12.0
+#: Der vierte (erste ausgeschlossene) Gegner blendet über diesen Anteil seiner
+#: Lautstärke ein, damit ein Platztausch keinen Sprung macht.
+RANG_BLENDE = 0.25
 #: Reifenquietschen erst ab diesem Schräglaufwinkel, voll ab dem Doppelten.
 SCHLUPF_AB = 8.0
 #: Aufprall unter diesem Impuls bleibt stumm — sonst knackt jede Berührung.
@@ -111,6 +122,39 @@ def hoerbar_bei(positionen: list[tuple[float, float]],
             beste = (d, dx)
     d, dx = beste
     return (daempfung(d), panorama(dx))
+
+
+def pegel_zuteilen(laute: list[float], eigen: list[bool]) -> list[float]:
+    """Endpegel je Stimme: eigenes Auto unberührt, Gegner begrenzt.
+
+    * Eigene Fahrzeuge (*eigen* wahr) behalten ihren Pegel — nie zurückgenommen,
+      egal wie viele Gegner nahe sind.
+    * Von den Gegnern sind höchstens :data:`MAX_GEGNER` hörbar. Der erste
+      ausgeschlossene (vierte) bestimmt eine weiche Schwelle: wer nicht um
+      :data:`RANG_BLENDE` lauter ist als er, wird anteilig ausgeblendet. So ist
+      der Übergang stetig, auch wenn zwei Gegner den Rang tauschen.
+    * Die Summe der Gegner bleibt unter :data:`GEGNER_BUDGET` (gemeinsam
+      skaliert, Verhältnis untereinander bleibt).
+    """
+    aus = [float(l) if e else 0.0 for l, e in zip(laute, eigen)]
+    gegner = sorted((i for i, e in enumerate(eigen) if not e),
+                    key=lambda i: laute[i], reverse=True)
+    schwelle = laute[gegner[MAX_GEGNER]] if len(gegner) > MAX_GEGNER else 0.0
+    for i in gegner:
+        l = float(laute[i])
+        if l <= 0.0:
+            continue
+        if schwelle > 0.0:
+            f = max(0.0, min(1.0, (l / schwelle - 1.0) / RANG_BLENDE))
+        else:
+            f = 1.0
+        aus[i] = l * f
+    summe = sum(aus[i] for i in gegner)
+    if summe > GEGNER_BUDGET:
+        k = GEGNER_BUDGET / summe
+        for i in gegner:
+            aus[i] *= k
+    return aus
 
 
 def schlupf_lautstaerke(schraeglauf_grad: float) -> float:
@@ -209,7 +253,8 @@ class _RingStimme:
     def __init__(self, motor: str, tonhoehe: float = 1.0,
                  faerbung: float = 0.0) -> None:
         from src.core import tonausgabe
-        self.stimme = sfx.Motorstimme(motor, tonhoehe, faerbung)
+        self.stimme = sfx.Motorstimme(motor, tonhoehe, faerbung,
+                                      startphase_streuen=True)
         self._upm = 0.0
         self._ring = None
         if self.stimme:
@@ -249,7 +294,8 @@ class _Stimme:
 
     def __init__(self, motor: str, kanal_nr: int, tonhoehe: float = 1.0,
                  faerbung: float = 0.0) -> None:
-        self.stimme = sfx.Motorstimme(motor, tonhoehe, faerbung)
+        self.stimme = sfx.Motorstimme(motor, tonhoehe, faerbung,
+                                      startphase_streuen=True)
         self.kanal_nr = kanal_nr
         self._gestartet = False
 
@@ -442,18 +488,21 @@ class Rennklang:
             if stimme is None:
                 continue
             vorhanden.add(kennung(fahrzeug))
-            laut, pano = hoerbar_bei(hoerpositionen, _position(fahrzeug))
-            einstellung.append((stimme, _drehzahl(fahrzeug), laut * gesamt, pano))
+            pos = _position(fahrzeug)
+            laut, pano = hoerbar_bei(hoerpositionen, pos)
+            nah = any(math.hypot(pos[0] - px, pos[1] - py) < EIGEN_RADIUS
+                      for px, py in hoerpositionen)
+            einstellung.append((stimme, _drehzahl(fahrzeug), laut,
+                                pano, nah))
 
-        # Der Mixer addiert die Kanäle und schneidet ab, was darüber hinausgeht.
-        # Deshalb erst alle Lautstärken sammeln und, wenn es zu viel wird, alle
-        # gemeinsam zurücknehmen — einzeln begrenzt würde ausgerechnet das
-        # nächste Fahrzeug leiser, wenn ein Feld zusammenrückt.
-        summe = sum(laut for _s, _u, laut, _p in einstellung)
-        deckel = min(1.0, PEGELBUDGET / summe) if summe > PEGELBUDGET else 1.0
+        # Eigenes Auto unberührt, Gegner begrenzt (siehe pegel_zuteilen). Früher
+        # nahm ein gemeinsamer Deckel auch den eigenen Motor zurück, sobald das
+        # Feld zusammenrückte.
+        pegel = pegel_zuteilen([e[2] for e in einstellung],
+                               [e[4] for e in einstellung])
 
-        for stimme, upm, laut, pano in einstellung:
-            laut *= deckel
+        for (stimme, upm, _l, pano, _n), laut in zip(einstellung, pegel):
+            laut *= gesamt
             stimme.aktualisieren(upm, laut * min(1.0, 1.0 - pano),
                                  laut * min(1.0, 1.0 + pano))
 
