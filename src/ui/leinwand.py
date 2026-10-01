@@ -173,6 +173,36 @@ def _flaeche_aus(roh: pygame.Surface, s: float) -> "Flaeche":
     return f
 
 
+def px_groesse(groesse) -> tuple[int, int]:
+    """Eine Rastergroesse in Bildpunkten der aktuellen Skala (mindestens 1)."""
+    return (max(1, _px(groesse[0], _skala)), max(1, _px(groesse[1], _skala)))
+
+
+_rgba_zuletzt: list = []
+
+
+def aus_rgba(pixel: bytes, groesse_px: tuple[int, int]) -> "Flaeche":
+    """RGBA-Bytes **in Bildpunkten** (z. B. die 3D-Vorschau) als Flaeche der aktuellen Skala.
+
+    Ein Bild, das in Rastergroesse geliefert und auf eine skalierte Flaeche
+    geblittet wird, wird dort jedes Mal neu hochgerechnet: ``_auf_skala``
+    findet fuer eine frisch erzeugte Flaeche nie einen Treffer, in 1440p
+    kostete das 22 ms je Bild in der Werkstatt (gemessen 01.10.2026). Wer die
+    Bytes gleich in Bildpunkten rendert, bekommt hier eine Flaeche ohne
+    Hochrechnen — und dieselbe Flaeche zurueck, solange ``pixel`` dasselbe
+    Objekt bleibt (die Vorschau liefert bei unveraendertem Bild denselben
+    Puffer).
+    """
+    for p, g, f, s in _rgba_zuletzt:
+        if p is pixel and g == tuple(groesse_px) and s == _skala:
+            return f
+    roh = pygame.image.frombuffer(pixel, tuple(groesse_px), "RGBA")
+    f = _flaeche_aus(roh, _skala)
+    _rgba_zuletzt.insert(0, (pixel, tuple(groesse_px), f, _skala))
+    del _rgba_zuletzt[4:]
+    return f
+
+
 def flaeche(groesse, flags: int = 0, *args) -> Flaeche:
     """Eine neue Fläche der Oberfläche, Größe im Raster."""
     return Flaeche(groesse, flags, None, *args)

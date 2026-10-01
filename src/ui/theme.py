@@ -215,12 +215,33 @@ def vignette(size: tuple[int, int], strength: int = 150) -> pygame.Surface:
     return surf
 
 
+_panel_cache: dict = {}
+
+
 def panel(screen: pygame.Surface, rect: pygame.Rect, *, alpha: int = 205,
           border: tuple = BORDER, radius: int = 8, fill: tuple = PANEL) -> None:
     """Semi-transparent card with a border."""
-    surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
-    zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
-    screen.blit(surf, rect.topleft)
+    # Die Karte (Flaeche + Rundung) steht je Groesse/Farbe/Skala nur einmal.
+    # Je Bild neu angelegt kostete sie in 1440p 2-3 ms je grosser Tafel — die
+    # Werkstatt hat drei davon (gemessen 01.10.2026).
+    key = (rect.width, rect.height, alpha, tuple(fill), radius, leinwand.skala())
+    surf = _panel_cache.get(key)
+    if surf is None:
+        if len(_panel_cache) >= 48:
+            _panel_cache.clear()
+        surf = leinwand.flaeche((rect.width, rect.height), pygame.SRCALPHA)
+        zeichnen.rect(surf, (*fill, alpha), (0, 0, rect.width, rect.height), border_radius=radius)
+        # Vormultipliziert: ``BLEND_PREMULTIPLIED`` ist beim Blit gut ein Drittel
+        # schneller als die gewoehnliche Alphamischung und ergibt dasselbe.
+        vormul = 0
+        try:
+            surf = leinwand._flaeche_aus(surf.premul_alpha(), leinwand.skala())
+            vormul = pygame.BLEND_PREMULTIPLIED
+        except (AttributeError, pygame.error):      # pragma: no cover - altes pygame
+            pass
+        surf = (surf, vormul)
+        _panel_cache[key] = surf
+    screen.blit(surf[0], rect.topleft, special_flags=surf[1])
     zeichnen.rect(screen, border, rect, 2, border_radius=radius)
 
 
