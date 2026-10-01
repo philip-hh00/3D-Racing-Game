@@ -472,7 +472,8 @@ class Motorstimme:
     """
 
     def __init__(self, motor: str, tonhoehe: float = 1.0,
-                 faerbung: float = 0.0, werte: dict | None = None) -> None:
+                 faerbung: float = 0.0, werte: dict | None = None,
+                 startphase_streuen: bool = False) -> None:
         self.schichten = schichten(motor)
         self.motor = motor
         self.phase = 0.0        # in Arbeitsspielen
@@ -491,6 +492,15 @@ class Motorstimme:
         #: Saat der Zyklusstreuung. Eine je Stimme, damit zwei Fahrzeuge nicht
         #: im Gleichschritt schwanken (siehe Zyklusstreuung).
         self._streu_saat = _streuung_saat()
+        if startphase_streuen:
+            # Im Rennen laufen mehrere Stimmen derselben Klasse auf derselben
+            # Schleife. Alle bei Phase 0 zu beginnen heisst: gleiche Stelle der
+            # Aufnahme, gleiche Flanken — bei aehnlicher Drehzahl addieren sie
+            # sich kohaerent und kaemmen. Jede Stimme faengt deshalb an einer
+            # eigenen, aus ihrer Saat abgeleiteten Stelle an (bis 64
+            # Arbeitsspiele; die Schleife wird ohnehin modulo genommen).
+            rng = np.random.default_rng(self._streu_saat ^ 0x5EED)
+            self.phase = float(rng.random() * 64.0)
         self.werte_setzen(werte)
 
     def werte_setzen(self, werte: dict | None = None) -> None:

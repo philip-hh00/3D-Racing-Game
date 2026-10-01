@@ -298,33 +298,58 @@ def test_nach_der_pause_laeuft_es_wieder(monkeypatch):
 
 # ── Pegelbudget ────────────────────────────────────────────────────────────
 
-def test_wenige_fahrzeuge_werden_nicht_zurueckgenommen(klang_ohne_mixer):
+def _gesamt():
+    from src.core import sfx
+    return sfx.effekt_lautstaerke()
+
+
+def test_wenige_fahrzeuge_werden_nicht_zurueckgenommen(monkeypatch,
+                                                      klang_ohne_mixer):
     """Sonst würde ein Rennen mit zwei Autos leiser klingen als eines allein."""
-    autos = [_fern(50.0 * i, slot=i + 2) for i in range(4)]
+    monkeypatch.setattr(sr, "panorama", lambda dx: 0.0)
+    autos = [_fern(0.0, slot=2), _fern(400.0, slot=3)]
     klang_ohne_mixer.starten(autos, {})
     klang_ohne_mixer.aktualisieren(autos, [(0.0, 0.0)])
-    # Drei Kanäle, also drei Stimmen: alle direkt daneben, alle voll auf.
-    # Gemessen wird die lautere Seite — die leisere ist nur durch die
-    # Panoramalage gedämpft, nicht durch das Budget.
-    for stimme in klang_ohne_mixer._stimmen.values():
-        assert max(stimme.werte[-1][1], stimme.werte[-1][2]) > 0.6
+    eigen, gegner = list(klang_ohne_mixer._stimmen.values())
+    assert max(eigen.werte[-1][1], eigen.werte[-1][2]) > 0.99 * _gesamt()
+    # Ein einzelner Gegner bleibt unter dem Budget, also ungedämpft (nur Abstand).
+    assert max(gegner.werte[-1][1], gegner.werte[-1][2]) \
+        == pytest.approx(sr.daempfung(400.0) * _gesamt())
 
 
 def test_dichter_pulk_wird_gemeinsam_zurueckgenommen(monkeypatch, klang_ohne_mixer):
-    """Der Mixer addiert die Kanäle und schneidet ab, was über die
-    Vollaussteuerung geht — das knistert. Zurückgenommen wird gemeinsam, sonst
-    würde ausgerechnet das nächste Fahrzeug leiser."""
-    monkeypatch.setattr(sr, "PEGELBUDGET", 1.0)
-    autos = [_fern(10.0 * i, slot=i + 2) for i in range(3)]
+    """Die Gegner teilen sich ein Budget und werden **gemeinsam** zurückgenommen
+    (Verhältnis untereinander bleibt). Das eigene Auto bleibt unberührt — früher
+    deckelte ein gemeinsamer Wert auch den eigenen Motor."""
+    monkeypatch.setattr(sr, "panorama", lambda dx: 0.0)    # nur der Pegel zaehlt
+    autos = [_fern(0.0, slot=2), _fern(40.0, slot=3), _fern(80.0, slot=4)]
     klang_ohne_mixer.starten(autos, {})
     klang_ohne_mixer.aktualisieren(autos, [(0.0, 0.0)])
 
-    stimmen = list(klang_ohne_mixer._stimmen.values())
-    summe = sum(max(s.werte[-1][1], s.werte[-1][2]) for s in stimmen)
-    assert summe <= 1.05, f"Summe {summe:.2f} über dem Budget"
-    # Gemeinsam, nicht einzeln: das Verhältnis untereinander bleibt.
-    laut = [s.werte[-1][1] for s in stimmen]
-    assert max(laut) - min(laut) < 0.05
+    eigen, g1, g2 = list(klang_ohne_mixer._stimmen.values())
+    gesamt = _gesamt()
+    assert eigen.werte[-1][1] == pytest.approx(gesamt, abs=1e-6)
+    a, b = g1.werte[-1][1], g2.werte[-1][1]
+    # Ohne Budget waeren es daempfung(40)*gesamt und daempfung(80)*gesamt
+    roh = [sr.daempfung(40.0) * gesamt, sr.daempfung(80.0) * gesamt]
+    assert a + b == pytest.approx(sr.GEGNER_BUDGET_MIXER * gesamt, abs=1e-6)
+    assert a < roh[0] and b < roh[1]
+    assert a / b == pytest.approx(roh[0] / roh[1], rel=1e-6)
+
+
+def test_leise_gegner_unter_dem_budget_bleiben_unberuehrt(monkeypatch,
+                                                         klang_ohne_mixer):
+    monkeypatch.setattr(sr, "panorama", lambda dx: 0.0)
+    autos = [_fern(0.0, slot=2), _fern(600.0, slot=3), _fern(650.0, slot=4)]
+    klang_ohne_mixer.starten(autos, {})
+    klang_ohne_mixer.aktualisieren(autos, [(0.0, 0.0)])
+
+    _eigen, g1, g2 = list(klang_ohne_mixer._stimmen.values())
+    gesamt = _gesamt()
+    assert g1.werte[-1][1] == pytest.approx(sr.daempfung(600.0) * gesamt)
+    assert g2.werte[-1][1] == pytest.approx(sr.daempfung(650.0) * gesamt)
+    assert (g1.werte[-1][1] + g2.werte[-1][1]
+            < sr.GEGNER_BUDGET_MIXER * gesamt)
 
 
 # ── Startsignal ────────────────────────────────────────────────────────────

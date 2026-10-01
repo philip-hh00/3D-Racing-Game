@@ -137,7 +137,7 @@ def test_im_rueckruf_wird_nur_kopiert():
     import inspect
     quelle = inspect.getsource(ta.starten)
     anfang = quelle.index("def _rueckruf")
-    ende = quelle.index("_strom = sd.OutputStream")
+    ende = quelle.index("_strom = _strom_oeffnen")
     rueckruf = quelle[anfang:ende]
     assert "abrufen" in rueckruf
     for verboten in ("erzeugen", "with ", "sleep", "np.", "Motorstimme"):

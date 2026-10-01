@@ -227,13 +227,19 @@ def test_die_streuung_ist_ab_werk_an():
 def test_jede_stimme_streut_fuer_sich():
     """Zwei Motoren, die identisch schwanken, sind so streng gekoppelt wie zwei
     ohne Streuung — dann wäre nichts gewonnen."""
-    a = sfx.Zyklusstreuung(0.01, 1.0)
-    b = sfx.Zyklusstreuung(0.01, 1.0)
-    ra = np.concatenate([np.atleast_1d(a.rate(2048)) for _ in range(20)])
-    rb = np.concatenate([np.atleast_1d(b.rate(2048)) for _ in range(20)])
-    assert not np.allclose(ra, rb)
-    r = float(np.corrcoef(ra, rb)[0, 1])
-    assert abs(r) < 0.5, f"Streuungen laufen im Gleichschritt (r={r:.2f})"
+    # Feste Saaten und Mittel ueber mehrere Paare: bei nur 20 Werten schwankt
+    # die Korrelation eines einzelnen Paares stark, und der globale Saatzaehler
+    # machte den Test abhaengig von der Reihenfolge der Tests davor.
+    rs = []
+    for k in range(8):
+        a = sfx.Zyklusstreuung(0.01, 1.0, saat=1000 + 2 * k)
+        b = sfx.Zyklusstreuung(0.01, 1.0, saat=1001 + 2 * k)
+        ra = np.concatenate([np.atleast_1d(a.rate(2048)) for _ in range(20)])
+        rb = np.concatenate([np.atleast_1d(b.rate(2048)) for _ in range(20)])
+        assert not np.allclose(ra, rb)
+        rs.append(abs(float(np.corrcoef(ra, rb)[0, 1])))
+    r = float(np.mean(rs))
+    assert r < 0.5, f"Streuungen laufen im Gleichschritt (r={r:.2f})"
 
 
 def test_die_streuung_bleibt_ueber_blockgrenzen_stetig():

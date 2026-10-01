@@ -142,20 +142,21 @@ def starten(rate: int = 48000) -> bool:
         import sounddevice as sd
 
         _mischer = tonmischer.Mischer(kapazitaet=KAPAZITAET, vorrat=VORRAT,
-                                      stueck=STUECK)
+                                      stueck=STUECK, quellrate=rate,
+                                      begrenzen=True)
+        m = _mischer
 
         def _rueckruf(aus, frames, zeit, status):
             # **Audiofaden.** Nur kopieren. Kein Rechnen, keine Sperre, kein
             # Warten, keine Ausnahme nach draussen — was hier haengt, hoert man.
             try:
-                aus[:] = _mischer.abrufen(frames)
+                aus[:] = m.abrufen(frames)
             except Exception:
                 aus.fill(0.0)
 
-        _strom = sd.OutputStream(samplerate=rate, channels=2, dtype="float32",
-                                 blocksize=0, latency="low", callback=_rueckruf)
-        _strom.start()
+        _strom = _strom_oeffnen(sd, rate, _rueckruf)
         _rate = int(_strom.samplerate)
+        m.ausgaberate_setzen(_rate)
         _geraet = _geraetename(sd, _strom)
 
         globals()["_standard"] = standardgeraet()
@@ -170,6 +171,65 @@ def starten(rate: int = 48000) -> bool:
         _grund = f"Audiofaden liess sich nicht oeffnen: {exc}"
         _aufraeumen()
         return False
+
+
+def raten_kandidaten(sd, wunsch: int = 48000) -> list[int]:
+    """In dieser Reihenfolge wird versucht, den Strom zu öffnen.
+
+    Erst die Rate der Aufnahmen (48 kHz) — dann ist keine Umrechnung nötig.
+    Danach die **Standardrate des Geräts**, wie PortAudio sie meldet: im
+    geteilten Modus (WASAPI, CoreAudio, Bluetooth-Headsets mit 16/32 kHz,
+    44,1-kHz-Karten) nimmt der Treiber oft nur diese an. Zuletzt 44,1 kHz als
+    übliche Ersatzrate. Der Mischer rechnet dann selbst um (Erzeugerfaden).
+    """
+    liste = [int(wunsch)]
+    try:
+        info = sd.query_devices(kind="output")
+        nativ = int(round(float(info["default_samplerate"])))
+        if nativ > 0 and nativ not in liste:
+            liste.append(nativ)
+    except Exception:
+        pass
+    if 44100 not in liste:
+        liste.append(44100)
+    return liste
+
+
+def _strom_oeffnen(sd, wunsch: int, rueckruf):
+    """Strom öffnen und starten; bei abgelehnter Rate die nächste versuchen.
+
+    Unter Windows (WASAPI geteilt) lehnt PortAudio eine Rate ab, die vom
+    Mischformat des Geräts abweicht, es sei denn ``auto_convert`` ist gesetzt.
+    Das wird zuerst versucht, danach ohne. Wirft, wenn nichts geht.
+    """
+    letzter = None
+    extras = [None]
+    try:
+        import sys
+        if sys.platform == "win32" and hasattr(sd, "WasapiSettings"):
+            extras = [sd.WasapiSettings(auto_convert=True), None]
+    except Exception:
+        extras = [None]
+    for rate in raten_kandidaten(sd, wunsch):
+        for extra in extras:
+            try:
+                kw = {} if extra is None else {"extra_settings": extra}
+                strom = None
+                strom = sd.OutputStream(samplerate=rate, channels=2,
+                                        dtype="float32", blocksize=0,
+                                        latency="low", callback=rueckruf, **kw)
+                strom.start()
+                return strom
+            except Exception as exc:
+                letzter = exc
+                # Gebaut, aber nicht startbar: freigeben, bevor der naechste
+                # Versuch das Geraet erneut oeffnet.
+                if strom is not None:
+                    try:
+                        strom.close()
+                    except Exception:
+                        pass
+    raise letzter if letzter else RuntimeError("kein Ausgabegeraet")
 
 
 def standardgeraet() -> str:
@@ -291,11 +351,10 @@ def neu_verbinden() -> bool:
             except Exception:
                 aus.fill(0.0)
 
-        neu = sd.OutputStream(samplerate=48000, channels=2, dtype="float32",
-                              blocksize=0, latency="low", callback=_rueckruf)
-        neu.start()
+        neu = _strom_oeffnen(sd, m.quellrate, _rueckruf)
         _strom = neu
         _rate = int(neu.samplerate)
+        m.ausgaberate_setzen(_rate)
         _geraet = _geraetename(sd, neu)
         _standard = standardgeraet()
         _wechsel += 1

@@ -50,6 +50,35 @@ import numpy as np
 #: aufzufallen, lang genug, um den Sprung auf null zu vermeiden.
 AUSLAUF_FRAMES = 64
 
+#: Ab diesem Betrag beginnt der Weichbegrenzer. Darunter bleibt das Signal
+#: **unverändert** (ein einzelner Motor erreicht etwa 0,6).
+KNIE = 0.7
+
+#: Beim Verkleinern der Rate um mehr als diesen Faktor wird vorher tiefpass-
+#: gefiltert (sonst spiegeln sich Anteile ueber der neuen Nyquist nach unten:
+#: Bluetooth-Freisprechgeraete mit 16/32 kHz).
+AA_AB = 1.2
+AA_TAPS = 63
+
+
+def weich_begrenzen(x: np.ndarray, knie: float = KNIE) -> np.ndarray:
+    """Weiche Begrenzung der Summe auf höchstens ±1.
+
+    Die Summe mehrerer Motoren kann über 1,0 liegen (gemessen: 1,05 schon bei
+    einem Gegner in 100 px). Was der Treiber dann mit dem Überschuss tut, hängt
+    vom Gerät ab — hartes Abschneiden, Verzerren, Lauterregeln des
+    Systemlimiters — und klingt je nach Ausgabegerät verschieden schlecht.
+    Hier wird es vorher und gerätunabhängig getan: unter dem Knie linear,
+    darüber ein tanh-Auslauf mit gleicher Steigung am Knie (stetig, monoton).
+    """
+    x = np.asarray(x, dtype=np.float32)
+    a = np.abs(x)
+    if not np.any(a > knie):
+        return x
+    rest = 1.0 - knie
+    ueber = knie + rest * np.tanh((a - knie) / rest)
+    return np.where(a > knie, np.sign(x) * ueber, x).astype(np.float32)
+
 
 class Stimme:
     """Eine Quelle im Mischer.
@@ -106,9 +135,20 @@ class Mischer:
     """
 
     def __init__(self, kapazitaet: int = 8192, vorrat: int = 4096,
-                 stueck: int = 1024) -> None:
+                 stueck: int = 1024, quellrate: int = 48000,
+                 ausgaberate: int | None = None,
+                 begrenzen: bool = False) -> None:
         if not (0 < vorrat < kapazitaet):
             raise ValueError("vorrat muss zwischen 0 und kapazitaet liegen")
+        #: Rate der Stimmen (Aufnahmen) und Rate des Geräts. Weichen sie ab,
+        #: rechnet der **Erzeugerfaden** um — nie der Audiofaden.
+        self.quellrate = int(quellrate)
+        #: Weichbegrenzer auf der Summe. Das Geraet schaltet ihn ein; reine
+        #: Transporttests (Zaehlerrampen weit ueber 1) lassen ihn aus.
+        self.begrenzen = bool(begrenzen)
+        self.ausgaberate = int(ausgaberate or quellrate)
+        self._umr_pos = 1.0
+        self._umr_letzter = np.zeros(2, dtype=np.float32)
         self.kapazitaet = int(kapazitaet)
         self.vorrat = int(vorrat)
         self.stueck = int(stueck)
@@ -162,7 +202,16 @@ class Mischer:
         :meth:`braucht_nachschub` wahr ist. Gibt 0 zurück, wenn kein Platz ist.
         """
         platz = self.kapazitaet - self.fuellstand
-        laenge = min(self.stueck, platz)
+        # Einmal lesen: die Wache kann die Rate beim Geraetewechsel
+        # zwischendurch aendern.
+        rate = self.ausgaberate
+        umrechnen = rate != self.quellrate
+        if umrechnen:
+            # Quellwerte, deren umgerechnete Menge noch in den Ring passt.
+            schritt = self.quellrate / rate
+            laenge = min(self.stueck, int(platz * schritt) - 2)
+        else:
+            laenge = min(self.stueck, platz)
         if laenge <= 0:
             return 0
 
@@ -180,10 +229,72 @@ class Mischer:
 
         # Erst schreiben, dann den Zähler erhöhen — sonst liest der Audiofaden
         # Daten, die noch gar nicht dastehen.
+        if self.begrenzen:
+            summe = weich_begrenzen(summe)
+        if umrechnen:
+            summe = self._umrechnen(summe, rate)
+            laenge = len(summe)
+            if laenge <= 0:
+                return 0
         self._in_ring(summe, laenge)
         self._geschrieben += laenge
         self.erzeugt += laenge
         return laenge
+
+    def ausgaberate_setzen(self, rate: int) -> None:
+        """Geräterate ändern (Gerätewechsel). Zustand der Umrechnung bleibt."""
+        self.ausgaberate = int(rate)
+
+    def _tiefpass_taps(self, rate: int) -> np.ndarray:
+        """Gefensterter Sinc-Tiefpass gegen Spiegelfrequenzen beim Verkleinern.
+
+        Eckfrequenz 0,45 x Zielrate (unter deren Nyquist), 63 Taps, auf
+        Gleichanteil 1 normiert. Wird je Rate einmal gerechnet.
+        """
+        if getattr(self, "_tp_rate", None) != rate:
+            fc = 0.45 * rate / self.quellrate        # in Zyklen je Quellwert
+            k = np.arange(AA_TAPS) - (AA_TAPS - 1) / 2.0
+            h = 2.0 * fc * np.sinc(2.0 * fc * k) * np.hanning(AA_TAPS)
+            self._tp_taps = (h / h.sum()).astype(np.float32)
+            self._tp_rate = rate
+            self._tp_rest = np.zeros((AA_TAPS - 1, 2), dtype=np.float32)
+        return self._tp_taps
+
+    def _anti_alias(self, x: np.ndarray, rate: int) -> np.ndarray:
+        taps = self._tiefpass_taps(rate)
+        ext = np.concatenate([self._tp_rest, x], axis=0)
+        aus = np.empty_like(x)
+        for c in (0, 1):
+            aus[:, c] = np.convolve(ext[:, c], taps, mode="valid")
+        self._tp_rest = ext[-(AA_TAPS - 1):].copy()
+        return aus
+
+    def _umrechnen(self, x: np.ndarray, rate: int | None = None) -> np.ndarray:
+        """Lineare Umrechnung quellrate -> ausgaberate, stetig über Stücke.
+
+        ``_umr_letzter`` ist der letzte Wert des Vorstücks, ``_umr_pos`` die
+        Lesestelle (in Quellwerten, 0 = dieser Letzte). Dadurch gibt es an den
+        Stückgrenzen weder Sprung noch Doppelwert.
+        """
+        rate = rate or self.ausgaberate
+        n = len(x)
+        schritt = self.quellrate / rate
+        if schritt > AA_AB:
+            x = self._anti_alias(x, rate)
+        quelle = np.concatenate([self._umr_letzter[None, :], x], axis=0)
+        pos = self._umr_pos
+        k = int(np.ceil((n - pos) / schritt)) if n > pos else 0
+        if k <= 0:
+            self._umr_pos = pos - n
+            self._umr_letzter = x[-1].copy()
+            return np.zeros((0, 2), dtype=np.float32)
+        stellen = pos + np.arange(k) * schritt
+        i0 = np.floor(stellen).astype(np.int64)
+        f = (stellen - i0).astype(np.float32)[:, None]
+        aus = quelle[i0] * (1.0 - f) + quelle[i0 + 1] * f
+        self._umr_pos = float(pos + k * schritt - n)
+        self._umr_letzter = x[-1].copy()
+        return aus.astype(np.float32)
 
     def _stimme_mischen(self, stimme: Stimme, summe: np.ndarray,
                         laenge: int) -> bool:
