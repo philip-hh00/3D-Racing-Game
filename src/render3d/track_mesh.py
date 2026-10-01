@@ -1092,10 +1092,20 @@ def bauen(strecke: dict, randstein_m: float = 1.0,
 
     laenge_m = gesamt_m
 
+    # Das Spiel setzt bis zu FELD_MAX Fahrzeuge und ergaenzt fehlende Plaetze
+    # (aeltere Strecken und Editor-Strecken speichern nur 4) mit
+    # ``build_start_positions`` aus der Mittellinie — dieselben Plaetze muss
+    # das Netz markieren, sonst stehen die hinteren Autos auf unmarkierter
+    # Strasse. Wie ``Track._ensure_start_grid``: zu wenige -> ganzes Gitter neu.
+    from src.core.race_setup import FELD_MAX
+    from src.track.track_builder import build_start_positions
+    start_daten = [s for s in (strecke.get("start_positions", []) or []) if isinstance(s, dict)]
+    if len(start_daten) < FELD_MAX:
+        start_daten = build_start_positions(
+            rohe_mittellinie_px, float(strecke.get("track_width", 100.0)), count=FELD_MAX)
+
     start_positionen: list[tuple[float, float, float]] = []
-    for s in strecke.get("start_positions", []) or []:
-        if not isinstance(s, dict):
-            continue
+    for s in start_daten:
         try:
             x_px = float(s["x"])
             y_px = float(s["y"])
