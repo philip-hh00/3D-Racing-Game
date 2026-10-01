@@ -1131,6 +1131,38 @@ class RaceState(BaseState):
                 return fahrzeug
         return None
 
+    def _fahrzeug_mit_koerper(self, body_id) -> object | None:
+        """Fahrzeug zu ``id(pymunk-Koerper)`` — so melden es die Kollisionsereignisse.
+
+        Fund 01.10.2026: die Handler lasen ``vehicle_id``, das gar nicht im
+        Ereignis steht (es traegt ``vehicle_body_id`` bzw. ``body_a_id`` und
+        ``body_b_id``). Das Fahrzeug blieb ``None``, und jeder Aufprall klang
+        ohne Entfernungsdaempfung gleich laut, egal wo er geschah.
+        """
+        if body_id is None:
+            return None
+        for fahrzeug in self._klang_fahrzeuge():
+            if id(getattr(fahrzeug, "body", None)) == body_id:
+                return fahrzeug
+        return None
+
+    def _aufprall_fahrzeug(self, data: dict[str, Any]) -> object | None:
+        """Bei Fahrzeug gegen Fahrzeug das dem Hoerer naehere der beiden."""
+        a = data.get("vehicle_a") or self._fahrzeug_mit_koerper(data.get("body_a_id"))
+        b = data.get("vehicle_b") or self._fahrzeug_mit_koerper(data.get("body_b_id"))
+        kandidaten = [f for f in (a, b) if f is not None]
+        if not kandidaten:
+            return None
+        hoerer = self._hoerpositionen()
+        if len(kandidaten) == 1 or not hoerer:
+            return kandidaten[0]
+        from src.core import sfx_rennen
+
+        def abstand(f):
+            x, y = sfx_rennen._position(f)
+            return min(math.hypot(x - hx, y - hy) for hx, hy in hoerer)
+        return min(kandidaten, key=abstand)
+
     def _klang_aktualisieren(self) -> None:
         if self._klang is None:
             return
@@ -1231,7 +1263,7 @@ class RaceState(BaseState):
         """Car-to-car touch: sound always, denser streaming and bump relay online."""
         if self._klang is not None:
             self._klang.aufprall(data.get("impulse", 0.0),
-                                 self._fahrzeug_mit_id(data.get("vehicle_id")),
+                                 self._aufprall_fahrzeug(data),
                                  self._hoerpositionen())
         if not self._online:
             return
@@ -1266,7 +1298,8 @@ class RaceState(BaseState):
         """Handle vehicle hitting a wall."""
         impulse = data.get("impulse", 0.0)
         if self._klang is not None:
-            fahrzeug = self._fahrzeug_mit_id(data.get("vehicle_id"))
+            fahrzeug = (self._fahrzeug_mit_koerper(data.get("vehicle_body_id"))
+                        or self._fahrzeug_mit_id(data.get("vehicle_id")))
             self._klang.wandtreffer(impulse, fahrzeug, self._hoerpositionen())
 
     def _on_race_finish(self, data: dict[str, Any]) -> None:
