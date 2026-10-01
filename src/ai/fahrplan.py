@@ -105,7 +105,14 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     if vorhalt > 0.0:
         k = max(1, int(math.ceil(vorhalt / float(np.mean(strecke.seg_len)))))
         v = np.minimum.reduce([np.roll(v, -j) for j in range(k + 1)])
-    d_ideal = np.array([strecke.sd(x, y, hinweis=i)[1] for i, (x, y) in enumerate(geo.points)])
+    # Der Löser liefert den Seitenversatz je Punkt schon (gleiches Vorzeichen wie
+    # Frenet-d: + links; an allen mitgelieferten Strecken auf 0,1 px gleich der
+    # Projektion). Nur bei abweichender Punktzahl wird neu projiziert.
+    offsets = np.asarray(getattr(geo, "offsets", ()), dtype=np.float64)
+    if len(offsets) == strecke.n and len(geo.points) == strecke.n:
+        d_ideal = offsets
+    else:
+        d_ideal = np.array([strecke.sd(x, y, hinweis=i)[1] for i, (x, y) in enumerate(geo.points)])
     halb_frei = max(10.0, strecke.halb - float(config.width_px) / 2.0 - RAND_PX)
     plan = Fahrplan(strecke, np.clip(d_ideal, -halb_frei, halb_frei), v,
                     np.asarray(geo.signed_curvature, dtype=np.float64), halb_frei, float(lim.a_brake),

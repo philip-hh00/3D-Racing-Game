@@ -94,3 +94,19 @@ def test_fahrzeugwerte_in_place_geaendert_neuer_plan():
     b = fahrplan_bauen(track, cfg, STUFEN["hard"])
     assert a is not b
     assert b.v_ziel.mean() < a.v_ziel.mean()
+
+
+@pytest.mark.parametrize("name", ["oval", "gp", "city"])
+def test_ideallinie_entspricht_der_projektion(name):
+    """d_ideal (aus den Löser-Versätzen) hat dasselbe Vorzeichen wie Frenet-d."""
+    from src.ai.racing_line_solver import compute_racing_line
+    track = H.strecke_laden(name)
+    stufe = STUFEN["hard"]
+    cfg = H.config("rookie")
+    plan = fahrplan_bauen(track, cfg, stufe)
+    geo = compute_racing_line(plan.strecke.punkte.tolist(), float(track.track_width),
+                              car_width=float(cfg.width_px), margin=stufe.wandabstand_px,
+                              corner_pull=stufe.kurve_schneiden)
+    proj = np.array([plan.strecke.sd(x, y, hinweis=i)[1] for i, (x, y) in enumerate(geo.points)])
+    lim = plan.halb_frei
+    assert np.abs(np.clip(proj, -lim, lim) - plan.d_ideal).max() < 0.5
