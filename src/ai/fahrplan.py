@@ -79,7 +79,10 @@ def mittellinie(track) -> list[tuple[float, float]]:
 
 #: Fahrzeugwerte, die in Löser und Tempoprofil eingehen (siehe ``limits_from_config``).
 _CONFIG_FELDER = ("mass", "engine_power", "brake_force", "grip", "max_speed",
-                  "turn_speed", "width_px")
+                  "turn_speed", "width_px", "wheelbase_m", "drag_coefficient", "frontal_area",
+                  "roll_coefficient", "com_bias", "wheel_diameter", "idle_rpm", "redline_rpm")
+#: Listen und Texte, die das Beschleunigungsprofil bestimmen (Getriebe, Drehmomentkurve, Antrieb).
+_CONFIG_LISTEN = ("gear_ratios", "torque_curve", "drive_type")
 
 
 def _schluessel(mitte, breite: float, config, stufe) -> tuple:
@@ -91,7 +94,8 @@ def _schluessel(mitte, breite: float, config, stufe) -> tuple:
     """
     punkte = hashlib.sha1(np.asarray(mitte, dtype=np.float64).tobytes()).hexdigest()
     werte = tuple(float(getattr(config, f, 0.0) or 0.0) for f in _CONFIG_FELDER)
-    return (punkte, float(breite), werte, stufe.key)
+    listen = tuple(repr(getattr(config, f, None)) for f in _CONFIG_LISTEN)
+    return (punkte, float(breite), werte, listen, stufe.key)
 
 
 def fahrplan_bauen(track, config, stufe) -> Fahrplan:
@@ -106,7 +110,7 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
                               margin=stufe.wandabstand_px, corner_pull=stufe.kurve_schneiden)
     lim = limits_from_config(config, grip_usage=stufe.haftung,
                              brake_confidence=stufe.bremsen, steer_confidence=0.9)
-    v = np.asarray(compute_speed_profile(geo, lim), dtype=np.float64)
+    v = np.asarray(compute_speed_profile(geo, lim, antrieb_begrenzt=False), dtype=np.float64)
     v_kurve = np.array([_corner_speed(c, lim) for c in geo.curvature], dtype=np.float64)
     # Bremspunkt-Vorhalt: das Tempo einer Stelle darf nicht über dem der
     # nächsten ``bremspunkt_m`` Meter liegen — wer vorsichtig ist, bremst früher.

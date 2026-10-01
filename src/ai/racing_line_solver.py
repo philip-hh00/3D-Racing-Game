@@ -81,196 +81,87 @@ def compute_racing_line(
     track_width: float,
     car_width: float = 28.0,
     margin: float = 16.0,
-    iterations: int = 600,
+    iterations: int = 800,
     weight: float = 0.35,
     corner_pull: float = 0.45,
     tight_radius: float = 130.0,
     outside_factor: float = 0.5,
+    kruemmungsanteil: float = 0.3,
 ) -> RacingLineGeometry:
-    """Solve a minimum-curvature racing line for a closed center polyline.
+    """Solve a fast line for a closed center polyline (numpy, a few ms per 100 points).
+
+    Der Kurs ist ein Gemisch aus kürzestem Weg (Laplace-Glättung) und kleinster
+    Krümmung (bi-harmonisch, Anteil ``kruemmungsanteil``) im Korridor: beides
+    zusammen ergibt von selbst Außen-Innen-Außen mit spätem Scheitelpunkt. Der
+    Korridor ist überall gleich breit (Strecke minus Auto minus ``margin``).
+
+    Früher kamen Vorhalte dazu (Innenseite vor Kurven sperren, Mitte auf kurzen
+    Geraden, „S-Kurven“-Kürzung). Sie kosteten auf *city* mit dem Kompaktwagen
+    rund 3 s je Runde (28,3 s statt 21,4 s bei gleicher Haftung und 0 Wandkontakten):
+    das Auto ist traktionsbegrenzt (~53 px/s²), Tempo geht nur durch
+    Kurvenradius und Weglänge zu gewinnen — ein verengter Korridor wirkt wie
+    eine zu enge Kurve in jeder Kurve.
 
     Args:
         center:       Ordered centerline points forming a closed loop.
         track_width:  Full drivable width (px).
         car_width:    Car body width (px) – keeps the whole car off the wall.
-        margin:       Extra safety gap to the wall (px).
-        iterations:   Smoothing iterations (a few hundred converges; cheap).
-        weight:       Per-iteration pull strength toward the neighbour midpoint.
-        corner_pull:  How much to shrink the usable corridor in tight corners
-                      (0 = full apex; 0.45 = keep the line ~55 % off the wall in
-                      the tightest bends so the car has clearance there).
+        margin:       Gap between car edge and wall (px).
+        iterations:   Smoothing iterations.
+        weight:       Per-iteration pull strength toward the target.
+        corner_pull:  Vorsicht in engen Kurven (0 = voller Scheitelpunkt;
+                      0.45 = die Innenseite in den engsten Kurven um bis zu
+                      ~22 % des Korridors zurücknehmen). Pro Stufe verschieden.
         tight_radius: Centerline radius (px) at/below which a corner counts as
                       fully "tight" for the corner_pull reduction.
-        outside_factor: How much to pull in the outside corridor in tight corners
-                      relative to corner_pull. 0 = fully open, 1 = symmetric.
+        outside_factor: Anteil der Rücknahme, der auf die Außenseite entfällt.
     """
+    import numpy as np
     n = len(center)
     if n < 3:
         normals = _centerline_normals(center) if center else []
         z = [0.0] * n
         return RacingLineGeometry(list(center), z, normals, z, list(z), list(z), 0.0)
 
-    normals = _centerline_normals(center)
+    c = np.asarray(center, dtype=np.float64)
+    nor = np.asarray(_centerline_normals(center), dtype=np.float64)
     half_corridor = max(4.0, track_width / 2.0 - car_width / 2.0 - margin)
 
-    # Per-point corridor: tighter on the curve inside where the centerline bends hard,
-    # so the racing line can't dive all the way to the inside wall in a sharp corner,
-    # but left more open on the curve outside to allow the vehicle to go wide (Out-In-Out).
-    tight_kappa = 1.0 / max(1.0, tight_radius)
-    final_limits: list[tuple[float, float]] = []
-    lookahead = 22
-    lookback = 15
-    outside_factor = 0.5
-    
-    for i in range(n):
-        # 1. Local curvature limits (baseline apex safety)
-        a = center[(i - 1) % n]
-        b = center[i]
-        c = center[(i + 1) % n]
-        k_self = _menger_curvature(a, b, c)
-        cross_self = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
-        
-        tight_self = min(1.0, k_self / tight_kappa) ** 2
-        local_pull = corner_pull * 0.5  # allow cutting slightly closer than raw slider value
-        
-        tightened_inside = half_corridor * (1.0 - local_pull * tight_self)
-        tightened_outside = half_corridor * (1.0 - local_pull * outside_factor * tight_self)
-        
-        if cross_self >= 0.0:  # Left turn
-            lim_left = tightened_inside
-            lim_right = tightened_outside
-        else:                  # Right turn
-            lim_left = tightened_outside
-            lim_right = tightened_inside
-            
-        # 2. Lookahead limits (smooth Out-In-Out entry prep)
-        max_left_prep = 0.0
-        max_right_prep = 0.0
-        
-        for dist in range(3, lookahead):
-            idx = (i + dist) % n
-            ax = center[(idx - 1) % n]
-            bx = center[idx]
-            cx = center[(idx + 1) % n]
-            k_ahead = _menger_curvature(ax, bx, cx)
-            cross_ahead = (bx[0] - ax[0]) * (cx[1] - bx[1]) - (bx[1] - ax[1]) * (cx[0] - bx[0])
-            
-            # Triangular weight peaking at dist = 10
-            w = max(0.0, 1.0 - abs(dist - 10.0) / 9.0)
-            tight_ahead = min(1.0, k_ahead / tight_kappa) ** 2 * w
-            
-            if cross_ahead >= 0.0:
-                max_left_prep = max(max_left_prep, tight_ahead)
-            else:
-                max_right_prep = max(max_right_prep, tight_ahead)
-                
-        # Apply smooth lookahead restrictions to block the inside before a curve
-        # scaled dynamically by corridor width (disabled on very narrow tracks like Mountain)
-        corridor_scale = max(0.0, min(1.0, (half_corridor - 50.0) / 25.0))
-        entry_push = 0.25 * corridor_scale
-        lim_left *= (1.0 - entry_push * max_left_prep)
-        lim_right *= (1.0 - entry_push * max_right_prep)
-        
-        # 3. Centering on straights between curves
-        is_straight = (k_self < 0.0008)
-        has_curve_before = False
-        for j in range(3, lookback):
-            idx = (i - j) % n
-            ax = center[(idx - 1) % n]
-            bx = center[idx]
-            cx = center[(idx + 1) % n]
-            if _menger_curvature(ax, bx, cx) > 0.0012:
-                has_curve_before = True
-                break
-                
-        has_curve_after = False
-        for j in range(3, lookahead):
-            idx = (i + j) % n
-            ax = center[(idx - 1) % n]
-            bx = center[idx]
-            cx = center[(idx + 1) % n]
-            if _menger_curvature(ax, bx, cx) > 0.0012:
-                has_curve_after = True
-                break
-                
-        if is_straight and has_curve_before and has_curve_after:
-            # Centering: scale limits down symmetrically (relaxed on narrow tracks)
-            centering_limit = 0.70 + 0.30 * (1.0 - corridor_scale)
-            lim_left = min(lim_left, half_corridor * centering_limit)
-            lim_right = min(lim_right, half_corridor * centering_limit)
-            
-        # S-Curve Late Apex Detection (Option C)
-        if k_self > 0.0010:
-            my_sign = 1.0 if cross_self >= 0.0 else -1.0
-            for dist in range(12, 32):
-                idx = (i + dist) % n
-                ax = center[(idx - 1) % n]
-                bx = center[idx]
-                cx = center[(idx + 1) % n]
-                k_ahead = _menger_curvature(ax, bx, cx)
-                if k_ahead > 0.0010:
-                    cross_ahead = (bx[0] - ax[0]) * (cx[1] - bx[1]) - (bx[1] - ax[1]) * (cx[0] - bx[0])
-                    ahead_sign = 1.0 if cross_ahead >= 0.0 else -1.0
-                    if ahead_sign != my_sign:
-                        # Opposing curve detected ahead -> S-curve entry! Tighten inside corridor.
-                        if cross_self >= 0.0:
-                            lim_left *= 0.60
-                        else:
-                            lim_right *= 0.60
-                        break
-            
-        final_limits.append((lim_left, lim_right))
+    def kruemmung(p):
+        a, b = np.roll(p, 1, axis=0), np.roll(p, -1, axis=0)
+        ab, bc, ca = p - a, b - p, a - b
+        kreuz = ab[:, 0] * bc[:, 1] - ab[:, 1] * bc[:, 0]
+        nenner = np.hypot(*ab.T) * np.hypot(*bc.T) * np.hypot(*ca.T)
+        k = np.where(nenner > 1e-9, 2.0 * np.abs(kreuz) / np.maximum(nenner, 1e-9), 0.0)
+        return k, kreuz
 
-    pts: list[tuple[float, float]] = list(center)
+    # Korridor je Punkt: in engen Kurven innen (und etwas außen) zurücknehmen.
+    k_mitte, kreuz_mitte = kruemmung(c)
+    eng = np.minimum(1.0, k_mitte * max(1.0, tight_radius)) ** 2
+    zug = corner_pull * 0.5 * eng
+    innen = half_corridor * (1.0 - zug)
+    aussen = half_corridor * (1.0 - zug * outside_factor)
+    lim_links = np.where(kreuz_mitte >= 0.0, innen, aussen)
+    lim_rechts = np.where(kreuz_mitte >= 0.0, aussen, innen)
+
+    p = c.copy()
+    anteil = float(kruemmungsanteil)
     for _ in range(iterations):
-        new_pts: list[tuple[float, float]] = [(0.0, 0.0)] * n
-        for i in range(n):
-            px, py = pts[i]
-            ax, ay = pts[(i - 1) % n]
-            bx, by = pts[(i + 1) % n]
-            
-            # Laplacian smoothing target (minimizes curvature)
-            mx_lap = 0.5 * (ax + bx)
-            my_lap = 0.5 * (ay + by)
-            
-            # Bi-harmonic smoothing target (minimizes change of curvature / curvature-rate)
-            ax2, ay2 = pts[(i - 2) % n]
-            bx2, by2 = pts[(i + 2) % n]
-            mx_bih = (4.0 * (ax + bx) - (ax2 + bx2)) / 6.0
-            my_bih = (4.0 * (ay + by) - (ay2 + by2)) / 6.0
-            
-            # Blend: 70% Laplacian (minimize curvature), 30% Bi-harmonic (minimize curvature rate)
-            mx_target = 0.70 * mx_lap + 0.30 * mx_bih
-            my_target = 0.70 * my_lap + 0.30 * my_bih
-            
-            # Apply weight
-            mx = px + (mx_target - px) * weight
-            my = py + (my_target - py) * weight
-            
-            # Clamp into the corridor along the normal.
-            cx, cy = center[i]
-            nlx, nly = normals[i]
-            lim_left, lim_right = final_limits[i]
-            off = (mx - cx) * nlx + (my - cy) * nly
-            off = max(-lim_right, min(lim_left, off))
-            new_pts[i] = (cx + nlx * off, cy + nly * off)
-        pts = new_pts
+        a, b = np.roll(p, 1, axis=0), np.roll(p, -1, axis=0)
+        a2, b2 = np.roll(p, 2, axis=0), np.roll(p, -2, axis=0)
+        laplace = 0.5 * (a + b)
+        bih = (4.0 * (a + b) - (a2 + b2)) / 6.0
+        ziel = (1.0 - anteil) * laplace + anteil * bih
+        m = p + (ziel - p) * weight
+        off = np.sum((m - c) * nor, axis=1)
+        off = np.clip(off, -lim_rechts, lim_links)
+        p = c + nor * off[:, None]
 
-    offsets = [
-        (pts[i][0] - center[i][0]) * normals[i][0]
-        + (pts[i][1] - center[i][1]) * normals[i][1]
-        for i in range(n)
-    ]
-    curvature = [
-        _menger_curvature(pts[(i - 1) % n], pts[i], pts[(i + 1) % n]) for i in range(n)
-    ]
-    signed_curvature = []
-    for i in range(n):
-        a, b, c = pts[(i - 1) % n], pts[i], pts[(i + 1) % n]
-        cross = (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0])
-        sign = 1.0 if cross >= 0.0 else -1.0    # +ve = left / CCW
-        signed_curvature.append(curvature[i] * sign)
-    seg_len = [math.dist(pts[i], pts[(i + 1) % n]) for i in range(n)]
+    offsets = np.sum((p - c) * nor, axis=1)
+    k, kreuz = kruemmung(p)
+    signed = k * np.where(kreuz >= 0.0, 1.0, -1.0)
+    seg = np.hypot(*(np.roll(p, -1, axis=0) - p).T)
     return RacingLineGeometry(
-        pts, offsets, normals, curvature, signed_curvature, seg_len, half_corridor
+        [(float(x), float(y)) for x, y in p], offsets.tolist(), [tuple(r) for r in nor.tolist()],
+        k.tolist(), signed.tolist(), seg.tolist(), half_corridor,
     )

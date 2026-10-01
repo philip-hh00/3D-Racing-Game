@@ -38,16 +38,17 @@ LAT_GRIP_SCALE: float = 380.0
 LAT_SAFETY: float = 0.70   # corner just inside the grip limit (margin vs sliding)
 BRAKE_SAFETY: float = 0.88
 
-# Steering-lock curve mirrored from Steering.compute_steer: the achievable yaw
-# rate is turn_speed / (1 + (v/LOCK_REF)^LOCK_EXP). This caps how tight a corner
-# the car can physically take at a given speed – often *more* restrictive than
-# grip in slow hairpins, which is why it must be in the speed profile.
+# Lenkanschlag wie in PhysicsBody.apply_steering: 35 Grad, mit dem Tempo kleiner,
+# ``35 deg / (1 + (v/LOCK_REF)^LOCK_EXP)``. Mit dem Radstand ergibt das den engsten
+# fahrbaren Radius (kinematisch: tan(delta) = Radstand * Kruemmung). Fruehere
+# Fassung rechnete mit der Giergeschwindigkeit ``turn_speed`` aus
+# ``Steering.compute_steer`` — die setzt die Physik gar nicht mehr ein, das Profil
+# bremste enge Kehren dadurch ohne Grund aus.
 _LOCK_REF: float = 500.0
 _LOCK_EXP: float = 1.2
-# The controller can't perfectly realise the theoretical max yaw, so plan tight
-# corners against a fraction of it – the difference is what made the fastest car
-# run wide in the tightest hairpin.
-_TURN_SAFETY: float = 0.65
+_LOCK_GRAD: float = 35.0
+# Anteil des Anschlags, den die Bahnfuehrung nutzen darf (Reserve zum Nachlenken).
+_TURN_SAFETY: float = 0.9
 
 
 @dataclass
@@ -58,8 +59,25 @@ class VehicleLimits:
     a_accel: float     # max forward acceleration (px/s²)
     a_brake: float     # max braking deceleration (px/s²)
     v_max: float       # top speed (px/s)
-    turn_speed: float  # base yaw rate (rad/s) at zero speed
+    turn_speed: float  # (alt, nicht mehr im Profil) Giergeschwindigkeit bei Stillstand
     turn_safety: float = _TURN_SAFETY  # fraction of steering lock used for planning
+    radstand: float = 33.0  # Radstand in px (engster Radius = Radstand / tan(Anschlag))
+    #: Vollgas-Beschleunigung (px/s²) auf einem Tempogitter ``a_tab_dv`` px/s
+    #: Abstand, aus Motor, Getriebe, Traktion und Widerstaenden (siehe
+    #: ``beschleunigungstabelle``). ``None``: konstant ``a_accel``.
+    a_tab: tuple[float, ...] | None = None
+    a_tab_dv: float = 10.0
+
+    def beschleunigung(self, v: float) -> float:
+        """Mögliche Beschleunigung (px/s²) bei Tempo ``v`` (px/s)."""
+        if not self.a_tab:
+            return self.a_accel
+        x = max(0.0, v) / self.a_tab_dv
+        i = int(x)
+        if i >= len(self.a_tab) - 1:
+            return self.a_tab[-1]
+        u = x - i
+        return self.a_tab[i] * (1.0 - u) + self.a_tab[i + 1] * u
 
 
 def limits_from_config(
@@ -90,7 +108,76 @@ def limits_from_config(
     a_lat = lat_grip_scale * _grip_usage * getattr(config, "grip", 0.8)
     v_max = getattr(config, "max_speed", 260.0)
     turn_speed = getattr(config, "turn_speed", 2.2)
-    return VehicleLimits(a_lat, a_accel, a_brake, v_max, turn_speed, _steer_conf)
+    radstand = float(getattr(config, "wheelbase_m", 0.0) or 0.0) / M_PER_PX or 33.0
+    lim = VehicleLimits(a_lat, a_accel, a_brake, v_max, turn_speed, _steer_conf, radstand)
+    tab = beschleunigungstabelle(config, lim.a_tab_dv)
+    if tab:
+        lim.a_tab = tab
+        lim.a_accel = tab[0]
+    return lim
+
+
+def beschleunigungstabelle(config, dv: float = 10.0) -> tuple[float, ...] | None:
+    """Vollgas-Beschleunigung (px/s²) je Tempo ``k * dv`` px/s, wie die Physik sie liefert.
+
+    Antriebskraft aus dem Motor (Drehmomentkurve, bester Gang, Drehzahlgrenzen
+    wie ``Engine.compute_force``), begrenzt durch die Traktion der angetriebenen
+    Achse (Haftung × Achslast inkl. Gewichtsverlagerung wie in
+    ``PhysicsBody.apply_drive_force``), abzüglich Luft- und Rollwiderstand.
+    ``engine_power`` ist *keine* Kraft: es wirkte in der alten Annahme
+    ``Leistung / Masse`` rund viermal zu stark (rookie: 220 statt 53 px/s²).
+    Ohne brauchbare Motordaten ``None``.
+    """
+    from src.core.settings import M_PER_PX
+    try:
+        from src.entities.components.engine import Engine
+        motor = Engine(
+            max_power=float(config.engine_power), max_speed=float(config.max_speed),
+            gear_ratios=getattr(config, "gear_ratios", None),
+            idle_rpm=float(getattr(config, "idle_rpm", 1000.0)),
+            redline_rpm=float(getattr(config, "redline_rpm", 6000.0)),
+            torque_curve=getattr(config, "torque_curve", None),
+            wheel_diameter=float(getattr(config, "wheel_diameter", 0.65)),
+        )
+        masse = float(config.mass)
+        grip = float(config.grip)
+        cw = float(getattr(config, "drag_coefficient", 0.3))
+        flaeche = float(getattr(config, "frontal_area", 2.2))
+        roll = float(getattr(config, "roll_coefficient", 0.011))
+        antrieb = str(getattr(config, "drive_type", "rwd")).lower()
+        vorn = max(0.35, min(0.65, 0.5 + float(getattr(config, "com_bias", 0.0))))
+        v_top = float(config.max_speed)
+    except Exception:
+        return None
+    if masse <= 0.0 or v_top <= 0.0:
+        return None
+    werte: list[float] = []
+    for k in range(int(v_top / dv) + 2):
+        v = k * dv
+        kraft = 0.0
+        for g, uebersetzung in enumerate(motor.gear_ratios):
+            gang_top = motor.gears_max_speeds[g]
+            f = motor._wheel_force(g, v) * max(0.0, 1.0 - (v / gang_top) ** 12)
+            kraft = max(kraft, f)
+        kraft *= max(0.0, 1.0 - (v / v_top) ** 10)
+        widerstand = (0.5 * 1.2 * cw * flaeche * (v * M_PER_PX) ** 2
+                      + roll * masse * 9.81) if v > 0.5 else 0.0
+        a = kraft / masse / M_PER_PX
+        for _ in range(4):      # Gewichtsverlagerung hängt von a selbst ab
+            wt = min(0.35, a * 0.0012)
+            v_last = max(0.1, min(0.9, vorn - wt))
+            h_last = max(0.1, min(0.9, (1.0 - vorn) + wt))
+            if antrieb == "fwd":
+                traktion = grip * v_last * masse * 9.81
+                f_antrieb = min(kraft, traktion)
+            elif antrieb == "awd":
+                f_antrieb = (min(kraft * 0.5, grip * v_last * masse * 9.81)
+                             + min(kraft * 0.5, grip * h_last * masse * 9.81))
+            else:
+                f_antrieb = min(kraft, grip * h_last * masse * 9.81)
+            a = max(0.0, f_antrieb - widerstand) / masse / M_PER_PX
+        werte.append(a)
+    return tuple(max(1.0, w) for w in werte)
 
 
 def _corner_speed(curvature: float, limits: VehicleLimits, eps: float = 1e-6) -> float:
@@ -104,23 +191,25 @@ def _corner_speed(curvature: float, limits: VehicleLimits, eps: float = 1e-6) ->
     - Wider curves (larger R) -> higher safe speed.
 
     Grip limit:     v = sqrt(a_lat / kappa).
-    Steering limit: the car must yaw at v*kappa rad/s, but the lock curve caps
-                    the yaw at turn_speed/(1+(v/LOCK_REF)^LOCK_EXP). The largest
-                    v satisfying v*kappa*(1+(v/LOCK_REF)^LOCK_EXP) <= turn_speed
-                    is found by bisection (the left side rises with v).
+    Steering limit: kinematic, tan(delta) = wheelbase * curvature, with the lock
+                    angle of PhysicsBody.apply_steering (35 degrees, falling with
+                    speed). The largest v with that lock sufficient is found by
+                    bisection (the lock shrinks with v).
     """
     if curvature <= eps:
         return limits.v_max
     v_grip = math.sqrt(limits.a_lat / curvature)
-
-    max_yaw = limits.turn_speed * limits.turn_safety
+    noetig = curvature * limits.radstand      # tan(delta)
 
     def steer_ok(v: float) -> bool:
-        return v * curvature * (1.0 + (v / _LOCK_REF) ** _LOCK_EXP) <= max_yaw
+        lock = math.radians(_LOCK_GRAD) / (1.0 + (v / _LOCK_REF) ** _LOCK_EXP)
+        return noetig <= math.tan(lock * limits.turn_safety)
 
     hi = limits.v_max
     if steer_ok(hi):
         v_steer = hi
+    elif not steer_ok(0.0):
+        v_steer = 0.0           # enger als der Anschlag je erlaubt
     else:
         lo = 0.0
         for _ in range(24):
@@ -138,8 +227,17 @@ def compute_speed_profile(
     limits: VehicleLimits,
     passes: int = 3,
     eps: float = 1e-6,
+    antrieb_begrenzt: bool = True,
 ) -> list[float]:
-    """Return the max safe speed (px/s) at each racing-line point."""
+    """Return the max safe speed (px/s) at each racing-line point.
+
+    ``antrieb_begrenzt=False`` lässt den Vorwärtsdurchgang weg: das Profil ist dann
+    nur noch die Obergrenze aus Kurven und Bremsen. Für einen Regler, der das
+    Profil als Sollwert nimmt, ist das richtig — mehr als der Motor liefert, kann
+    das Gas ohnehin nicht geben, und eine Tempoobergrenze *unter* dem, was das
+    Auto real schafft (Kurvenschneiden, Windschatten, Modellfehler von ein paar
+    Prozent), bremst es ohne Grund (mountain +1,3 s, gp +0,35 s).
+    """
     curv = geometry.curvature
     seg = geometry.seg_len
     n = len(curv)
@@ -158,9 +256,9 @@ def compute_speed_profile(
             if v[i] > cap:
                 v[i] = cap
         # 3. Forward acceleration pass: v[j] limited by the previous + engine.
-        for i in range(n):
+        for i in (range(n) if antrieb_begrenzt else ()):
             j = (i + 1) % n
-            cap = math.sqrt(v[i] * v[i] + 2.0 * limits.a_accel * seg[i])
+            cap = math.sqrt(v[i] * v[i] + 2.0 * limits.beschleunigung(v[i]) * seg[i])
             if v[j] > cap:
                 v[j] = cap
 
