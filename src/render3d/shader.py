@@ -837,6 +837,17 @@ SONNE_RICHTUNG = (0.35, 0.45, 0.82)
 SONNE_FARBE = (3.0, 2.85, 2.6)
 
 
+def _merkzettel(p) -> dict:
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = {}
+        try:
+            p._zuletzt = stand
+        except AttributeError:                       # pragma: no cover - Attrappen
+            pass
+    return stand
+
+
 def setzen(p, name: str, wert) -> None:
     """Ein Uniform setzen, wenn der Compiler es nicht wegoptimiert hat.
 
@@ -848,11 +859,7 @@ def setzen(p, name: str, wert) -> None:
     """
     stand = getattr(p, "_zuletzt", None)
     if stand is None:
-        stand = {}
-        try:
-            p._zuletzt = stand
-        except AttributeError:                       # pragma: no cover - Attrappen
-            pass
+        stand = _merkzettel(p)
     if name in stand and stand[name] == wert:
         return
     try:
@@ -860,6 +867,25 @@ def setzen(p, name: str, wert) -> None:
     except KeyError:
         pass
     stand[name] = wert
+
+
+def setzen_viele(p, paare) -> None:
+    """Wie :func:`setzen` für eine Folge ``(name, wert)`` — ohne Aufruf je Wert.
+
+    Ein Materialwechsel setzt ein Dutzend Uniforms; je Bild sind das über
+    tausend Aufrufe von :func:`setzen`, fast alle ohne Wirkung.
+    """
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = _merkzettel(p)
+    for name, wert in paare:
+        if name in stand and stand[name] == wert:
+            continue
+        try:
+            p[name].value = wert
+        except KeyError:
+            pass
+        stand[name] = wert
 
 
 def matrix_setzen(p, name: str, m: np.ndarray) -> None:

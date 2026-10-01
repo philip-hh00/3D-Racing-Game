@@ -140,35 +140,57 @@ class _Dekomodell:
     pos4: np.ndarray = None
 
 
-def material_setzen(p, hm: mesh.HochgeladenesMaterial) -> None:
+def _material_werte(hm: mesh.HochgeladenesMaterial) -> tuple:
+    """Die festen Uniform-Werte eines Materials, einmal gerechnet und am Material gemerkt.
+
+    Vorher rechnete jeder Materialwechsel dieselben Tupel und Gleitkommazahlen
+    neu, rund 90-mal je Bild. Das Merkzettelchen gilt, solange ``hm.daten``
+    dasselbe Objekt ist.
+    """
+    gemerkt = hm.__dict__.get("_werte_gemerkt")
+    if gemerkt is not None and gemerkt[0] is hm.daten:
+        return gemerkt[1]
     m = hm.daten
-    shader.setzen(p, "hat_basisfarbe", 1.0 if hm.basisfarbe is not None else 0.0)
-    shader.setzen(p, "hat_metallic_rauheit", 1.0 if hm.metallic_rauheit is not None else 0.0)
-    shader.setzen(p, "grundton", tuple(m.farbe))
-    shader.setzen(p, "metallic_faktor", float(m.metallic))
-    shader.setzen(p, "rauheit_faktor", float(m.rauheit))
-    shader.setzen(p, "emission", tuple(m.emission))
-    shader.setzen(p, "alpha_faktor", 1.0 if m.modus != "BLEND" else float(m.alpha))
-    shader.setzen(p, "alpha_schwelle", float(m.schwelle) if m.modus == "MASK" else 0.0)
-    shader.setzen(p, "klarlack", 0.0)
-    if hm.basisfarbe is not None:
-        hm.basisfarbe.use(0)
-    if hm.metallic_rauheit is not None:
-        hm.metallic_rauheit.use(1)
-    # Detailtexturen (Fahrzeuge): Einheiten 4, 6, 7 — siehe shader._vorgaben.
     normal = getattr(hm, "normalkarte", None)
     leucht = getattr(hm, "emissionskarte", None)
     ao = getattr(hm, "verdeckung", None)
-    shader.setzen(p, "hat_normalkarte", 1.0 if normal is not None else 0.0)
-    shader.setzen(p, "hat_emissionskarte", 1.0 if leucht is not None else 0.0)
-    shader.setzen(p, "hat_verdeckung", 1.0 if ao is not None else 0.0)
+    vorn = (
+        ("hat_basisfarbe", 1.0 if hm.basisfarbe is not None else 0.0),
+        ("hat_metallic_rauheit", 1.0 if hm.metallic_rauheit is not None else 0.0),
+        ("grundton", tuple(m.farbe)),
+        ("metallic_faktor", float(m.metallic)),
+        ("rauheit_faktor", float(m.rauheit)),
+        ("emission", tuple(m.emission)),
+        ("alpha_faktor", 1.0 if m.modus != "BLEND" else float(m.alpha)),
+        ("alpha_schwelle", float(m.schwelle) if m.modus == "MASK" else 0.0),
+        ("klarlack", 0.0),
+    )
+    hinten = (
+        ("hat_normalkarte", 1.0 if normal is not None else 0.0),
+        ("hat_emissionskarte", 1.0 if leucht is not None else 0.0),
+        ("hat_verdeckung", 1.0 if ao is not None else 0.0),
+    )
     if normal is not None:
-        shader.setzen(p, "normal_staerke", float(m.normal_staerke))
-        normal.use(6)
-    if leucht is not None:
-        leucht.use(7)
-    if ao is not None:
-        ao.use(4)
+        hinten += (("normal_staerke", float(m.normal_staerke)),)
+    # Texturen binden hängt nicht an den Uniforms; die Reihenfolge der
+    # Uniforms bleibt dieselbe wie vor dem Merken.
+    werte = (vorn, hinten, tuple((e, t) for e, t in (
+        (0, hm.basisfarbe), (1, hm.metallic_rauheit), (6, normal), (7, leucht), (4, ao))
+        if t is not None))
+    try:
+        hm._werte_gemerkt = (hm.daten, werte)
+    except AttributeError:                           # pragma: no cover - Attrappen
+        pass
+    return werte
+
+
+def material_setzen(p, hm: mesh.HochgeladenesMaterial) -> None:
+    vorn, hinten, texturen = _material_werte(hm)
+    shader.setzen_viele(p, vorn)
+    # Detailtexturen (Fahrzeuge): Einheiten 4, 6, 7 — siehe shader._vorgaben.
+    for einheit, textur in texturen:
+        textur.use(einheit)
+    shader.setzen_viele(p, hinten)
 
 
 class Dekozeichner:
