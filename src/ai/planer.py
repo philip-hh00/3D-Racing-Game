@@ -5,7 +5,8 @@ mit zwei Übergangslängen (quintischer Übergang, also ohne Knick). Jede Bahn
 bekommt Kosten: Zeit (inklusive „hinter einem Langsameren festhängen“),
 Abweichung von der Ideallinie, Wunsch der Taktik, Spurwechsel, und eine sehr
 hohe Strafe für jede vorhergesagte Berührung. Das Tempo gilt je Bahn: wer in der Spur hinter einem Langsameren liegt, fährt
-höchstens dessen Tempo plus Lückenanteil (Folgen), und die Zeit dieser Bahn
+höchstens dessen Tempo plus Lückenanteil (Folgen; die Lücke zählt erst jenseits
+von Berührlänge und Folgeabstand ``Wunsch.abstand_s``), und die Zeit dieser Bahn
 bezahlt das — so ergibt sich „erst bremsen, dann vorbei“ von selbst. Die
 billigste gewinnt. Überholen,
 Ausweichen und Nebeneinanderfahren ergeben sich daraus.
@@ -36,6 +37,9 @@ class Wunsch:
     spaeter_bremsen_px: float = 0.0
     tempo: float = 1.0
     versatz: float = 0.0
+    #: Folgeabstand in Sekunden Fahrzeit (zusätzlich zur Berührlänge): wer dichter
+    #: auffährt, fährt in den Vordermann, sobald der bremst.
+    abstand_s: float = 0.0
 
 
 @dataclass
@@ -172,7 +176,7 @@ class Planer:
                 # daneben steht, wird nicht mit Folgetempo (bei stehendem Auto: 0)
                 # festgehalten — das verklemmte zwei Autos dauerhaft nebeneinander.
                 hinter = in_spur[:, k, :] & (rel > 0.6 * lga)
-                cap = np.where(hinter, gva + np.maximum(0.0, rel - lga) * self.FOLGE_GAIN, np.inf).min(axis=1)
+                cap = np.where(hinter, gva + np.maximum(0.0, rel - lga - w.abstand_s * np.maximum(gva, 0.0)) * self.FOLGE_GAIN, np.inf).min(axis=1)
                 v_eff[:, k] = np.maximum(np.minimum(v[:, k], cap), 0.0)
                 if k:
                     t[:, k] = t[:, k - 1] + seg[k - 1] / np.maximum(0.5 * (v_eff[:, k - 1] + v_eff[:, k]), 5.0)

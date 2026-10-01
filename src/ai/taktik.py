@@ -15,6 +15,8 @@ BEREICH_VORNE = 700.0     # px
 BEREICH_HINTEN = 300.0    # px
 BREMSZONE_SUCHE = 1500.0  # px voraus
 BREMSZONE_ABFALL = 0.8    # Zieltempo fällt unter diesen Anteil
+ABSTAND_BASIS = 0.10      # s Folgeabstand bei vollem Mut …
+ABSTAND_MUT = 0.35        # … plus bis zu so viel bei Mut 0
 
 
 class Taktik:
@@ -44,7 +46,8 @@ class Taktik:
         st = self.plan.strecke
         hf = self.plan.halb_frei
         stufe = self.stufe
-        w = Wunsch(seitenabstand=8.0 + (1.0 - stufe.mut) * 22.0)
+        w = Wunsch(seitenabstand=8.0 + (1.0 - stufe.mut) * 22.0,
+                   abstand_s=ABSTAND_BASIS + (1.0 - stufe.mut) * ABSTAND_MUT)
         rel = [(st.ds(s, g.s), g) for g in gegner]
         neben = [(r, g) for r, g in rel if abs(r) < 0.5 * (self.laenge + g.laenge) + 10.0 and abs(d - g.d) >= 0.5 * (self.breite + g.breite)]
         vorne = [(r, g) for r, g in rel if 0.0 < r < BEREICH_VORNE and (r, g) not in neben]

@@ -175,3 +175,16 @@ def test_hinter_einem_stehenden_auto_wird_gebremst():
     g = Gegner(s=250.0, d=0.0, v=0.0, laenge=LAENGE, breite=BREITE)
     bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 200.0, [g], Wunsch(darf_ausscheren=False))
     assert bahn.gefolgt and bahn.v_soll < 150.0
+
+
+def test_folgeabstand_haelt_luft_zum_vordermann():
+    """Mit Folgeabstand (s Fahrzeit) fährt das Auto nicht Stoßstange an Stoßstange:
+    bremst der Vordermann, ist sonst keine Zeit mehr (Auffahrunfälle in der Bremszone)."""
+    plan = _plan()
+    g = Gegner(s=100.0 + LAENGE + 15.0 + 60.0, d=0.0, v=300.0, laenge=LAENGE, breite=BREITE)
+    eng = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 300.0, [g],
+                                              Wunsch(darf_ausscheren=False))
+    luft = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 300.0, [g],
+                                               Wunsch(darf_ausscheren=False, abstand_s=0.3))
+    assert eng.v_soll > 340.0          # ohne: dicht auffahren erlaubt
+    assert luft.v_soll <= 305.0        # mit: nur das Tempo des Vordermanns
