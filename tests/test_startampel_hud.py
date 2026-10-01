@@ -51,6 +51,33 @@ def test_hud_ampel_bei_go_aus_und_blendet_aus():
     assert not hud.ampel_sichtbar()
 
 
+@pytest.mark.parametrize("rest", [3.5, 2.4, 1.2, 0.3])
+def test_racestate_gibt_portal_und_hud_dieselbe_restzeit(rest):
+    """Portal-Stufe und HUD-Stufe kommen im selben Bild aus einer Restzeit."""
+    from types import SimpleNamespace
+    from src.states.race_state import RaceState
+    zustand = RaceState.__new__(RaceState)
+    zustand.race_manager = SimpleNamespace(state="countdown", countdown_timer=rest)
+    hud = _hud()
+    _tick(hud, zustand._countdown_rest())
+    assert zustand._portal_ampel_stufe() == hud.ampel_stufe() == startampel.ampel_stufe(rest)
+    # Nach dem Start: beide aus.
+    zustand.race_manager = SimpleNamespace(state="racing", countdown_timer=0.0)
+    _tick(hud, zustand._countdown_rest())
+    assert zustand._portal_ampel_stufe() == hud.ampel_stufe() == 0
+
+
+def test_fortsetzen_nach_pause_zaehlt_lampen_hoch_dann_los():
+    assert startampel.fortsetzen_stufe(3.0) == (1, False)
+    stufen = [startampel.fortsetzen_stufe(r)[0] for r in (3.0, 2.5, 2.0, 1.5, 1.1)]
+    assert stufen == sorted(stufen) and stufen[-1] == 5
+    assert startampel.fortsetzen_stufe(1.0) == (0, True)
+    assert startampel.fortsetzen_stufe(0.2) == (0, True)
+    surf = pygame.Surface((1920, 1080))
+    HUD.zeichne_ampel(surf, 1920, 1.0, 3)
+    HUD.zeichne_ampel(surf, 1920, 1.0, 0, los=True)
+
+
 def test_hud_ampel_zeichnet_rot():
     hud = _hud()
     _tick(hud, 0.3)

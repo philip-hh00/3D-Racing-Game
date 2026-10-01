@@ -270,29 +270,14 @@ class Track:
         # Build spatial grid for fast nearest-waypoint queries
         self._build_waypoint_grid()
 
-        self.start_positions = []
-        for s in _as_sequence(data.get("start_positions")):
-            if not isinstance(s, dict):
-                continue
-            x = _as_float(s.get("x"), None)
-            y = _as_float(s.get("y"), None)
-            if x is None or y is None:
-                continue
-            self.start_positions.append(
-                StartPosition(x=x, y=y, angle=_as_float(s.get("angle"), 0.0)))
-        # Guarantee a full 6-car grid: older tracks stored only 4 slots, so
-        # rebuild the staggered grid from the centerline when short.
-        from src.core.race_setup import FELD_MAX
-        self._ensure_start_grid(FELD_MAX)
-
-    def _ensure_start_grid(self, needed: int) -> None:
-        """Top up start_positions to *needed* slots using the centerline."""
-        if len(self.start_positions) >= needed or len(self.centerline) < 2:
-            return
-        from src.track.track_builder import build_start_positions
-        slots = build_start_positions(self.centerline, self.track_width, count=needed)
+        # Volles Feld (FELD_MAX): aeltere Strecken speichern nur 4 Plaetze, dann
+        # wird das Gitter aus der Mittellinie gebaut — dieselbe Funktion wie
+        # fuer die 3D-Markierungen (track_mesh.bauen).
+        from src.track.track_builder import start_gitter
         self.start_positions = [
-            StartPosition(x=s["x"], y=s["y"], angle=s["angle"]) for s in slots
+            StartPosition(x=s["x"], y=s["y"], angle=s["angle"])
+            for s in start_gitter(data.get("start_positions"), data.get("centerline"),
+                                  data.get("track_width"))
         ]
 
     # ------------------------------------------------------------------

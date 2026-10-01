@@ -565,10 +565,19 @@ class HUD:
             return
         imcountdown = self._countdown_timer is not None
         fade = 1.0 if imcountdown else max(0.0, min(1.0, self._go_display_timer / 0.5))
+        self.zeichne_ampel(screen, w, scale, self.ampel_stufe(), fade, los=not imcountdown)
+
+    @staticmethod
+    def zeichne_ampel(screen: pygame.Surface, w: int, scale: float, stufe: int,
+                      fade: float = 1.0, los: bool = False) -> None:
+        """Zeichnet das Ampelgehaeuse mit ``stufe`` roten Lampen oben mittig.
+
+        Auch die Fortsetzen-Anzeige nach der Pause nutzt diese Zeichnung.
+        """
         if fade <= 0.0:
             return
 
-        pitch = int(40 * scale)               # 0,64 m
+        pitch = int(40 * scale)             # 0,64 m
         gw, gh = pitch * 5, int(pitch * 1.25)  # 3,2 m x 0,8 m
         lampe_r = int(pitch * 0.3125)         # Durchmesser 0,4 m
         pad = max(2, int(5 * scale))
@@ -577,7 +586,6 @@ class HUD:
         zeichnen.rect(flaeche, (70, 70, 78), (pad, pad, gw, gh), width=max(1, int(2 * scale)),
                       border_radius=int(6 * scale))
 
-        stufe = self.ampel_stufe()
         for i in range(startampel.LAMPEN):
             cx = pad + pitch // 2 + i * pitch
             cy = pad + gh // 2
@@ -597,7 +605,7 @@ class HUD:
         rect = flaeche.get_rect(midtop=(w // 2, int(36 * scale)))
         screen.blit(flaeche, rect)
 
-        if not imcountdown:
+        if los:
             schrift = theme.font(int(34 * scale))
             los = schrift.render(tr("LOS!"), True, (70, 255, 150))
             los.set_alpha(int(255 * fade))

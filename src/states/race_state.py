@@ -22,6 +22,9 @@ from src.hud.hud import HUD
 from src.physics.checkpoint import Checkpoint
 from src.states.race_manager import RaceManager
 from src.core.i18n import tr
+# Startampel: Schwellen und Stufenfunktion liegen in src/core/startampel.py,
+# damit 3D-Portal und HUD dieselbe Quelle nutzen.
+from src.core.startampel import AMPEL_SCHWELLEN_S, ampel_stufe, fortsetzen_stufe  # noqa: F401
 from src.ui import theme
 from src.ui import zeichnen, leinwand
 
@@ -44,10 +47,6 @@ FERNE_EBENE_M = 3200.0
 KAMERA_ABSTAND_M = 7.5
 KAMERA_HOEHE_M = 2.8
 KAMERA_ZIELHOEHE_M = 1.0
-
-# Startampel: Schwellen und Stufenfunktion liegen in src/core/startampel.py,
-# damit 3D-Portal und HUD dieselbe Quelle nutzen.
-from src.core.startampel import AMPEL_SCHWELLEN_S, ampel_stufe  # noqa: E402,F401
 
 # Kennung des Ghosts unter den Fahrzeugstaenden. Negativ, damit sie mit keiner
 # echten Fahrzeug-Id zusammenfaellt.
@@ -2062,7 +2061,7 @@ class RaceState(BaseState):
                     last_lap_time=tracker.last_lap_time,
                     position=pos,
                     total_vehicles=total_field,
-                    countdown_timer=self.race_manager.countdown_timer if self.race_manager.state == "countdown" else None,
+                    countdown_timer=self._countdown_rest(),
                     split_info=tracker.last_split_info,
                     race_finished=(self.race_manager.state == "finished"),
                     sector_diff=tracker.last_sector_diff,
@@ -2102,7 +2101,7 @@ class RaceState(BaseState):
                 last_lap_time=tracker.last_lap_time,
                 position=pos,
                 total_vehicles=total_field,
-                countdown_timer=self.race_manager.countdown_timer if self.race_manager.state == "countdown" else None,
+                countdown_timer=self._countdown_rest(),
                 split_info=tracker.last_split_info,
                 race_finished=(self.race_manager.state == "finished"),
                 sector_diff=tracker.last_sector_diff,
@@ -2329,6 +2328,17 @@ class RaceState(BaseState):
         if self.szene is not None:
             self.szene.fortschreiben(staende, dt)
 
+    def _countdown_rest(self) -> float | None:
+        """Restzeit des Startcountdowns, sonst ``None`` — Quelle fuer Portal und HUD."""
+        rm = self.race_manager
+        if rm is not None and getattr(rm, "state", "") == "countdown":
+            return float(rm.countdown_timer)
+        return None
+
+    def _portal_ampel_stufe(self) -> int:
+        """Leuchtende Lampen am 3D-Portal; das HUD bekommt dieselbe Restzeit."""
+        return ampel_stufe(self._countdown_rest())
+
     def _welt_zeichnen(self) -> None:
         """Die Welt in OpenGL zeichnen, einmal je Kamera.
 
@@ -2348,13 +2358,7 @@ class RaceState(BaseState):
 
         # Startampel: fünf Lampenpaare zünden im Countdown nacheinander,
         # wie im Motorsport — bei GO gehen alle gleichzeitig aus.
-        zustand = getattr(self.race_manager, "state", "") if self.race_manager else ""
-        if zustand == "countdown":
-            rest = float(getattr(self.race_manager, "countdown_timer", 0.0))
-            stufe = ampel_stufe(rest)
-        else:
-            stufe = 0
-        self.szene.ampel_setzen(stufe)
+        self.szene.ampel_setzen(self._portal_ampel_stufe())
 
         briefkasten = display.ansichtsfenster(display.current_win_size())
         x, y, b, h = briefkasten
@@ -2696,22 +2700,9 @@ class RaceState(BaseState):
             overlay.fill((0, 0, 0, 100))
             screen.blit(overlay, (0, 0))
             
-            val = self._resume_countdown_timer
-            if val > 1.0:
-                txt = str(math.ceil(val))
-            else:
-                txt = tr("LOS!")
-                
-            # Pulsing effect based on fractional part
-            frac = val - int(val)
-            if val <= 1.0:
-                frac = val
-            scale = 1.0 + 0.5 * (1.0 - frac)
-            
-            font_size = int(80 * scale)
-            text_surf = theme.font(font_size).render(txt, True, theme.ACCENT)
-            text_rect = text_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
-            screen.blit(text_surf, text_rect)
+            # Gleiche Ampel wie im Startcountdown, Zeitlauf wie bisher.
+            stufe, los = fortsetzen_stufe(self._resume_countdown_timer)
+            HUD.zeichne_ampel(screen, SCREEN_WIDTH, 1.0, stufe, 1.0, los=los)
 
         if self._dialog is not None:
             self._dialog.draw(screen)

@@ -58,5 +58,40 @@ def test_markierung_je_platz_bei_mitgelieferten_strecken(pfad):
     _pruefen(pfad)
 
 
+def _slots(daten: dict, tmp_path) -> tuple[list, list]:
+    pfad = tmp_path / "beschaedigt.json"
+    pfad.write_text(json.dumps(daten), encoding="utf-8")
+    track = Track(str(pfad), pymunk.Space())
+    netz = track_mesh.bauen(daten)
+    a = [(s.x, s.y, s.angle) for s in track.get_start_positions()]
+    b = [(x / M_PER_PX, y / M_PER_PX, math.degrees(w)) for x, y, w in netz.start_positionen]
+    return a, b
+
+
+def test_vier_gespeicherte_werden_acht_im_netz():
+    from src.track.track_builder import start_gitter
+    d = json.loads(STRECKEN[0].read_text(encoding="utf-8"))
+    assert len(d["start_positions"]) == 4
+    assert len(start_gitter(d["start_positions"], d["centerline"], d["track_width"])) == FELD_MAX
+    assert len(track_mesh.bauen(d).start_positionen) == FELD_MAX
+
+
+def test_track_und_netz_gleich_bei_beschaedigtem_slot(tmp_path):
+    d = json.loads(STRECKEN[0].read_text(encoding="utf-8"))
+    d["start_positions"] = [dict(d["start_positions"][0]) for _ in range(FELD_MAX)]
+    d["start_positions"][3] = {"x": "kaputt", "y": None}
+    a, b = _slots(d, tmp_path)
+    assert len(a) == len(b) == FELD_MAX
+    assert np.allclose(np.asarray(a), np.asarray(b), atol=1e-6)
+
+
+def test_track_und_netz_gleich_bei_unbrauchbarer_breite(tmp_path):
+    d = json.loads(STRECKEN[0].read_text(encoding="utf-8"))
+    d["track_width"] = "viel"
+    a, b = _slots(d, tmp_path)   # weder Track noch Netz brechen ab
+    assert len(a) == len(b) == FELD_MAX
+    assert np.allclose(np.asarray(a), np.asarray(b), atol=1e-6)
+
+
 def test_markierung_je_platz_bei_editor_strecke(tmp_path):
     _pruefen(_editor_strecke(tmp_path))
