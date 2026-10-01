@@ -193,7 +193,10 @@ class AIController:
             self.dbg_curve = plan.k_bei(s)
 
         steer = self._regler.lenkung(self._bahn.xy, v)
-        gas, bremse = self._regler.pedale(v, self._bahn.v_soll * self.speed_multiplier)
+        phys = self.vehicle.physics
+        schlupf = max(float(getattr(phys, "hinten_schlupf_deg", 0.0)),
+                      float(getattr(phys, "slip_angle_deg", 0.0)))
+        gas, bremse = self._regler.pedale(v, self._bahn.v_soll * self.speed_multiplier, schlupf)
         self.dbg_look = self._regler.vorschau
         if getattr(self.vehicle, "signed_speed", 0.0) < -5.0:
             # Nach dem Rückwärtsfahren erst zum Stehen kommen, dann vorwärts:

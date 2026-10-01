@@ -18,6 +18,13 @@ class Bahnregler:
     VORSCHAU_ZEIT = 0.32    # s
     GAS_BAND = 6.0          # px/s: darunter wird das Gas weich ausgeblendet
     TOTBAND = 4.0           # px/s zu schnell, bevor gebremst wird
+    #: Schräglauf (Grad), ab dem das Gas zurückgenommen wird / ganz weg ist. Normaler
+    #: Kurvenschlupf liegt bei 2–8°; wer nach einem Kontakt dauerhaft mit 30–60°
+    #: quer rutscht, fuhr mit Vollgas weiter und kam nicht mehr heraus (gp/Feld:
+    #: 29 → 11 Wandberührungen über sechs Startreihenfolgen). Sanfteres Anheben
+    #: schon bei 10° war mit Folgeabstand schlechter (Heckgrip sinkt mit dem Gas).
+    SCHLUPF_AB = 28.0
+    SCHLUPF_VOLL = 40.0
 
     def __init__(self, fahrzeug) -> None:
         self.fz = fahrzeug
@@ -56,13 +63,14 @@ class Bahnregler:
         grenze = self.fz.physics.max_einschlag(self.grip, delta)
         return max(-1.0, min(1.0, delta / max(grenze, 1e-4)))
 
-    def pedale(self, v: float, v_soll: float) -> tuple[float, float]:
+    def pedale(self, v: float, v_soll: float, schlupf_deg: float = 0.0) -> tuple[float, float]:
         e = v_soll - v
         if e > 0.0:
             gas = min(1.0, 0.55 + e * 0.05)
             if e < self.GAS_BAND:
                 gas *= e / self.GAS_BAND
-            return gas, 0.0
+            frei = (schlupf_deg - self.SCHLUPF_AB) / (self.SCHLUPF_VOLL - self.SCHLUPF_AB)
+            return gas * (1.0 - max(0.0, min(1.0, frei))), 0.0
         if e >= -self.TOTBAND:
             return 0.0, 0.0
         return 0.0, min(1.0, (-e - self.TOTBAND) * 0.06)

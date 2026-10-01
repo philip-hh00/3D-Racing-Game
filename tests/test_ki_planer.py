@@ -188,3 +188,12 @@ def test_folgeabstand_haelt_luft_zum_vordermann():
                                                Wunsch(darf_ausscheren=False, abstand_s=0.3))
     assert eng.v_soll > 340.0          # ohne: dicht auffahren erlaubt
     assert luft.v_soll <= 305.0        # mit: nur das Tempo des Vordermanns
+
+
+def test_folgeabstand_bremst_keine_ausweichbahn():
+    """Der Folgeabstand gilt nur in der Spur des Vordermanns: wer ausschert, fährt frei."""
+    plan = _plan()
+    g = Gegner(s=100.0 + LAENGE + 15.0 + 60.0, d=0.0, v=300.0, laenge=LAENGE, breite=BREITE)
+    bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 300.0, [g], Wunsch(abstand_s=0.45))
+    assert abs(bahn.d[-1]) > 0.35 * plan.halb_frei
+    assert bahn.versatz != 0.0        # Ausweichbahn gewählt, trotz Folgeabstand

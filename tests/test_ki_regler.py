@@ -77,3 +77,14 @@ def test_pedale():
     assert gas == 0.0 and bremse > 0.9
     assert regler.pedale(200.0, 201.0)[0] < 0.2       # weich am Ziel
     assert regler.pedale(200.0, 198.0) == (0.0, 0.0)  # Totband
+
+
+def test_gas_weg_bei_dauerhaftem_querrutschen():
+    """Normaler Schlupf lässt das Gas; ab ~30° Querstand geht die KI vom Gas."""
+    welt, auto = _auto("rookie", 0.0, 0.0, 0.0, 0.0)
+    regler = Bahnregler(auto)
+    assert regler.pedale(100.0, 300.0, 8.0)[0] > 0.9
+    assert regler.pedale(100.0, 300.0, 20.0)[0] > 0.9
+    assert 0.0 < regler.pedale(100.0, 300.0, 34.0)[0] < 0.9
+    assert regler.pedale(100.0, 300.0, 45.0)[0] == 0.0
+    assert regler.pedale(300.0, 100.0, 45.0)[1] > 0.9      # Bremsen bleibt

@@ -200,7 +200,7 @@ def test_ein_ki_auto_am_zieltempo_ruckelt_nicht_im_gas():
     auto = feld[0]
     regler = auto.controller._regler
     echt = regler.pedale
-    regler.pedale = lambda v, v_soll: echt(v, ziel)
+    regler.pedale = lambda v, v_soll, schlupf=0.0: echt(v, ziel, schlupf)
 
     eingeschwungen = None
     gas = []
