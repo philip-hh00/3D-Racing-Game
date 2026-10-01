@@ -14,6 +14,7 @@ import pygame
 
 from src.core.settings import KMH_PER_PXS
 from src.core.i18n import tr
+from src.core import startampel
 from src.ui import theme
 from src.ui import zeichnen, leinwand
 
@@ -73,13 +74,6 @@ class HUD:
         self._countdown_timer: float | None = None
         self._last_countdown_timer: float | None = None
         self._go_display_timer: float = 0.0
-        #: Sekunden, mit denen der aktuelle Countdown begonnen hat — die
-        #: Ampel-Punkte fuellen sich proportional dazu.
-        self._countdown_total: float | None = None
-        #: Zuletzt angezeigte Ziffer (3, 2, 1), fuer die Pop-in-Animation.
-        self._countdown_shown_val: int | None = None
-        #: Sekunden seit die aktuelle Ziffer erschienen ist.
-        self._countdown_anim_t: float = 0.0
         self._split_info: tuple[float, float] | None = None
         self._race_finished: bool = False
         self._sector_diff: float | None = None
@@ -158,29 +152,12 @@ class HUD:
         self._standings_list = standings or []
         self._dnf_seconds = dnf_seconds
 
-        # Countdown-Start: die Gesamtdauer merken, damit die Ampel-Punkte sich
-        # proportional dazu fuellen koennen (egal ob 3.0s lokal oder 3.5s online).
-        if self._last_countdown_timer is None and countdown_timer is not None:
-            self._countdown_total = countdown_timer
-            self._countdown_shown_val = None
-            self._countdown_anim_t = 0.0
-
         # Detect countdown transition to GO!
         if self._last_countdown_timer is not None and countdown_timer is None:
-            self._go_display_timer = self._GO_DISPLAY_SECONDS  # Show GO! briefly
+            self._go_display_timer = self._GO_DISPLAY_SECONDS  # Ampel blendet nach dem Start aus
 
         self._last_countdown_timer = countdown_timer
         self._countdown_timer = countdown_timer
-
-        # Jede Ziffer (3, 2, 1) bekommt ihre eigene Pop-in-Animation: sobald sich
-        # die aufgerundete Sekunde aendert, startet der Zeitgeber neu.
-        if countdown_timer is not None and countdown_timer > 0.0:
-            val = int(math.ceil(countdown_timer))
-            if val != self._countdown_shown_val:
-                self._countdown_shown_val = val
-                self._countdown_anim_t = 0.0
-            else:
-                self._countdown_anim_t += dt
 
         if self._go_display_timer > 0.0:
             self._go_display_timer -= dt
@@ -197,7 +174,6 @@ class HUD:
         self._render_top_right_panel(screen, w, h, scale)
         self._render_leaderboard(screen, w, h, scale)
         self._render_ampel(screen, w, h, scale)
-        self._render_countdown(screen, w, h, scale)
         self._render_split_time(screen, w, h, scale)
         self._render_race_finish(screen, w, h, scale)
 
@@ -568,132 +544,64 @@ class HUD:
         sec_y = 190 if self._live_diff is not None else 175
         screen.blit(sec_surf, (panel_x + int(15 * scale), panel_y + int(sec_y * scale)))
 
-    def _render_ampel(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
-        """Fuenf Ampel-Punkte oben, die im Takt des Countdowns angehen.
+    def ampel_stufe(self) -> int:
+        """Leuchtende Lampen 0..5 — dieselbe Funktion wie beim 3D-Portal."""
+        return startampel.ampel_stufe(self._countdown_timer)
 
-        Spiegelt die echte 3D-Startampel ueber der Strecke (5 Lampenpaare):
-        die Punkte fuellen sich proportional zur Countdown-Dauer rot und
-        schalten bei GO! gemeinsam auf gruen um, ausblendend mit dem Text.
+    def ampel_sichtbar(self) -> bool:
+        """Ampel steht im Countdown und noch kurz nach dem Start (ausgeschaltet)."""
+        return self._countdown_timer is not None or self._go_display_timer > 0.0
+
+    def _render_ampel(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
+        """Startampel oben mittig, dem Portal an der Start-/Zielline nachempfunden.
+
+        Dunkles Gehaeuse im Seitenverhaeltnis des Portal-Kastens (3,2 x 0,8 m)
+        mit fuenf runden Lampen (Rastermass 0,64 m, Durchmesser 0,4 m), die rot
+        nacheinander zuenden und bei GO gemeinsam ausgehen. Die Stufe kommt aus
+        ``startampel.ampel_stufe`` — derselben Funktion, die das Portal nutzt.
+        Nach dem Start blendet die Ampel aus; ein kleines „LOS!“ bleibt kurz.
         """
-        if self._countdown_timer is None and self._go_display_timer <= 0.0:
+        if not self.ampel_sichtbar():
+            return
+        imcountdown = self._countdown_timer is not None
+        fade = 1.0 if imcountdown else max(0.0, min(1.0, self._go_display_timer / 0.5))
+        if fade <= 0.0:
             return
 
-        n = 5
-        dot_r = int(13 * scale)
-        gap = int(16 * scale)
-        total_w = n * dot_r * 2 + (n - 1) * gap
-        x0 = w // 2 - total_w // 2 + dot_r
-        y = int(66 * scale)
+        pitch = int(40 * scale)               # 0,64 m
+        gw, gh = pitch * 5, int(pitch * 1.25)  # 3,2 m x 0,8 m
+        lampe_r = int(pitch * 0.3125)         # Durchmesser 0,4 m
+        pad = max(2, int(5 * scale))
+        flaeche = leinwand.flaeche((gw + 2 * pad, gh + 2 * pad), pygame.SRCALPHA)
+        zeichnen.rect(flaeche, (15, 15, 17), (pad, pad, gw, gh), border_radius=int(6 * scale))
+        zeichnen.rect(flaeche, (70, 70, 78), (pad, pad, gw, gh), width=max(1, int(2 * scale)),
+                      border_radius=int(6 * scale))
 
-        if self._countdown_timer is not None and self._countdown_timer > 0.0 and self._countdown_total:
-            elapsed = max(0.0, self._countdown_total - self._countdown_timer)
-            frac = min(1.0, elapsed / self._countdown_total)
-            lit = min(n, int(frac * n) + 1)
-            lit_color = (235, 45, 45)
-        else:
-            # GO!: alle Lampen springen gemeinsam auf gruen und blenden mit dem Text aus.
-            lit = n
-            fade = max(0.0, min(1.0, self._go_display_timer / self._GO_DISPLAY_SECONDS))
-            lit_color = (60, int(120 + 135 * fade), int(60 + 80 * fade))
-
-        for i in range(n):
-            cx = x0 + i * (dot_r * 2 + gap)
-            on = i < lit
-            zeichnen.circle(screen, (18, 18, 22), (cx, y), dot_r + max(1, int(3 * scale)))
-            if on:
-                glow = leinwand.flaeche((dot_r * 4, dot_r * 4), pygame.SRCALPHA)
-                zeichnen.circle(glow, (*lit_color, 90), (dot_r * 2, dot_r * 2), dot_r * 2)
-                screen.blit(glow, (cx - dot_r * 2, y - dot_r * 2))
-                zeichnen.circle(screen, lit_color, (cx, y), dot_r)
+        stufe = self.ampel_stufe()
+        for i in range(startampel.LAMPEN):
+            cx = pad + pitch // 2 + i * pitch
+            cy = pad + gh // 2
+            zeichnen.circle(flaeche, (28, 6, 6), (cx, cy), lampe_r + max(1, int(2 * scale)))
+            if i < stufe:
+                glow = leinwand.flaeche((lampe_r * 4, lampe_r * 4), pygame.SRCALPHA)
+                zeichnen.circle(glow, (255, 25, 12, 70), (lampe_r * 2, lampe_r * 2), lampe_r * 2)
+                flaeche.blit(glow, (cx - lampe_r * 2, cy - lampe_r * 2))
+                zeichnen.circle(flaeche, (225, 28, 20), (cx, cy), lampe_r)
+                zeichnen.circle(flaeche, (255, 120, 90), (cx - lampe_r // 3, cy - lampe_r // 3),
+                                max(1, lampe_r // 3))
             else:
-                zeichnen.circle(screen, (55, 55, 62), (cx, y), dot_r)
+                zeichnen.circle(flaeche, (60, 14, 14), (cx, cy), lampe_r)
 
-    def _render_countdown(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
-        """Render the 3, 2, 1, GO! starting countdown overlay.
+        if fade < 1.0:
+            flaeche.set_alpha(int(255 * fade))
+        rect = flaeche.get_rect(midtop=(w // 2, int(36 * scale)))
+        screen.blit(flaeche, rect)
 
-        Jede Ziffer poppt gross herein und schrumpft auf Normalgroesse (Pop-in),
-        blendet kurz ein und vor dem Wechsel zur naechsten Ziffer wieder aus,
-        mit Schlagschatten und einem weichen Glühen in der Spielschrift.
-        """
-        cx, cy = w // 2, h // 3
-
-        if self._countdown_timer is not None and self._countdown_timer > 0.0:
-            val = self._countdown_shown_val or int(math.ceil(self._countdown_timer))
-            val_str = str(val) if val > 0 else "1"
-            t = self._countdown_anim_t
-
-            # Pop-in: startet bei 2.2x Groesse, faellt in 0.35s auf 1.0x (ease-out).
-            pop = max(0.0, 1.0 - t / 0.35)
-            scale_factor = 1.0 + 1.2 * (pop * pop)
-            # Einblenden in 0.12s, ausblenden in den letzten 0.25s der ~1s-Anzeige.
-            fade_in = min(1.0, t / 0.12)
-            fade_out = 1.0 if t <= 0.75 else max(0.0, 1.0 - (t - 0.75) / 0.25)
-            alpha = int(255 * min(fade_in, fade_out))
-            if alpha <= 0:
-                return
-
-            font = theme.font(int(150 * scale * scale_factor))
-
-            # Ruhige, undurchsichtige Hintergrundscheibe, blendet mit der Ziffer.
-            backing_r = int(85 * scale)
-            backing = leinwand.flaeche((backing_r * 2 + 8, backing_r * 2 + 8), pygame.SRCALPHA)
-            bc = backing.get_width() // 2
-            zeichnen.circle(backing, (10, 10, 15, int(150 * min(fade_in, fade_out))), (bc, bc), backing_r)
-            zeichnen.circle(backing, (*self._COL_GEAR_TEXT, alpha), (bc, bc), backing_r, max(1, int(4 * scale)))
-            screen.blit(backing, backing.get_rect(center=(cx, cy)))
-
-            # Weiches Gluehen: mehrere leicht versetzte, gedimmte Kopien darunter.
-            glow_surf = font.render(val_str, True, self._COL_GEAR_TEXT)
-            glow_surf.set_alpha(int(alpha * 0.5))
-            glow_rect = glow_surf.get_rect(center=(cx, cy))
-            for ox, oy in ((-3, 0), (3, 0), (0, -3), (0, 3)):
-                screen.blit(glow_surf, glow_rect.move(int(ox * scale), int(oy * scale)))
-
-            shadow_surf = font.render(val_str, True, (0, 0, 0))
-            shadow_surf.set_alpha(int(alpha * 0.6))
-            screen.blit(shadow_surf, glow_rect.move(int(3 * scale), int(4 * scale)))
-
-            text_surf = font.render(val_str, True, (255, 255, 255))
-            text_surf.set_alpha(alpha)
-            screen.blit(text_surf, glow_rect)
-
-        elif self._go_display_timer > 0.0:
-            t_elapsed = self._GO_DISPLAY_SECONDS - self._go_display_timer
-            pop = max(0.0, 1.0 - t_elapsed / 0.2)
-            scale_factor = 1.0 + 1.0 * (pop * pop)
-            fade_in = min(1.0, t_elapsed / 0.1)
-            fade_out = max(0.0, min(1.0, self._go_display_timer / 0.4))
-            alpha = int(255 * min(fade_in, fade_out))
-
-            # Kurzes gruenes Aufblitzen des ganzen Bildschirms im Moment des GO!.
-            flash_alpha = int(70 * pop)
-            if flash_alpha > 0:
-                flash = leinwand.flaeche((w, h), pygame.SRCALPHA)
-                flash.fill((0, 255, 120, flash_alpha))
-                screen.blit(flash, (0, 0))
-
-            go_text = tr("LOS!")
-            go_font = theme.font(int(170 * scale * scale_factor))
-
-            shadow_surf = go_font.render(go_text, True, (0, 30, 10))
-            shadow_surf.set_alpha(int(alpha * 0.6))
-            shadow_rect = shadow_surf.get_rect(center=(cx, cy))
-            screen.blit(shadow_surf, shadow_rect.move(int(3 * scale), int(4 * scale)))
-
-            text_surf = go_font.render(go_text, True, (70, 255, 150))
-            text_surf.set_alpha(alpha)
-            text_rect = text_surf.get_rect(center=(cx, cy))
-
-            # Quadratische Flaeche: der Kreis ist breiter als die Schrift hoch
-            # ist und wurde in einer Flaeche von Schriftgroesse oben und unten
-            # abgeschnitten.
-            glow_r = int(max(text_rect.width, text_rect.height) * 0.5)
-            glow = leinwand.flaeche((glow_r * 2 + 4, glow_r * 2 + 4), pygame.SRCALPHA)
-            gc = (glow.get_width() // 2, glow.get_height() // 2)
-            zeichnen.circle(glow, (0, 220, 110, int(70 * min(fade_in, fade_out))), gc, glow_r)
-            screen.blit(glow, glow.get_rect(center=(cx, cy)))
-
-            screen.blit(text_surf, text_rect)
+        if not imcountdown:
+            schrift = theme.font(int(34 * scale))
+            los = schrift.render(tr("LOS!"), True, (70, 255, 150))
+            los.set_alpha(int(255 * fade))
+            screen.blit(los, los.get_rect(midtop=(w // 2, rect.bottom + int(6 * scale))))
 
     def _render_split_time(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
         """Render checkpoint split difference (e.g. +0.42s in red or -0.23s in green)."""

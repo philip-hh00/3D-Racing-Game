@@ -45,10 +45,9 @@ KAMERA_ABSTAND_M = 7.5
 KAMERA_HOEHE_M = 2.8
 KAMERA_ZIELHOEHE_M = 1.0
 
-# Startampel: verbleibende Countdown-Sekunden, ab der je ein weiteres
-# Lampenpaar zündet (Motorsport-Ampelbatterie) — unabhängig von der
-# tatsächlichen Länge des Countdowns (3 s lokal, 3,5 s online).
-AMPEL_SCHWELLEN_S = (2.5, 2.0, 1.5, 1.0, 0.5)
+# Startampel: Schwellen und Stufenfunktion liegen in src/core/startampel.py,
+# damit 3D-Portal und HUD dieselbe Quelle nutzen.
+from src.core.startampel import AMPEL_SCHWELLEN_S, ampel_stufe  # noqa: E402,F401
 
 # Kennung des Ghosts unter den Fahrzeugstaenden. Negativ, damit sie mit keiner
 # echten Fahrzeug-Id zusammenfaellt.
@@ -2352,7 +2351,7 @@ class RaceState(BaseState):
         zustand = getattr(self.race_manager, "state", "") if self.race_manager else ""
         if zustand == "countdown":
             rest = float(getattr(self.race_manager, "countdown_timer", 0.0))
-            stufe = sum(1 for schwelle in AMPEL_SCHWELLEN_S if rest <= schwelle)
+            stufe = ampel_stufe(rest)
         else:
             stufe = 0
         self.szene.ampel_setzen(stufe)

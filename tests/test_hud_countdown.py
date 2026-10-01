@@ -1,9 +1,8 @@
-"""Countdown-Overlay: Ampel-Punkte, Ziffern-Animation und der Wechsel zu LOS!.
+"""Countdown-Overlay: Startampel (fuenf Lampen) statt Ziffern.
 
-Ergaenzt beim Ueberarbeiten des Countdowns (Spielschrift, Pop-in-Animation,
-Ampel-Punkte, gruenes Aufblitzen bei GO!) — haelt fest, dass die Ampel sich
-mit dem Countdown fuellt, die Ziffer beim Wechsel neu ansetzt und der
-Uebergang zu "LOS!"/"GO!" zuverlaessig ausgeloest wird.
+Die HUD-Ampel spiegelt die Startampel am Portal; die Stufe kommt aus
+``src.core.startampel`` (siehe auch test_startampel_hud.py). Hier: Ablauf
+Countdown -> LOS! -> ausgeblendet und Rauchtest des Zeichnens.
 """
 from __future__ import annotations
 
@@ -29,27 +28,6 @@ def _tick(hud: HUD, countdown_timer: float | None, dt: float = 1.0 / 60.0, n: in
         )
 
 
-def test_countdown_merkt_sich_gesamtdauer_und_ziffer():
-    hud = _hud()
-    _tick(hud, 3.0)
-    assert hud._countdown_total == 3.0
-    assert hud._countdown_shown_val == 3
-
-    # Ziffer wechselt auf 2 -> Animation faengt fuer diese Ziffer neu an.
-    _tick(hud, 2.9)
-    _tick(hud, 2.0)
-    assert hud._countdown_shown_val == 2
-    assert hud._countdown_anim_t == 0.0
-
-
-def test_countdown_animation_laeuft_hoch_ohne_ziffernwechsel():
-    hud = _hud()
-    _tick(hud, 3.0)
-    _tick(hud, 2.9, n=5)
-    assert hud._countdown_shown_val == 3
-    assert hud._countdown_anim_t > 0.0
-
-
 def test_go_wird_nach_countdown_ausgeloest():
     hud = _hud()
     _tick(hud, 1.0)
@@ -58,21 +36,12 @@ def test_go_wird_nach_countdown_ausgeloest():
     assert hud._go_display_timer > 0.0
 
 
-def test_ampel_faellt_mit_fortschreitendem_countdown_lit_count():
-    """Je naeher der Countdown an 0 kommt, desto mehr Ampel-Punkte sind an."""
+def test_ampel_fuellt_sich_mit_fortschreitendem_countdown():
     hud = _hud()
     _tick(hud, 3.0)
-    hud._countdown_timer = 3.0
-    lit_fruh = _gelesene_lit_anzahl(hud)
-    hud._countdown_timer = 0.2
-    lit_spaet = _gelesene_lit_anzahl(hud)
-    assert lit_spaet > lit_fruh
-
-
-def _gelesene_lit_anzahl(hud: HUD) -> int:
-    elapsed = max(0.0, hud._countdown_total - hud._countdown_timer)
-    frac = min(1.0, elapsed / hud._countdown_total)
-    return min(5, int(frac * 5) + 1)
+    fruh = hud.ampel_stufe()
+    _tick(hud, 0.2)
+    assert hud.ampel_stufe() > fruh
 
 
 def test_countdown_und_go_zeichnen_ohne_fehler():
