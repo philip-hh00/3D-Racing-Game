@@ -34,6 +34,8 @@ import weakref
 
 import pygame
 
+from src.ui.schmutz import Schmutz
+
 #: Das Raster, in dem die Oberfläche rechnet.
 RASTER = (1920, 1080)
 
@@ -75,6 +77,10 @@ def _rect_raster(r: pygame.Rect, s: float) -> pygame.Rect:
 class Flaeche(pygame.Surface):
     """Eine Fläche, die im Raster rechnet und in Bildpunkten zeichnet."""
 
+    #: Schmutzverfolgung, nur für die virtuelle Fläche eingeschaltet
+    #: (:meth:`schmutz_verfolgen`); sonst ``None`` und ohne Kosten.
+    _schmutz: "Schmutz | None" = None
+
     def __init__(self, groesse, flags: int = 0, skala_: float | None = None, *args) -> None:
         s = _skala if skala_ is None else float(skala_)
         w, h = int(groesse[0]), int(groesse[1])
@@ -106,6 +112,32 @@ class Flaeche(pygame.Surface):
         """Die echte Größe in Bildpunkten."""
         return super().get_size()
 
+    # -- Schmutz: nur anfassen, was sich geändert hat (src/ui/schmutz.py) -------
+    def schmutz_verfolgen(self) -> None:
+        """Ab jetzt merken, wohin gezeichnet wird (fürs Leeren und Hochladen)."""
+        b, h = super().get_size()
+        self._schmutz = Schmutz(b, h)
+
+    def schmutz_alles(self) -> None:
+        """Etwas hat an der Verfolgung vorbei geschrieben: alles gilt als geändert."""
+        if self._schmutz is not None:
+            self._schmutz.alles_setzen()
+
+    def schmutz_loeschen(self) -> None:
+        """Die Fläche durchsichtig machen — verfolgt: nur, wohin gezeichnet wurde."""
+        if self._schmutz is None:
+            pygame.Surface.fill(self, (0, 0, 0, 0))
+        else:
+            self._schmutz.leeren(self)
+
+    def schmutz_rechtecke(self):
+        """Geänderte Gegenden (Bildpunkte) seit dem Hochladen; ``None``: alles."""
+        return None if self._schmutz is None else self._schmutz.hochzuladen()
+
+    def schmutz_hochgeladen(self) -> None:
+        if self._schmutz is not None:
+            self._schmutz.hochgeladen()
+
     # -- Zeichnen ------------------------------------------------------------
     def blit(self, quelle, ziel, area=None, special_flags=0):
         s = self._s
@@ -117,6 +149,8 @@ class Flaeche(pygame.Surface):
             quelle = _auf_skala(quelle, qs, s)
         flaeche_area = None if area is None else _rect_px(area, s)
         r = pygame.Surface.blit(self, quelle, (_px(x, s), _px(y, s)), flaeche_area, special_flags)
+        if self._schmutz is not None:
+            self._schmutz.markieren(r)
         return _rect_raster(r, s)
 
     def blits(self, folge, doreturn=True):
@@ -125,7 +159,10 @@ class Flaeche(pygame.Surface):
 
     def fill(self, farbe, rect=None, special_flags=0):
         r = None if rect is None else _rect_px(rect, self._s)
-        return _rect_raster(pygame.Surface.fill(self, farbe, r, special_flags), self._s)
+        gefuellt = pygame.Surface.fill(self, farbe, r, special_flags)
+        if self._schmutz is not None:
+            self._schmutz.markieren(gefuellt)
+        return _rect_raster(gefuellt, self._s)
 
     def set_clip(self, rect=None):
         pygame.Surface.set_clip(self, None if rect is None else _rect_px(rect, self._s))

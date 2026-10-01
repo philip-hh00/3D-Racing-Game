@@ -124,6 +124,7 @@ def virtual_surface() -> pygame.Surface:
         # Oberfläche in 1440p oder 4K nur hochgezogen und weich.
         leinwand.skala_setzen(s)
         _virtual = leinwand.Flaeche((VIRT_W, VIRT_H), pygame.SRCALPHA, s)
+        _virtual.schmutz_verfolgen()
     return _virtual
 
 
@@ -231,7 +232,11 @@ def bild_beginnen(himmel: tuple[float, float, float] | None = None) -> None:
     verdeckt sie die Welt. Der Rand des Briefkastens wird schwarz geleert, der
     Bildbereich mit der Himmelsfarbe.
     """
-    virtual_surface().fill((0, 0, 0, 0))
+    v = virtual_surface()
+    if not hasattr(v, "schmutz_loeschen"):
+        v.fill((0, 0, 0, 0))
+    else:
+        v.schmutz_loeschen()
     ctx = kontext()
     if ctx is None:
         return

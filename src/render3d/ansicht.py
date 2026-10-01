@@ -136,6 +136,7 @@ class Ueberlagerung:
             (self._vbo, "2f 2f", "in_position", "in_uv"),
         ])
         self._textur = ctx.texture(groesse, 4)
+        self._textur_neu = True
         # Linear: in 1920×1080 trifft jeder Bildpunkt genau ein Texel, dort
         # ist das dasselbe wie NEAREST. In jeder anderen Fenstergröße aber
         # verdoppelte NEAREST einzelne Pixel — Schrift sah treppig aus, man
@@ -165,12 +166,45 @@ class Ueberlagerung:
             self._textur.release()
             self._textur = self._ctx.texture(groesse, 4)
             self._textur.filter = (moderngl.LINEAR, moderngl.LINEAR)
+            self._textur_neu = True
         if direkt_lesbar(flaeche):
             self._programm["bgra"].value = _ist_bgra(flaeche)
-            self._textur.write(memoryview(flaeche.get_view("0")))
+            # Eine verfolgte Fläche (die virtuelle) sagt, wo sie sich geändert
+            # hat; nur das geht hoch. ``None``: ganz — neue Textur, unverfolgte
+            # Fläche oder zu viel Änderung für Stückwerk.
+            rechtecke = None
+            if not self._textur_neu and hasattr(flaeche, "schmutz_rechtecke"):
+                rechtecke = flaeche.schmutz_rechtecke()
+            ansicht = memoryview(flaeche.get_view("0"))
+            if rechtecke is None:
+                self._textur.write(ansicht)
+            elif rechtecke:
+                feld = np.frombuffer(ansicht, dtype=np.uint8).reshape(groesse[1], groesse[0], 4)
+                for r in rechtecke:
+                    teil = self._vorrat(r.width * r.height * 4)[:r.width * r.height * 4]
+                    teil = teil.reshape(r.height, r.width, 4)
+                    np.copyto(teil, feld[r.top:r.bottom, r.left:r.right])
+                    self._textur.write(teil, viewport=(r.left, r.top, r.width, r.height))
+                del feld
+            del ansicht
         else:
             self._programm["bgra"].value = False
             self._textur.write(flaeche_als_bytes(flaeche))
+        self._textur_neu = False
+        if hasattr(flaeche, "schmutz_hochgeladen"):
+            flaeche.schmutz_hochgeladen()
+
+    def _vorrat(self, n: int) -> np.ndarray:
+        """Ein wiederverwendeter Zwischenspeicher für Teilstücke.
+
+        Ein frisch angelegtes Feld von einigen MB kostet je Bild Seitenfehler
+        des Betriebssystems: ``ascontiguousarray`` brauchte für vier Stücke
+        (1,5 Mio. Bildpunkte, 4K) 2,9 ms, das Kopieren in einen Vorrat 0,5 ms.
+        """
+        vorrat = getattr(self, "_vorrat_feld", None)
+        if vorrat is None or len(vorrat) < n:
+            vorrat = self._vorrat_feld = np.empty(max(n, 1 << 20), dtype=np.uint8)
+        return vorrat
 
     def zeichnen(self) -> None:
         """Über das bestehende Bild legen.
