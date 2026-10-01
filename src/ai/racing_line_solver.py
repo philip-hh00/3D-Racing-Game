@@ -23,6 +23,8 @@ The result also carries per-point curvature, which the speed-profile stage
 from __future__ import annotations
 
 import math
+
+import numpy as np
 from dataclasses import dataclass
 
 
@@ -116,7 +118,6 @@ def compute_racing_line(
                       fully "tight" for the corner_pull reduction.
         outside_factor: Anteil der Rücknahme, der auf die Außenseite entfällt.
     """
-    import numpy as np
     n = len(center)
     if n < 3:
         normals = _centerline_normals(center) if center else []

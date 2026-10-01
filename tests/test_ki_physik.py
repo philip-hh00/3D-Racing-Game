@@ -22,7 +22,7 @@ from src.ai.speed_profile import (VehicleLimits, _corner_speed, compute_speed_pr
 def test_beschleunigung_entspricht_der_gemessenen_physik():
     """rookie (Frontantrieb): Vollgas 0…300 px/s gemessen ~53 px/s² (traktionsbegrenzt),
     nicht ``engine_power / mass`` = 220."""
-    lim = limits_from_config(H.config("rookie"))
+    lim = limits_from_config(H.config("rookie"), mit_antriebstabelle=True)
     for v in (50.0, 150.0, 250.0):
         assert 45.0 <= lim.beschleunigung(v) <= 62.0, v
     assert lim.beschleunigung(600.0) < lim.beschleunigung(150.0)     # Luftwiderstand
@@ -31,7 +31,7 @@ def test_beschleunigung_entspricht_der_gemessenen_physik():
 def test_lenkgrenze_folgt_dem_anschlag():
     """Engster Radius: tan(Anschlag) = Radstand · Krümmung, Anschlag 35° / (1+(v/500)^1,2)."""
     lim = VehicleLimits(a_lat=1e9, a_accel=50.0, a_brake=130.0, v_max=900.0,
-                        turn_speed=2.2, turn_safety=0.9, radstand=32.8)
+                        turn_safety=0.9, radstand=32.8)
     k = 1.0 / 60.0
 
     def reicht(v):
@@ -50,9 +50,9 @@ def test_profil_ohne_antrieb_ist_nur_kurven_und_bremsen(name):
     cfg = H.config("rookie")
     geo = compute_racing_line(mittellinie(track), float(track.track_width),
                               car_width=float(cfg.width_px), margin=22.0, corner_pull=0.3)
-    lim = limits_from_config(cfg, grip_usage=0.88, brake_confidence=0.95, steer_confidence=0.9)
-    frei = np.array(compute_speed_profile(geo, lim, antrieb_begrenzt=False))
-    real = np.array(compute_speed_profile(geo, lim))
+    lim = limits_from_config(cfg, grip_usage=0.88, brake_confidence=0.95, mit_antriebstabelle=True)
+    frei = np.array(compute_speed_profile(geo, lim))
+    real = np.array(compute_speed_profile(geo, lim, antrieb_begrenzt=True))
     assert np.all(frei >= real - 1e-6)
     assert (frei > real + 20.0).any()
 
@@ -64,8 +64,8 @@ def test_ideallinie_city_nutzt_die_ganze_strecke():
     cfg = H.config("rookie")
     geo = compute_racing_line(mittellinie(track), float(track.track_width),
                               car_width=float(cfg.width_px), margin=22.0, corner_pull=0.3)
-    lim = limits_from_config(cfg, grip_usage=0.88, brake_confidence=0.95, steer_confidence=0.9)
-    v = np.array(compute_speed_profile(geo, lim, antrieb_begrenzt=False))
+    lim = limits_from_config(cfg, grip_usage=0.88, brake_confidence=0.95)
+    v = np.array(compute_speed_profile(geo, lim))
     seg = np.array(geo.seg_len)
     zeit = float(np.sum(seg / np.maximum(0.5 * (v + np.roll(v, -1)), 1.0)))
     assert zeit < 22.0, zeit

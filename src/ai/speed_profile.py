@@ -59,7 +59,6 @@ class VehicleLimits:
     a_accel: float     # max forward acceleration (px/s²)
     a_brake: float     # max braking deceleration (px/s²)
     v_max: float       # top speed (px/s)
-    turn_speed: float  # (alt, nicht mehr im Profil) Giergeschwindigkeit bei Stillstand
     turn_safety: float = _TURN_SAFETY  # fraction of steering lock used for planning
     radstand: float = 33.0  # Radstand in px (engster Radius = Radstand / tan(Anschlag))
     #: Vollgas-Beschleunigung (px/s²) auf einem Tempogitter ``a_tab_dv`` px/s
@@ -86,11 +85,12 @@ def limits_from_config(
     grip_usage: float | None = None,
     brake_confidence: float | None = None,
     steer_confidence: float | None = None,
+    mit_antriebstabelle: bool = False,
 ) -> VehicleLimits:
     """Derive a :class:`VehicleLimits` from a vehicle's config (no measurement).
 
     Forward/braking limits are force/mass; the lateral limit scales the grip
-    coefficient; turn_speed feeds the steering-lock corner limit. Per-car
+    coefficient; the wheelbase feeds the steering-lock corner limit. Per-car
     differences carry straight through, so each car gets a distinct profile.
 
     The optional ``grip_usage``, ``brake_confidence`` and ``steer_confidence``
@@ -107,10 +107,11 @@ def limits_from_config(
     a_brake = (getattr(config, "brake_force", 45000.0) / mass * _brake_conf) / M_PER_PX
     a_lat = lat_grip_scale * _grip_usage * getattr(config, "grip", 0.8)
     v_max = getattr(config, "max_speed", 260.0)
-    turn_speed = getattr(config, "turn_speed", 2.2)
     radstand = float(getattr(config, "wheelbase_m", 0.0) or 0.0) / M_PER_PX or 33.0
-    lim = VehicleLimits(a_lat, a_accel, a_brake, v_max, turn_speed, _steer_conf, radstand)
-    tab = beschleunigungstabelle(config, lim.a_tab_dv)
+    lim = VehicleLimits(a_lat, a_accel, a_brake, v_max, _steer_conf, radstand)
+    # Nur auf Anforderung: das Sollprofil der KI braucht sie nicht (siehe
+    # ``compute_speed_profile``), ihr Aufbau kostet beim Laden Zeit.
+    tab = beschleunigungstabelle(config, lim.a_tab_dv) if mit_antriebstabelle else None
     if tab:
         lim.a_tab = tab
         lim.a_accel = tab[0]
@@ -163,7 +164,7 @@ def beschleunigungstabelle(config, dv: float = 10.0) -> tuple[float, ...] | None
         widerstand = (0.5 * 1.2 * cw * flaeche * (v * M_PER_PX) ** 2
                       + roll * masse * 9.81) if v > 0.5 else 0.0
         a = kraft / masse / M_PER_PX
-        for _ in range(4):      # Gewichtsverlagerung hängt von a selbst ab
+        for _ in range(4):      # Gewichtsverlagerung (wie Vehicle: wt = min(0.35, a * 0.0012)) hängt von a selbst ab
             wt = min(0.35, a * 0.0012)
             v_last = max(0.1, min(0.9, vorn - wt))
             h_last = max(0.1, min(0.9, (1.0 - vorn) + wt))
@@ -227,12 +228,13 @@ def compute_speed_profile(
     limits: VehicleLimits,
     passes: int = 3,
     eps: float = 1e-6,
-    antrieb_begrenzt: bool = True,
+    antrieb_begrenzt: bool = False,
 ) -> list[float]:
     """Return the max safe speed (px/s) at each racing-line point.
 
-    ``antrieb_begrenzt=False`` lässt den Vorwärtsdurchgang weg: das Profil ist dann
-    nur noch die Obergrenze aus Kurven und Bremsen. Für einen Regler, der das
+    ``antrieb_begrenzt=False`` (Vorgabe) lässt den Vorwärtsdurchgang weg: das Profil ist
+    dann nur noch die Obergrenze aus Kurven und Bremsen; ``True`` rechnet ihn mit
+    ``limits.beschleunigung`` (Tabelle aus ``limits_from_config(mit_antriebstabelle=True)``). Für einen Regler, der das
     Profil als Sollwert nimmt, ist das richtig — mehr als der Motor liefert, kann
     das Gas ohnehin nicht geben, und eine Tempoobergrenze *unter* dem, was das
     Auto real schafft (Kurvenschneiden, Windschatten, Modellfehler von ein paar

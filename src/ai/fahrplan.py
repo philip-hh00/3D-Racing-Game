@@ -79,7 +79,7 @@ def mittellinie(track) -> list[tuple[float, float]]:
 
 #: Fahrzeugwerte, die in Löser und Tempoprofil eingehen (siehe ``limits_from_config``).
 _CONFIG_FELDER = ("mass", "engine_power", "brake_force", "grip", "max_speed",
-                  "turn_speed", "width_px", "wheelbase_m", "drag_coefficient", "frontal_area",
+                  "width_px", "wheelbase_m", "drag_coefficient", "frontal_area",
                   "roll_coefficient", "com_bias", "wheel_diameter", "idle_rpm", "redline_rpm")
 #: Listen und Texte, die das Beschleunigungsprofil bestimmen (Getriebe, Drehmomentkurve, Antrieb).
 _CONFIG_LISTEN = ("gear_ratios", "torque_curve", "drive_type")
@@ -109,8 +109,8 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     geo = compute_racing_line(mitte, breite, car_width=float(config.width_px),
                               margin=stufe.wandabstand_px, corner_pull=stufe.kurve_schneiden)
     lim = limits_from_config(config, grip_usage=stufe.haftung,
-                             brake_confidence=stufe.bremsen, steer_confidence=0.9)
-    v = np.asarray(compute_speed_profile(geo, lim, antrieb_begrenzt=False), dtype=np.float64)
+                             brake_confidence=stufe.bremsen)
+    v = np.asarray(compute_speed_profile(geo, lim), dtype=np.float64)
     v_kurve = np.array([_corner_speed(c, lim) for c in geo.curvature], dtype=np.float64)
     # Bremspunkt-Vorhalt: das Tempo einer Stelle darf nicht über dem der
     # nächsten ``bremspunkt_m`` Meter liegen — wer vorsichtig ist, bremst früher.
