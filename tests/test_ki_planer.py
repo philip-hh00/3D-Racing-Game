@@ -15,15 +15,17 @@ R = 5000.0      # fast gerade
 BREITE, LAENGE = 29.0, 62.0
 
 
-def _plan(v=600.0, v_einbruch_bei=None):
+def _plan(v=600.0, v_einbruch_bei=None, breite=40, mit_kurve=False):
     n = 1500
     mitte = [(R * math.cos(2 * math.pi * i / n), R * math.sin(2 * math.pi * i / n)) for i in range(n)]
     st = StreckeFrenet(mitte, 300.0)
     v_ziel = np.full(n, v)
     if v_einbruch_bei is not None:
         i0 = st.index(v_einbruch_bei)
-        v_ziel[i0:i0 + 40] = 200.0
-    return Fahrplan(st, np.zeros(n), v_ziel, np.full(n, 1.0 / R), 150.0 - 15.0 - 6.0, 800.0)
+        v_ziel[i0:i0 + breite] = 200.0
+    v_kurve = v_ziel.copy() if mit_kurve else None
+    return Fahrplan(st, np.zeros(n), v_ziel, np.full(n, 1.0 / R), 150.0 - 15.0 - 6.0, 800.0,
+                    v_kurve=v_kurve)
 
 
 def test_frei_bleibt_auf_der_ideallinie():
@@ -133,3 +135,26 @@ def test_spaeter_bremsen_verschiebt_nur_die_bremsflanke():
     normal = p.planen(100.0, 0.0, 600.0, [], Wunsch()).v_soll
     frueh = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=-60.0)).v_soll
     assert spaet > normal > frueh
+
+
+def test_spaeter_bremsen_loescht_keine_enge_kurve():
+    # Ein Tempoeinbruch (Spitzkehre), schmaler als die Verschiebung: der Scheitel
+    # darf nicht weggefüllt werden — das Kurventempo bleibt Obergrenze.
+    plan = _plan(v_einbruch_bei=250.0, breite=4, mit_kurve=True)
+    i0 = plan.strecke.index(250.0)
+    s_scheitel = plan.strecke.s[i0 + 2]
+    s0 = float(plan.strecke.s[i0]) - 60.0
+    p = Planer(plan, BREITE, LAENGE)
+    normal = p.planen(s0, 0.0, 120.0, [], Wunsch()).v_soll
+    spaet = p.planen(s0, 0.0, 120.0, [], Wunsch(spaeter_bremsen_px=120.0)).v_soll
+    assert s_scheitel > s0
+    assert spaet <= normal + 1.0
+    assert spaet < 450.0
+
+
+def test_bremsverschiebung_ist_begrenzt():
+    plan = _plan(v_einbruch_bei=250.0)
+    p = Planer(plan, BREITE, LAENGE)
+    a = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=Planer.BREMS_SHIFT_MAX)).v_soll
+    b = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=Planer.BREMS_SHIFT_MAX + 200.0)).v_soll
+    assert a == b

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from src.ai.racing_line_solver import compute_racing_line
-from src.ai.speed_profile import compute_speed_profile, limits_from_config
+from src.ai.speed_profile import _corner_speed, compute_speed_profile, limits_from_config
 from src.ai.strecke_frenet import StreckeFrenet
 
 #: Zusätzlicher Randabstand des Planerkorridors über die halbe Autobreite hinaus.
@@ -32,6 +32,9 @@ class Fahrplan:
     a_brems: float
     #: Seitenbeschleunigung (px/s²), die das Auto in Kurven sicher aufbringt.
     a_quer: float = 300.0
+    #: Reines Kurventempo (nur Krümmung/Lenkung, ohne Brems- und Beschleunigungs-
+    #: durchgang). Obergrenze beim späteren Bremsen: schmale Kurven bleiben langsam.
+    v_kurve: np.ndarray | None = None
 
     def _viele(self, werte: np.ndarray, s) -> np.ndarray:
         st = self.strecke
@@ -45,6 +48,11 @@ class Fahrplan:
 
     def v_viele(self, s) -> np.ndarray:
         return self._viele(self.v_ziel, s)
+
+    def v_kurve_viele(self, s) -> np.ndarray:
+        if self.v_kurve is None:         # ohne Angabe: keine Obergrenze
+            return np.full(np.shape(s), np.inf)
+        return self._viele(self.v_kurve, s)
 
     def k_viele(self, s) -> np.ndarray:
         return self._viele(self.kruemmung, s)
@@ -99,6 +107,7 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     lim = limits_from_config(config, grip_usage=stufe.haftung,
                              brake_confidence=stufe.bremsen, steer_confidence=0.9)
     v = np.asarray(compute_speed_profile(geo, lim), dtype=np.float64)
+    v_kurve = np.array([_corner_speed(c, lim) for c in geo.curvature], dtype=np.float64)
     # Bremspunkt-Vorhalt: das Tempo einer Stelle darf nicht über dem der
     # nächsten ``bremspunkt_m`` Meter liegen — wer vorsichtig ist, bremst früher.
     vorhalt = stufe.bremspunkt_m / M_PER_PX
@@ -116,6 +125,6 @@ def fahrplan_bauen(track, config, stufe) -> Fahrplan:
     halb_frei = max(10.0, strecke.halb - float(config.width_px) / 2.0 - RAND_PX)
     plan = Fahrplan(strecke, np.clip(d_ideal, -halb_frei, halb_frei), v,
                     np.asarray(geo.signed_curvature, dtype=np.float64), halb_frei, float(lim.a_brake),
-                    float(lim.a_lat))
+                    float(lim.a_lat), v_kurve)
     _CACHE[schluessel] = plan
     return plan

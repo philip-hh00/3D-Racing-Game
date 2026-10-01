@@ -75,6 +75,8 @@ class Planer:
     #   a = 5,77 · Δ / T²), sonst bricht das Auto aus und dreht sich.
     WAND_RESERVE = 12.0
     QUER_ANTEIL = 1.0
+    #: Größte Verschiebung des Bremspunkts (px), Summe aus Angriff, Persönlichkeit, Fehler.
+    BREMS_SHIFT_MAX = 120.0
 
     def __init__(self, plan, breite_px: float, laenge_px: float) -> None:
         self.plan = plan
@@ -108,9 +110,12 @@ class Planer:
         # rückt, nicht das ganze Profil. Später bremsen (δ>0): die Einbrüche
         # beginnen δ weiter vorn; früher bremsen (δ<0): sie beginnen |δ| früher.
         v_prof = plan.v_viele(s_abs)
-        delta = float(w.spaeter_bremsen_px)
+        delta = float(np.clip(w.spaeter_bremsen_px, -self.BREMS_SHIFT_MAX, self.BREMS_SHIFT_MAX))
         if delta > 0.0:
-            v_prof = np.maximum(v_prof, plan.v_viele(s_abs - delta))
+            # Nie über dem reinen Kurventempo: eine Spitzkehre, schmaler als δ,
+            # darf nicht weggefüllt werden.
+            v_prof = np.minimum(np.maximum(v_prof, plan.v_viele(s_abs - delta)),
+                                plan.v_kurve_viele(s_abs))
         elif delta < 0.0:
             v_prof = np.minimum(v_prof, plan.v_viele(s_abs - delta))
         v_prof = v_prof * w.tempo
