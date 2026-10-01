@@ -123,3 +123,13 @@ def test_stehendes_auto_voraus_nie_mit_vollem_tempo_durch(v0, abstand):
     frei = max(0.0, abstand - LAENGE)
     bremst_genug = bahn.v_soll ** 2 <= 2.0 * plan.a_brems * frei + 30.0 ** 2
     assert weicht_aus or bremst_genug, (bahn.v_soll, bahn.d[naehe], abstand)
+
+
+def test_spaeter_bremsen_verschiebt_nur_die_bremsflanke():
+    # Ein Tempoeinbruch voraus: wer später bremst, darf davor schneller sein.
+    plan = _plan(v_einbruch_bei=250.0)
+    p = Planer(plan, BREITE, LAENGE)
+    spaet = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=60.0)).v_soll
+    normal = p.planen(100.0, 0.0, 600.0, [], Wunsch()).v_soll
+    frueh = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=-60.0)).v_soll
+    assert spaet > normal > frueh

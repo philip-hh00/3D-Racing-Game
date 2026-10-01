@@ -104,7 +104,16 @@ class Planer:
         s_abs = s0 + s_rel
         d_id = plan.d_viele(s_abs) + w.versatz
         k_id = np.clip(np.abs(plan.k_viele(s_abs)) * 400.0, 0.0, 1.0)
-        v_prof = plan.v_viele(s_abs + w.spaeter_bremsen_px) * w.tempo
+        # Bremspunkt verschieben: nur die Bremsflanke (Tempoeinbrüche voraus)
+        # rückt, nicht das ganze Profil. Später bremsen (δ>0): die Einbrüche
+        # beginnen δ weiter vorn; früher bremsen (δ<0): sie beginnen |δ| früher.
+        v_prof = plan.v_viele(s_abs)
+        delta = float(w.spaeter_bremsen_px)
+        if delta > 0.0:
+            v_prof = np.maximum(v_prof, plan.v_viele(s_abs - delta))
+        elif delta < 0.0:
+            v_prof = np.minimum(v_prof, plan.v_viele(s_abs - delta))
+        v_prof = v_prof * w.tempo
         seg = np.diff(s_rel)
 
         # Kandidaten (C, K+1): Versatz-Hauptschleife, Übergang innen

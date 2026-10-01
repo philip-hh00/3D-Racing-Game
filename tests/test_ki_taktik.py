@@ -128,3 +128,16 @@ def test_verteidigung_endet_nach_der_zone():
     s_nach_zone = verteidigt_bis + 50.0
     w2 = t.entscheiden(s_nach_zone, w1.seite, 600.0, [])
     assert w2.zustand == "frei"
+
+
+def test_angriff_bremst_im_planer_spaeter():
+    """Der Angriff in der Bremszone liefert im Planer ein höheres Solltempo als ohne."""
+    from src.ai.planer import Planer
+    plan = _plan(kurve_bei=700.0, links=True)
+    w = _taktik("hard", plan).entscheiden(100.0, 0.0, 600.0, [Gegner(250.0, 0.0, 590.0, L, B)])
+    assert w.zustand == "angriff"
+    planer = Planer(plan, B, L)
+    mit = planer.planen(600.0, 0.0, 600.0, [], w).v_soll
+    w.spaeter_bremsen_px = 0.0
+    ohne = Planer(plan, B, L).planen(600.0, 0.0, 600.0, [], w).v_soll
+    assert mit > ohne
