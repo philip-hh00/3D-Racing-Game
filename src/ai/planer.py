@@ -168,7 +168,10 @@ class Planer:
                 else:
                     tk = t[:, 0]
                 rel = basis[k] + gva * tk[:, None]
-                hinter = in_spur[:, k, :] & (rel > 0.0)
+                # „Davor“ heißt: mehr als 60 % der Berührlänge voraus. Wer schon fast
+                # daneben steht, wird nicht mit Folgetempo (bei stehendem Auto: 0)
+                # festgehalten — das verklemmte zwei Autos dauerhaft nebeneinander.
+                hinter = in_spur[:, k, :] & (rel > 0.6 * lga)
                 cap = np.where(hinter, gva + np.maximum(0.0, rel - lga) * self.FOLGE_GAIN, np.inf).min(axis=1)
                 v_eff[:, k] = np.maximum(np.minimum(v[:, k], cap), 0.0)
                 if k:

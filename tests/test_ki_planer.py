@@ -158,3 +158,20 @@ def test_bremsverschiebung_ist_begrenzt():
     a = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=Planer.BREMS_SHIFT_MAX)).v_soll
     b = p.planen(100.0, 0.0, 600.0, [], Wunsch(spaeter_bremsen_px=Planer.BREMS_SHIFT_MAX + 200.0)).v_soll
     assert a == b
+
+
+def test_neben_einem_stehenden_auto_nicht_festgenagelt():
+    # Seitlich knapp neben einem stehenden Auto (Längsabstand kleiner als die
+    # Autolänge, Querabstand nur im Sicherheitsrand): das Auto liegt nicht
+    # „davor“. Ein Folgetempo von 0 würde beide dauerhaft verklemmen.
+    plan = _plan()
+    g = Gegner(s=130.0, d=32.0, v=0.0, laenge=LAENGE, breite=BREITE)
+    bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 30.0, [g], Wunsch())
+    assert bahn.v_soll > 60.0
+
+
+def test_hinter_einem_stehenden_auto_wird_gebremst():
+    plan = _plan()
+    g = Gegner(s=250.0, d=0.0, v=0.0, laenge=LAENGE, breite=BREITE)
+    bahn = Planer(plan, BREITE, LAENGE).planen(100.0, 0.0, 200.0, [g], Wunsch(darf_ausscheren=False))
+    assert bahn.gefolgt and bahn.v_soll < 150.0
