@@ -104,6 +104,22 @@ class PhysicsBody:
         """Current velocity vector."""
         return self.body.velocity
 
+    def laenge_px(self) -> float:
+        """Länge der Form entlang der Fahrzeugachse (px), einmal je Form gelesen.
+
+        ``shape.get_vertices()`` baut bei jedem Aufruf eine Liste; Antrieb,
+        Seitenführung und Lenkgrenze lasen es je Bild und Fahrzeug. Die Form
+        ändert sich nicht — gemerkt wird gegen die Form selbst, eine
+        ausgetauschte Form wird neu gelesen.
+        """
+        gemerkt = self.__dict__.get("_laenge_gemerkt")
+        if gemerkt is not None and gemerkt[0] is self.shape:
+            return gemerkt[1]
+        xs = [v.x for v in self.shape.get_vertices()]
+        laenge = max(xs) - min(xs) if xs else 80.0
+        self._laenge_gemerkt = (self.shape, laenge)
+        return laenge
+
     # ---- Force application ----
 
     #: Reifen-Lastempfindlichkeit: Griff je kg sinkt mit der Achslast (mu ~ Last^-k).
@@ -135,9 +151,7 @@ class PhysicsBody:
         mass = body.mass
 
         # Wheelbase & axles
-        verts = self.shape.get_vertices()
-        xs = [v.x for v in verts]
-        length = max(xs) - min(xs) if xs else 80.0
+        length = self.laenge_px()
         wheelbase = length * self.wheelbase_ratio
 
         front_local, rear_local = self._achspunkte(wheelbase)
@@ -221,9 +235,7 @@ class PhysicsBody:
         mass = body.mass
 
         # Wheelbase (distance between front and rear axle)
-        verts = self.shape.get_vertices()
-        xs = [v.x for v in verts]
-        length = max(xs) - min(xs) if xs else 80.0
+        length = self.laenge_px()
         wheelbase = length * self.wheelbase_ratio  # tunable (Radstand)
 
         # Local positions of front and rear axles
@@ -383,8 +395,7 @@ class PhysicsBody:
         speed = self.body.velocity.length
         lock_factor = 1.0 / (1.0 + (speed / 500.0) ** 1.2)
         alt = math.radians(35.0) * lock_factor
-        xs = [v.x for v in self.shape.get_vertices()]
-        radstand = (max(xs) - min(xs)) * self.wheelbase_ratio if xs else 50.0
+        radstand = self.laenge_px() * self.wheelbase_ratio
         a = max(grip, 0.05) * 380.0 * self.LENK_REIZ
         griff = math.atan(radstand * a / max(speed * speed, 1e-6))
         quer = self.body.velocity.rotated(-self.body.angle).y
