@@ -8,11 +8,17 @@ und beim Hochladen nach GLSL wird transponiert.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
+
+_EINHEIT = np.eye(4, dtype=np.float32)
 
 
 def einheit() -> np.ndarray:
-    return np.eye(4, dtype=np.float32)
+    # Kopie einer fertigen Matrix: np.eye kostet je Aufruf einige µs, und die
+    # Fahrzeuge rufen es hundertmal je Bild.
+    return _EINHEIT.copy()
 
 
 def verschiebung(x: float, y: float = 0.0, z: float = 0.0) -> np.ndarray:
@@ -26,7 +32,7 @@ def verschiebung(x: float, y: float = 0.0, z: float = 0.0) -> np.ndarray:
 
 def _drehung(achse: int, winkel: float) -> np.ndarray:
     """Drehung um eine Koordinatenachse, im Rechtsschraubensinn."""
-    c, s = np.cos(winkel), np.sin(winkel)
+    c, s = math.cos(winkel), math.sin(winkel)
     m = einheit()
     i, j = [(1, 2), (2, 0), (0, 1)][achse]
     m[i, i] = c
