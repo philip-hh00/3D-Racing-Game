@@ -42,7 +42,10 @@ a = Analysis(
         (r'C:\Windows\System32\concrt140.dll', '.'),
     ],
     datas=[
-        (_w('data/fonts'),    'data/fonts'),
+        # Nur die freie Schrift und ihre Lizenz, nicht den ganzen Ordner: dort
+        # kann lokal noch eine Systemschrift liegen, die nicht mit darf.
+        (_w('data/fonts/NotoSans-Spiel.ttf'), 'data/fonts'),
+        (_w('data/fonts/OFL.txt'),              'data/fonts'),
         (_w('data/textures'), 'data/textures'),
         (_w('data/vehicles'), 'data/vehicles'),
         # NUR die fuenf mitgelieferten Strecken (entschieden 04.08.2026).

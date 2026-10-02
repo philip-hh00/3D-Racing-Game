@@ -19,7 +19,7 @@ Der Weg ist zweistufig:
    Bevel-Normalen verrechnet.
 
 So wirken Details in Millimetern, ohne dass die Spielgeometrie sie tragen
-muss. Schrift kommt aus Blenders Textobjekten (``data/fonts/segoeui.ttf``),
+muss. Schrift kommt aus Blenders Textobjekten (``data/fonts/NotoSans-Spiel.ttf``),
 wird hier zu einer Maske gerastert und auf Reifenflanke oder Bremssattel
 gelegt.
 
@@ -401,7 +401,7 @@ def schrift():
         pass
     # Eine statische Schrift: variable Schriften (Blenders Inter) haben sich
     # überlappende Konturen, die beim Füllen Löcher in N, R, A stanzen.
-    kandidaten = [Path(__file__).resolve().parents[2] / "data" / "fonts" / "segoeui.ttf",
+    kandidaten = [Path(__file__).resolve().parents[2] / "data" / "fonts" / "NotoSans-Spiel.ttf",
                   Path(bpy.utils.system_resource("DATAFILES")) / "fonts" / "Inter.woff2"]
     for pfad in kandidaten:
         if not pfad.exists():

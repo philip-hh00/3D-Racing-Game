@@ -29,3 +29,7 @@ scipy>=1.11.0
 
 # Tests bauen Test-GLBs mit trimesh (src/render3d/mesh.py liest selbst).
 trimesh>=4.0.0
+
+# Baut die Spielschrift aus drei Noto-Schriften (tools/schrift_bauen.py). Das
+# Spiel liest die fertige Datei data/fonts/NotoSans-Spiel.ttf.
+fonttools>=4.40.0

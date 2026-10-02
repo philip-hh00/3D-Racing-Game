@@ -46,14 +46,17 @@ import os as _os
 import sys as _sys
 from pathlib import Path as _Path
 
-# Bundled TTF (Segoe UI). Covers – — … ‹ › ← ↑ → ↓ ↔ ■ ▲ ▼ ○ ● ♦ … but NOT
-# ✓ (U+2713), √ (U+221A), ★ (U+2605), ▶ (U+25B6), ⚠ (U+26A0), ↕ (U+2195).
+# Bundled TTF: Noto Sans, ergaenzt um Pfeile und Formen aus Noto Sans Symbols 2
+# und Noto Sans Math (alle SIL Open Font License, data/fonts/OFL.txt; gebaut
+# mit tools/schrift_bauen.py). Bis 02.10.2026 lag hier Segoe UI — eine
+# Microsoft-Schrift, die man nicht mit einem Spiel weitergeben darf.
 # Ein fehlender Glyph zeichnet ein leeres Kaestchen — benutzt werden deshalb nur
 # die Zeichen unten, und tests/test_schriftzeichen.py haelt das nach.
 # Falls back to a system font and finally to pygame's built-in font.
 _base_dir = _Path(_sys._MEIPASS) if getattr(_sys, "frozen", False) else _Path(__file__).parents[2]
 _FONT_DIR = _base_dir / "data" / "fonts"
-_TTF_PRIMARY  = str(_FONT_DIR / "segoeui.ttf")
+_TTF_PRIMARY  = str(_FONT_DIR / "NotoSans-Spiel.ttf")
+_NOTO_FAKTOR = 0.76
 
 #: „Erledigt" — Bereit, gefahren, geschlossen, Version aktuell.
 #:
@@ -64,8 +67,9 @@ _TTF_PRIMARY  = str(_FONT_DIR / "segoeui.ttf")
 #: Rennpause, „□ gefahren" in der Streckenwahl, „Version aktuell □",
 #: „GESCHLOSSEN □". Das Zeichen steht bewusst **hier** und nicht in den
 #: Sprachdateien: eine Verzierung ist nichts zu Uebersetzendes, und an einer
-#: Stelle laesst sie sich austauschen.
-HAKEN = "▪"
+#: Stelle laesst sie sich austauschen. Seit 02.10.2026 hat die eigene Schrift
+#: (Noto Sans Spiel) den Haken, deshalb wieder ``✓`` statt ``▪``.
+HAKEN = "✓"
 
 #: Eine Warnung. ``⚠`` fehlt der Schrift.
 WARNUNG = "!"
@@ -85,11 +89,13 @@ def _load_font(size: int) -> pygame.font.Font:
     scaled_size = max(10, int(size * 0.81))
     if _os.path.isfile(_TTF_PRIMARY):
         try:
-            return pygame.font.Font(_TTF_PRIMARY, scaled_size)
+            # Noto Sans laeuft gut 6 % breiter als das fruehere Segoe UI; auf
+            # dessen Breiten sind alle Knoepfe und Spalten abgestimmt.
+            return pygame.font.Font(_TTF_PRIMARY, max(10, int(size * _NOTO_FAKTOR)))
         except Exception:
             pass
     # Fallback 1 – common system fonts with good Unicode coverage
-    for name in ("segoeui", "arial", "freesansbold", "dejavusans"):
+    for name in ("notosans", "segoeui", "arial", "freesansbold", "dejavusans"):
         path = pygame.font.match_font(name)
         if path:
             try:

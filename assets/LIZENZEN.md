@@ -3,9 +3,9 @@
 Alle Fahrzeuge, Gebäude, Bäume, Leitplanken und Streckenteile unter
 `assets/vehicles/` und `assets/umgebung/` sind mit den Skripten unter
 `tools/blender/` selbst erzeugt. Zusätzlich verwendetes Fremdmaterial
-stammt ausschließlich von [Poly Haven](https://polyhaven.com) und steht
-unter **CC0 1.0** (gemeinfrei, keine Namensnennung nötig — sie steht hier
-trotzdem).
+stammt von [Poly Haven](https://polyhaven.com) und [ambientCG](https://ambientcg.com)
+und steht unter **CC0 1.0** (gemeinfrei, keine Namensnennung nötig — sie
+steht hier trotzdem). Die Schrift steht unter der SIL Open Font License.
 
 ## Modelle
 
@@ -78,3 +78,14 @@ Aufbereitet (verkleinert, Rauheit auf Zielwert, Kanäle für glTF) nach
 * `carbon_*` ← `Fabric004` — https://ambientcg.com/view?id=Fabric004
 * `leder_*` ← `Leather037` — https://ambientcg.com/view?id=Leather037 (auch die Narbung in `polster_normal.jpg`)
 * `narbung_*` ← `Leather026` — https://ambientcg.com/view?id=Leather026
+
+## Schrift
+
+`data/fonts/NotoSans-Spiel.ttf` ist **Noto Sans**, ergänzt um Pfeile und
+Formen aus **Noto Sans Symbols 2** und **Noto Sans Math** (`tools/schrift_bauen.py`).
+Copyright 2022 The Noto Project Authors, Lizenz **SIL Open Font License 1.1**
+(Text in `data/fonts/OFL.txt`).
+
+* https://github.com/notofonts/latin-greek-cyrillic
+* https://github.com/notofonts/symbols
+* https://github.com/notofonts/math

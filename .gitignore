@@ -157,9 +157,9 @@ data/textures/
 data/audio/
 data/vehicles/*.png
 
-# segoeui.ttf ist eine Systemschrift von Microsoft. Sie liegt lokal und wird
-# vom Spiel geladen, weiterverbreiten darf man sie nicht.
-data/fonts/
+# Microsoft-Schriften (Segoe UI u. a.) dürfen nicht weitergegeben werden und
+# gehören nicht ins Spiel. Mitgeliefert wird Noto Sans (OFL, data/fonts/OFL.txt).
+data/fonts/segoe*
 
 # Teaser-Video (71 MB) und Bildschirmfotos der Verkaufsseite des 2D-Spiels.
 # Die Textfassungen bleiben drin, auf die greifen Tests zu.

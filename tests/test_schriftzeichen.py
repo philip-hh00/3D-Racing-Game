@@ -122,10 +122,33 @@ def _verdaechtig(text: str) -> set[str]:
 # Der Fund selbst
 # ---------------------------------------------------------------------------
 def test_der_haken_ist_wirklich_zu_sehen():
-    """Der Kern: ``√`` und ``✓`` zeichnen beide ein leeres Kästchen."""
-    assert not hat_glyph("√"), "sonst war der Fund keiner und der Test ist stumpf"
-    assert not hat_glyph("✓")
+    """Der Kern: der Haken ist ein Zeichen und kein Kästchen.
+
+    Mit Segoe UI zeichneten ``√`` und ``✓`` beide ein leeres Kästchen. Seit
+    02.10.2026 liefert das Spiel Noto Sans Spiel mit (tools/schrift_bauen.py),
+    die beide hat. Dass die Erkennung überhaupt greift, zeigt ein Zeichen, das
+    keine der drei Noto-Vorlagen kennt.
+    """
+    assert not hat_glyph("😀"), "sonst erkennt der Test kein Kästchen"
+    assert hat_glyph("✓") and hat_glyph("√")
     assert hat_glyph(theme.HAKEN), f"{theme.HAKEN!r} ist selbst ein Kästchen"
+
+
+def test_mitgeliefert_wird_nur_die_freie_schrift():
+    """Segoe UI ist eine Microsoft-Schrift und darf nicht ins Spiel (02.10.2026).
+
+    Die Spec-Dateien nennen die Schriftdateien einzeln, damit eine lokal
+    liegende Systemschrift nicht über den ganzen Ordner mitgepackt wird.
+    """
+    import glob
+    assert os.path.basename(theme._TTF_PRIMARY) == "NotoSans-Spiel.ttf"
+    assert os.path.isfile(os.path.join(_ROOT, "data", "fonts", "OFL.txt"))
+    for spec in glob.glob(os.path.join(_ROOT, "Release", "pyinstaller", "*.spec")):
+        with open(spec, encoding="utf-8") as f:
+            inhalt = f.read()
+        assert "_w('data/fonts')" not in inhalt, spec
+        assert "segoe" not in inhalt.lower(), spec
+        assert "NotoSans-Spiel.ttf" in inhalt and "OFL.txt" in inhalt, spec
 
 
 @pytest.mark.parametrize("name", ["HAKEN", "WARNUNG", "ZEIGER", "HOCH_RUNTER"])

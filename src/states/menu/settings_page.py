@@ -884,7 +884,10 @@ class SettingsPage(Page):
         # (Block F2). Ohne Bericht wird der Pfad genannt statt eines toten
         # Links: dann weiss man wenigstens, wo er auftauchen wird.
         from src.core import absturz
-        crash_y = link_y + 44
+        # 40 statt 44 px Zeilenabstand seit Noto Sans (02.10.2026): die Schrift
+        # zeichnet hoeher als Segoe UI, und mit 44 lag der unterste Link 2 px
+        # in den Bedienhinweisen (tests/test_layout_regeln.py).
+        crash_y = link_y + 40
         if absturz.vorhanden():
             crash_label = tr("Absturzbericht öffnen (crash.log)")
             cw = surf_font.size(crash_label)[0]
@@ -902,7 +905,7 @@ class SettingsPage(Page):
         # steht in assets/LIZENZEN.md und wird mitgepackt (siehe game.spec);
         # von hier aus ist er fuer einen Spieler ueberhaupt auffindbar.
         from src.core import paths
-        lizenz_y = crash_y + 44
+        lizenz_y = crash_y + 40
         lizenz_label = tr("Lizenzen der Spielassets öffnen")
         lw = surf_font.size(lizenz_label)[0]
         lizenz_pfad = paths.bundle_dir() / "assets" / "LIZENZEN.md"

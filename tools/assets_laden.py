@@ -130,6 +130,35 @@ def blatt_laden(name: str, asset: str, farbe_schluessel: str, alpha_schluessel) 
     farbe.save(ziel)
 
 
+#: Was nicht aus der Poly-Haven-Liste kommt, steht fest hier. Bis 02.10.2026
+#: stand der ambientCG-Abschnitt nur von Hand in der Datei — und jeder Lauf
+#: dieses Skripts hat ihn wieder gelöscht.
+NACHSPANN = [
+    "",
+    "## Fahrzeugtexturen (ambientCG)",
+    "",
+    "Von [ambientCG](https://ambientcg.com), Autor Lennart Demes, Lizenz **CC0 1.0**.",
+    "Aufbereitet (verkleinert, Rauheit auf Zielwert, Kanäle für glTF) nach",
+    "`assets/texturen/fahrzeug/`; die übrigen Dateien dort (`scheibenrand.png`,",
+    "`polster_normal.jpg`, `anzeige.png`) rechnet `tools/fahrzeug_texturen.py` selbst.",
+    "",
+    "* `carbon_*` ← `Fabric004` — https://ambientcg.com/view?id=Fabric004",
+    "* `leder_*` ← `Leather037` — https://ambientcg.com/view?id=Leather037 (auch die Narbung in `polster_normal.jpg`)",
+    "* `narbung_*` ← `Leather026` — https://ambientcg.com/view?id=Leather026",
+    "",
+    "## Schrift",
+    "",
+    "`data/fonts/NotoSans-Spiel.ttf` ist **Noto Sans**, ergänzt um Pfeile und",
+    "Formen aus **Noto Sans Symbols 2** und **Noto Sans Math** (`tools/schrift_bauen.py`).",
+    "Copyright 2022 The Noto Project Authors, Lizenz **SIL Open Font License 1.1**",
+    "(Text in `data/fonts/OFL.txt`).",
+    "",
+    "* https://github.com/notofonts/latin-greek-cyrillic",
+    "* https://github.com/notofonts/symbols",
+    "* https://github.com/notofonts/math",
+]
+
+
 def lizenzen_schreiben(liste: dict) -> None:
     zeilen = [
         "# Lizenzen der Spielassets",
@@ -137,9 +166,9 @@ def lizenzen_schreiben(liste: dict) -> None:
         "Alle Fahrzeuge, Gebäude, Bäume, Leitplanken und Streckenteile unter",
         "`assets/vehicles/` und `assets/umgebung/` sind mit den Skripten unter",
         "`tools/blender/` selbst erzeugt. Zusätzlich verwendetes Fremdmaterial",
-        "stammt ausschließlich von [Poly Haven](https://polyhaven.com) und steht",
-        "unter **CC0 1.0** (gemeinfrei, keine Namensnennung nötig — sie steht hier",
-        "trotzdem).",
+        "stammt von [Poly Haven](https://polyhaven.com) und [ambientCG](https://ambientcg.com)",
+        "und steht unter **CC0 1.0** (gemeinfrei, keine Namensnennung nötig — sie",
+        "steht hier trotzdem). Die Schrift steht unter der SIL Open Font License.",
         "",
         "## Modelle",
         "",
@@ -151,6 +180,7 @@ def lizenzen_schreiben(liste: dict) -> None:
     zeilen += ["", "## Himmel (HDRI)", ""]
     zeilen += [f"* {t}: `{a}` — https://polyhaven.com/a/{a}"
                for t, a in liste["himmel"].items()]
+    zeilen += NACHSPANN
     (WURZEL / "assets" / "LIZENZEN.md").write_text("\n".join(zeilen) + "\n",
                                                    encoding="utf-8", newline="\n")
 

@@ -18,7 +18,7 @@ def _fix_cwd() -> None:
 
 
 def _patch_pygame_font() -> None:
-    """Patch pygame.font.Font to load the bundled Segoe UI font by default.
+    """Patch pygame.font.Font to load the bundled Noto Sans font by default.
     This ensures that all UI states instantiating default pygame fonts (via None)
     correctly render special Unicode glyphs (stars, arrows) on all platforms.
     """
@@ -32,8 +32,8 @@ def _patch_pygame_font() -> None:
         else:
             base_path = Path(__file__).parent
             
-        segoe_path = base_path / "data" / "fonts" / "segoeui.ttf"
-        if not segoe_path.exists():
+        schrift_pfad = base_path / "data" / "fonts" / "NotoSans-Spiel.ttf"
+        if not schrift_pfad.exists():
             return
             
         _orig_font = pygame.font.Font
@@ -51,11 +51,11 @@ def _patch_pygame_font() -> None:
             if not has_file or file_arg is None:
                 try:
                     if len(args) > 0:
-                        new_args = (str(segoe_path),) + args[1:]
+                        new_args = (str(schrift_pfad),) + args[1:]
                         return _orig_font(*new_args, **kwargs)
                     else:
                         new_kwargs = kwargs.copy()
-                        new_kwargs['file'] = str(segoe_path)
+                        new_kwargs['file'] = str(schrift_pfad)
                         return _orig_font(*args, **new_kwargs)
                 except Exception:
                     pass

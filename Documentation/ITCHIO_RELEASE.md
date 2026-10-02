@@ -47,8 +47,10 @@ andere — und wenn dir die Strecken ausgehen, baust du dir eigene.
 
 ## 🏁 Vier Spielmodi
 
-**Rennen** — Klassisches Rundenrennen gegen die KI. 2 bis 6 Fahrzeuge, Rundenzahl
-frei wählbar. Wer zuerst über die Linie fährt, gewinnt.
+**Rennen** — Klassisches Rundenrennen gegen die KI. 2 bis 8 Fahrzeuge, Rundenzahl
+frei wählbar. Vier KI-Stufen von Anfänger bis Meister — die Meister fahren
+sauber am Limit und lassen dir keine Lücke. Wer zuerst über die Linie fährt,
+gewinnt.
 
 **Zeitfahren** — Du gegen den Ghost der Streckenbestzeit. Er fährt neben dir,
 Sektor für Sektor siehst du, wo du Zeit verlierst. Unterbietest du ihn, wird
@@ -222,8 +224,9 @@ out of tracks, you build your own.
 
 ## 🏁 Four game modes
 
-**Race** — Classic lap racing against the AI. 2 to 6 cars, lap count up to you.
-First across the line wins.
+**Race** — Classic lap racing against the AI. 2 to 8 cars, lap count up to you.
+Four AI levels from Beginner to Master — the masters drive clean on the limit
+and leave you no gap. First across the line wins.
 
 **Time Trial** — You against the ghost of the track record. It drives beside
 you, and sector by sector you see where the time goes. Beat it and your lap

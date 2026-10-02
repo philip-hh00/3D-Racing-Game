@@ -51,6 +51,8 @@ Die Release-Pipeline (Windows-/macOS-Builds, Installer) ist in
 
 Fahrzeuge, Strecken und Umgebung sind größtenteils selbst erstellt
 (`tools/blender/`). Zusätzlich verwendetes Fremdmaterial (Bäume, Felsen,
-Texturen) stammt von [Poly Haven](https://polyhaven.com) unter CC0 — Details
+Texturen) stammt von [Poly Haven](https://polyhaven.com) und
+[ambientCG](https://ambientcg.com) unter CC0, die Schrift ist Noto Sans unter
+der SIL Open Font License — Details
 in [`assets/LIZENZEN.md`](assets/LIZENZEN.md), auch im Spiel unter
 Einstellungen → Info einsehbar.
