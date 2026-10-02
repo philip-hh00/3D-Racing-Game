@@ -59,3 +59,22 @@ def _verschiebung_alt(x, y, z):
     m = _alt_einheit()
     m[:3, 3] = (x, y, z)
     return m
+
+
+def test_knoten_matrizen_mit_gemerkter_nabe_bleiben_gleich_und_folgen_neuen_raedern():
+    from src.render3d import vehicle_node as vn
+    raeder = [vn.Radplatz("rad_vl", np.array([1.2, 0.8, 0.3]), True),
+              vn.Radplatz("rad_hl", np.array([-1.3, 0.8, 0.3]), False)]
+    k = vn.Fahrzeugknoten(raeder, 0.65)
+    k.lenken(0.3)
+    k.setzen(rollwinkel_rad=1.1, lenkwinkel_rad=0.3)
+    erste = k.matrizen((5.0, 6.0, 0.0), 0.7)
+    zweite = k.matrizen((5.0, 6.0, 0.0), 0.7)
+    for name in erste:
+        assert np.array_equal(erste[name], zweite[name])
+    frisch = vn.Fahrzeugknoten(raeder, 0.65)
+    frisch.setzen(rollwinkel_rad=1.1, lenkwinkel_rad=0.3)
+    ref = _verschiebung_alt(1.2, 0.8, 0.3) @ _alt_drehung(2, 0.3)
+    assert np.array_equal(frisch.lenk_matrix(raeder[0]), ref)
+    k.raeder = [vn.Radplatz("rad_vl", np.array([2.0, 0.8, 0.3]), False)]
+    assert np.allclose(k.lenk_matrix(k.raeder[0])[:3, 3], [2.0, 0.8, 0.3])

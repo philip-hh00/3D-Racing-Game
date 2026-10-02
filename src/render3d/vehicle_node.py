@@ -127,13 +127,23 @@ class Fahrzeugknoten:
         self.lenkwinkel_rad = float(lenkwinkel_rad)
 
     # -- Matrizen --------------------------------------------------------
+    def _nabe_matrix(self, rad: Radplatz) -> np.ndarray:
+        """Die Verschiebung zur Nabe, je Rad einmal gerechnet (nur lesen, schreibgeschützt)."""
+        gemerkt = self.__dict__.setdefault("_nabe_gemerkt", {})
+        eintrag = gemerkt.get(id(rad))
+        if eintrag is None or eintrag[0] is not rad:
+            m = matrix.verschiebung(rad.nabe)
+            m.setflags(write=False)
+            eintrag = gemerkt[id(rad)] = (rad, m)
+        return eintrag[1]
+
     def lenk_matrix(self, rad: Radplatz) -> np.ndarray:
         """Nabe an ihrem Platz, um den Lenkeinschlag gedreht — ohne Rollen.
 
         So steht der Bremssattel: er schwenkt mit dem Rad, dreht sich aber
         nicht mit ihm.
         """
-        m = matrix.verschiebung(rad.nabe)
+        m = self._nabe_matrix(rad)
         if rad.gelenkt and self.lenkwinkel_rad:
             m = m @ matrix.drehung_z(self.lenkwinkel_rad)
         return m

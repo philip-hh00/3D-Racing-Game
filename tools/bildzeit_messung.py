@@ -91,6 +91,7 @@ def main() -> int:
     ap.add_argument("--profil", action="store_true")
     ap.add_argument("--stufen", action="store_true",
                     help="Zeit je Arbeitsschritt (eingeschlossen, ohne cProfile-Aufschlag)")
+    ap.add_argument("--gc", action="store_true", help="gc.freeze() nach dem Laden, hohe Schwellen")
     ap.add_argument("--zeilen", type=int, default=45)
     ap.add_argument("--sortierung", default="tottime")
     args = ap.parse_args()
@@ -108,6 +109,11 @@ def main() -> int:
     import spielhilfe
     rennen, _sm = spielhilfe.rennen_bauen(args.strecke, feld=args.feld, runden=3)
     stufen = _stufen_einhaengen() if args.stufen else None
+    if args.gc:
+        import gc
+        gc.collect()
+        gc.freeze()
+        gc.set_threshold(50000, 20, 20)
     uhr = pygame.time.Clock()
     spalten = {"update": [], "beginnen": [], "render": [], "abschluss": [], "flip": [], "gesamt": []}
     pr = cProfile.Profile() if args.profil else None
