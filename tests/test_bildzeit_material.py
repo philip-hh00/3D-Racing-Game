@@ -149,3 +149,33 @@ def test_setzen_viele_und_setzen_teilen_den_merkzettel():
     shader.setzen(p, "a", 2.0)
     shader.setzen_viele(p, (("a", 2.0),))
     assert p.geschrieben == [("a", 2.0)]
+
+
+def test_schnellweg_faellt_bei_geaenderter_moderngl_schnittstelle_auf_value_zurueck():
+    geschrieben = []
+
+    class Ctx:
+        def _write_uniform(self, *a):
+            raise TypeError("neue Signatur")
+
+    class U:
+        array_length, dimension, fmt = 1, 1, "f"
+        ctx = Ctx()
+        program_obj, location, gl_type, element_size = 0, 0, 0, 4
+
+        @property
+        def value(self):
+            return None
+
+        @value.setter
+        def value(self, w):
+            geschrieben.append(w)
+
+    class P(dict):
+        def __getitem__(self, k):
+            return U()
+
+    p = P()
+    shader.setzen(p, "x", 1.5)
+    shader.setzen(p, "x", 2.5)
+    assert geschrieben == [1.5, 2.5]

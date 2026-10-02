@@ -877,11 +877,16 @@ def _schreiben(p, name: str, wert) -> None:
                 fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(*w))  # noqa: E731
             else:
                 fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(w))  # noqa: E731
-        except AttributeError:
+        except (AttributeError, TypeError, struct.error):
+            # Private moderngl-Schnittstelle fehlt oder hat sich geaendert: Umweg.
             def fn(w, u=u):
                 u.value = w
         schreiber[name] = fn
-    fn(wert)
+    try:
+        fn(wert)
+    except (TypeError, struct.error):
+        schreiber[name] = lambda w, u=p[name]: setattr(u, "value", w)
+        p[name].value = wert
 
 
 def setzen(p, name: str, wert) -> None:
