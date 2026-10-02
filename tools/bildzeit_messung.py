@@ -133,7 +133,7 @@ def main() -> int:
     # Wie viel der HUD-Fläche geht je Bild hoch? (Schmutzverfolgung)
     from src.ui import leinwand
     hoch = {"bilder": 0, "ganz": 0, "flaeche": 0}
-    echt = leinwand.Flaeche.schmutz_rechtecke
+    echt = getattr(leinwand.Flaeche, "schmutz_rechtecke", None)
 
     def gemessen(self):
         r = echt(self)
@@ -147,7 +147,8 @@ def main() -> int:
         hoch["gesamt"] = w * h
         return r
 
-    leinwand.Flaeche.schmutz_rechtecke = gemessen
+    if echt is not None:
+        leinwand.Flaeche.schmutz_rechtecke = gemessen
     while t < args.sekunden:
         dt = min(uhr.tick(0) / 1000.0, 0.05)
         t += dt
