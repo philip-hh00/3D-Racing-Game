@@ -32,6 +32,8 @@ Instanz (Bäume, Felsen, Häuser — hunderte Exemplare in einem Aufruf).
 """
 from __future__ import annotations
 
+import struct
+
 import numpy as np
 
 _VERTEX_KOPF = """
@@ -848,6 +850,40 @@ def _merkzettel(p) -> dict:
     return stand
 
 
+def _schreiben(p, name: str, wert) -> None:
+    """Den Wert ins Programm schreiben (``KeyError``: es gibt das Uniform nicht).
+
+    moderngl packt über ``Uniform.value`` → ``write`` → ``_write_uniform``,
+    je Aufruf drei Python-Rahmen und mehrere Fallunterscheidungen. Bei
+    einfachen Uniforms (kein Feld) geht es hier gleich an den letzten Schritt.
+    """
+    schreiber = getattr(p, "_schreiber", None)
+    if schreiber is None:
+        schreiber = {}
+        try:
+            p._schreiber = schreiber
+        except AttributeError:                       # pragma: no cover - Attrappen
+            pass
+    fn = schreiber.get(name)
+    if fn is None:
+        u = p[name]
+        try:
+            if u.array_length > 1:
+                raise AttributeError
+            pack = struct.Struct(u.fmt).pack
+            roh = u.ctx._write_uniform
+            ziel = (u.program_obj, u.location, u.gl_type, u.array_length, u.element_size)
+            if u.dimension > 1:
+                fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(*w))  # noqa: E731
+            else:
+                fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(w))  # noqa: E731
+        except AttributeError:
+            def fn(w, u=u):
+                u.value = w
+        schreiber[name] = fn
+    fn(wert)
+
+
 def setzen(p, name: str, wert) -> None:
     """Ein Uniform setzen, wenn der Compiler es nicht wegoptimiert hat.
 
@@ -863,7 +899,7 @@ def setzen(p, name: str, wert) -> None:
     if name in stand and stand[name] == wert:
         return
     try:
-        p[name].value = wert
+        _schreiben(p, name, wert)
     except KeyError:
         pass
     stand[name] = wert
@@ -882,7 +918,7 @@ def setzen_viele(p, paare) -> None:
         if name in stand and stand[name] == wert:
             continue
         try:
-            p[name].value = wert
+            _schreiben(p, name, wert)
         except KeyError:
             pass
         stand[name] = wert
