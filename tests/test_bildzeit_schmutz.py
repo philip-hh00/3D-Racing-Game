@@ -220,3 +220,40 @@ def test_gewoehnliche_pygame_flaeche_geht_wie_vorher():
     u = _ueberlagerung((320, 180))
     u.aktualisieren(f)
     assert u._textur.schreibungen == [None]
+
+
+# -- Ausschnitte (Splitscreen): echte Sicht auf die Elternfläche -------------------
+
+@pytest.mark.parametrize("skala", [1.0, 2.0])
+def test_ausschnitt_schreibt_in_die_elternflaeche_und_meldet_schmutz(skala):
+    f = _verfolgt((640, 360), skala)
+    f.schmutz_hochgeladen()
+    rechts = f.subsurface((320, 0, 320, 360))
+    zeichnen.rect(rechts, (255, 0, 0, 255), (10, 10, 50, 50))
+    rechts.blit(pygame.Surface((20, 20)), (100, 100))
+    rechts.fill((0, 255, 0, 255), (200, 300, 20, 20))
+    s = f.get_at((330, 20))
+    assert tuple(s)[:3] == (255, 0, 0), "Pixel liegen in der Elternfläche"
+    rects = f.schmutz_rechtecke()
+    assert rects is not None
+    w, h = f.bildpunkte()
+    a = _abdeckung(rects, (w, h))
+    assert not (_nicht_leer(f) & ~a).any(), "alles Gezeichnete ist als schmutzig gemeldet"
+    assert not a[:, : int(300 * skala)].any() or a[:, int(320 * skala):].any()
+    assert rects and min(r.left for r in rects) >= int(320 * skala) - int(f._schmutz.w / 12) - 1
+
+
+def test_zwei_huds_im_splitscreen_stehen_in_der_flaeche_und_in_der_textur():
+    f = _verfolgt((1920, 1080))
+    u = _ueberlagerung((1920, 1080))
+    u.aktualisieren(f)
+    for bild in range(4):
+        f.schmutz_loeschen()
+        for i, x in enumerate((0, 960)):
+            hälfte = f.subsurface((x, 0, 960, 1080))
+            zeichnen.rect(hälfte, (50 * (i + 1), 100, 200, 255), (20 + bild * 5, 900, 300, 120))
+            zeichnen.circle(hälfte, (255, 255, 0, 255), (480, 100), 40 + bild)
+        u.aktualisieren(f)
+        assert np.array_equal(u._textur.feld, _bytes(f)), f"Bild {bild}"
+        assert tuple(f.get_at((100, 950)))[3] == 255 and tuple(f.get_at((1100, 950)))[3] == 255
+        assert tuple(f.get_at((100, 950)))[:3] != tuple(f.get_at((1100, 950)))[:3]

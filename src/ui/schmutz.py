@@ -140,3 +140,31 @@ class Schmutz:
     def hochgeladen(self) -> None:
         self.fehlt[:] = self._leer
         self.alles = False
+
+
+class Weiterleitung:
+    """Schmutz eines Ausschnitts: meldet an die Elternfläche, verschoben um den Versatz.
+
+    Ein Ausschnitt (``Flaeche.subsurface``) teilt sich den Speicher mit der
+    Elternfläche. Was in ihn gezeichnet wird, muss dort als Schmutz ankommen,
+    sonst bliebe es beim Leeren und Hochladen unbemerkt.
+    """
+
+    def __init__(self, eltern: Schmutz, dx: int, dy: int) -> None:
+        self.eltern, self.dx, self.dy = eltern, int(dx), int(dy)
+
+    def markieren(self, r) -> None:
+        self.eltern.markieren(r.move(self.dx, self.dy))
+
+    def alles_setzen(self) -> None:
+        self.eltern.alles_setzen()
+
+    def leeren(self, flaeche) -> None:
+        r = pygame.Surface.fill(flaeche, (0, 0, 0, 0))
+        self.markieren(r)
+
+    def hochzuladen(self):
+        return None
+
+    def hochgeladen(self) -> None:
+        pass

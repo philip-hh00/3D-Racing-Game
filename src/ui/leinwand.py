@@ -34,7 +34,7 @@ import weakref
 
 import pygame
 
-from src.ui.schmutz import Schmutz
+from src.ui.schmutz import Schmutz, Weiterleitung
 
 #: Das Raster, in dem die Oberfläche rechnet.
 RASTER = (1920, 1080)
@@ -175,9 +175,22 @@ class Flaeche(pygame.Surface):
                                             min(_px(pos[1], self._s), super().get_height() - 1)))
 
     def subsurface(self, rect):
-        """Ein Ausschnitt — als gewöhnliche Fläche in Bildpunkten, mit Skala."""
-        teil = pygame.Surface.subsurface(self, _rect_px(rect, self._s))
-        return _flaeche_aus(teil, self._s)
+        """Ein Ausschnitt — eine **Sicht** auf dieselben Bildpunkte, mit Skala.
+
+        Was hineingezeichnet wird, steht in der Elternfläche (Splitscreen: jede
+        Hälfte bekommt ihr HUD). Bis 01.10.2026 war es eine Kopie, und alles
+        darauf ging verloren. Verfolgt die Elternfläche ihren Schmutz, meldet
+        der Ausschnitt dorthin.
+        """
+        rp = _rect_px(rect, self._s)
+        teil = pygame.Surface.subsurface(self, rp)
+        if not isinstance(teil, Flaeche):                 # pragma: no cover - alte pygame
+            teil.__class__ = Flaeche
+        teil._s = self._s
+        teil._raster = (int(round(rp.width / self._s)), int(round(rp.height / self._s)))
+        teil._schmutz = (Weiterleitung(self._schmutz, rp.x, rp.y)
+                         if self._schmutz is not None else None)
+        return teil
 
     def copy(self):
         return _flaeche_aus(pygame.Surface.copy(self), self._s)
