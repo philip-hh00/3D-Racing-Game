@@ -83,6 +83,12 @@ _mischer: tonmischer.Mischer | None = None
 _prozess: tonprozess.Erzeugerprozess | None = None
 _wache_faden: threading.Thread | None = None
 _prozess_grund = ""
+#: Laeuft der Erzeuger gerade im Prozess? Falsch im Fadenbetrieb und nach einem
+#: Rueckfall, auch wenn ``_prozess`` noch den Speicher des Rings haelt.
+_im_prozess = False
+_rueckfall_schloss = threading.Lock()
+#: So lange darf der Erzeugerprozess brauchen, bis er bereit meldet.
+BEREIT_FRIST = 20.0
 _strom = None
 _faden: threading.Thread | None = None
 _halt = threading.Event()
@@ -137,7 +143,7 @@ def grund() -> str:
 def zustand() -> dict:
     """Was tatsächlich anliegt — fürs Protokoll und den Mitschnitt."""
     m = _mischer
-    p = _prozess
+    p = _prozess if _im_prozess else None
     mess = p.speicher.mess if (p is not None and p.speicher is not None) else None
     if mess is not None:
         kopf = p.speicher.kopf
@@ -165,7 +171,7 @@ def zustand() -> dict:
             "erzeuger": "prozess" if p.lebt() else "prozess (beendet)",
         }
     return {
-        "erzeuger": "faden" if m else "",
+        "erzeuger": ("faden (Rueckfall)" if _prozess is not None else "faden") if m else "",
         "laeuft": laeuft(),
         "grund": grund(),
         "geraet": _geraet,
@@ -224,10 +230,18 @@ def starten(rate: int = 48000) -> bool:
         _halt.clear()
         if _prozess is not None:
             _geraeterate_melden()
-            _prozess.starten()
+            try:
+                _prozess.starten()
+                globals()["_im_prozess"] = True
+            except Exception as exc:
+                print(f"[Klang] Erzeugerprozess startet nicht ({exc}), Erzeugung im Faden")
+                _prozess.stoppen()
+        if _im_prozess:
             _faden = threading.Thread(target=_wachen_bis_halt, name="Tonwache",
                                       daemon=True)
         else:
+            if _prozess is not None:
+                _prozess.speicher.kopf[tonprozess.K_BEREIT] = 1   # Rueckruf gibt frei
             _intervall_setzen()
             _faden = threading.Thread(target=_erzeugen_bis_halt,
                                       name="Tonerzeuger", daemon=True)
@@ -312,10 +326,11 @@ def motorstimme_anlegen(erzeuger, motor: str, tonhoehe: float, faerbung: float,
     zusaetzlich ``drehzahl_setzen``), oder ``None``, wenn der Weg nicht laeuft.
     *erzeuger* wird nur im Fadenbetrieb gebraucht.
     """
-    p = _prozess
-    if p is not None and p.speicher is not None:
-        return p.stimme_anlegen(motor, tonhoehe, faerbung, links, rechts)
-    return stimme_anlegen(erzeuger, links, rechts)
+    with _rueckfall_schloss:
+        p = _prozess
+        if _im_prozess and p is not None and p.speicher is not None:
+            return p.stimme_anlegen(motor, tonhoehe, faerbung, links, rechts, erzeuger)
+        return stimme_anlegen(erzeuger, links, rechts)
 
 
 def raten_kandidaten(sd, wunsch: int = 48000) -> list[int]:
@@ -566,7 +581,7 @@ def zaehler_zuruecksetzen() -> None:
     m = _mischer
     if m is None:
         return
-    if _prozess is not None:
+    if _im_prozess and _prozess is not None:
         _prozess.zuruecksetzen()
     m.unterlaeufe = 0
     m.geraete_unterlaeufe = 0
@@ -639,10 +654,42 @@ def _wachen_bis_halt() -> None:
         try:
             _wache()
             p = _prozess
-            if p is not None and not p.lebt() and not _halt.is_set():
-                globals()["_prozess_grund"] = "Erzeugerprozess beendet"
+            if p is None or _halt.is_set():
+                continue
+            if not p.lebt():
+                _auf_faden_zurueck("Erzeugerprozess beendet")
+                return
+            if not p.bereit and time.monotonic() - p.gestartet > BEREIT_FRIST:
+                _auf_faden_zurueck("Erzeugerprozess wird nicht bereit")
+                return
         except Exception:
             pass
+
+
+def _auf_faden_zurueck(warum: str) -> None:
+    """Der Erzeugerprozess ist ausgefallen: im Faden weiterrechnen, ohne Stille.
+
+    Der Ring (gemeinsamer Speicher) und der Mischer des Audiofadens bleiben, es
+    kommt nur ein Erzeugerfaden dazu, und die Stimmen werden dort neu
+    angemeldet (mit Lautstaerke, ohne ihre Phase: sie fangen an einer eigenen
+    Stelle an). Wird einmal gemeldet.
+    """
+    global _im_prozess, _faden
+    with _rueckfall_schloss:
+        p = _prozess
+        m = _mischer
+        if not _im_prozess or p is None or m is None or p.speicher is None:
+            return
+        _im_prozess = False
+        print(f"[Klang] {warum} - Rueckfall auf den Erzeugerfaden")
+        p.stoppen()
+        p.speicher.kopf[tonprozess.K_BEREIT] = 1      # der Rueckruf gibt wieder frei
+        for f in list(p.fernstimmen):
+            f.uebernehmen(m)
+        _intervall_setzen()
+        _faden = threading.Thread(target=_erzeugen_bis_halt, name="Tonerzeuger",
+                                  daemon=True)
+        _faden.start()
 
 
 def _wache() -> None:
@@ -664,7 +711,7 @@ def beenden() -> None:
     global _grund
     m = _mischer
     p = _prozess
-    if p is not None and p.speicher is not None:
+    if _im_prozess and p is not None and p.speicher is not None:
         p.alle_beenden()
         ende = time.monotonic() + 0.15
         while time.monotonic() < ende and p.stimmen and p.lebt():
@@ -681,8 +728,9 @@ def beenden() -> None:
 
 
 def _aufraeumen() -> None:
-    global _mischer, _strom, _faden, _rate, _geraet, _prozess
+    global _mischer, _strom, _faden, _rate, _geraet, _prozess, _im_prozess
     _halt.set()
+    _im_prozess = False
     if _faden is not None:
         _faden.join(1.0)
     _faden = None

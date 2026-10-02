@@ -142,3 +142,96 @@ def test_erzeugerprozess_liefert_ton_und_beendet_sich_sauber():
     finally:
         p.beenden()
     assert proz.poll() is not None, "Erzeugerprozess lebt noch"
+
+
+# ── Befehlszeile, Start ueber main.py, Rueckfall ─────────────────────────────
+
+def test_kommando_gepackt_und_aus_den_quellen():
+    gepackt = tonprozess.kommando("shm1", 42, 16384, gepackt=True,
+                                  interpreter="C:/Spiel/3D-Racing-Game.exe")
+    assert gepackt == ["C:/Spiel/3D-Racing-Game.exe", "--tonprozess", "shm1", "42",
+                       "16384"]
+    quellen = tonprozess.kommando("shm1", 42, 16384, gepackt=False,
+                                  interpreter="python")
+    assert quellen == ["python", "-m", "src.core.tonprozess", "shm1", "42", "16384"]
+
+
+def test_main_springt_vor_der_einzelinstanz_in_den_erzeuger():
+    """Die Flagge muss vor ``einzelinstanz.beanspruchen`` verarbeitet werden,
+    sonst bekommt der zweite Start das Fenster 'laeuft bereits'."""
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(wurzel, "main.py"), encoding="utf-8") as fh:
+        quelle = fh.read()
+    assert tonprozess.FLAGGE in quelle
+    assert quelle.index(tonprozess.FLAGGE) < quelle.index("beanspruchen()")
+
+
+@pytest.mark.skipif(not sfx.Motorstimme("6zyl"), reason="keine Motoraufnahmen")
+def test_start_ueber_main_py_mit_flagge(monkeypatch):
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    monkeypatch.setattr(
+        tonprozess, "kommando",
+        lambda name, pid, kap, *a, **k: [sys.executable, os.path.join(wurzel, "main.py"),
+                                         tonprozess.FLAGGE, name, str(pid), str(kap)])
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        p.starten()
+        ende = time.monotonic() + 20
+        while not p.bereit and time.monotonic() < ende and p.lebt():
+            time.sleep(0.05)
+        assert p.bereit, "Erzeuger ueber main.py wurde nicht bereit"
+        proz = p.prozess
+    finally:
+        p.beenden()
+    assert proz.poll() is not None
+
+
+def test_ausgefallener_erzeuger_faellt_auf_den_faden_zurueck(monkeypatch):
+    """Ein Prozess, der sofort endet: kein Ausfall des Tons, der Faden uebernimmt."""
+    import types
+    from src.core import tonausgabe as ta
+
+    class Strom:
+        def __init__(self, samplerate, **kw):
+            self.samplerate, self.callback, self.device = samplerate, kw["callback"], 0
+
+        def start(self):
+            pass
+
+        def stop(self):
+            pass
+
+        def close(self):
+            pass
+
+    modul = types.ModuleType("sounddevice")
+    modul.OutputStream = lambda **kw: Strom(**kw)
+    modul.query_devices = lambda n: {"name": "Attrappe"}
+    monkeypatch.setitem(sys.modules, "sounddevice", modul)
+    monkeypatch.setattr(ta, "PROZESS", True)
+    monkeypatch.setattr(ta, "WACHE_SEKUNDEN", 0.1)
+    monkeypatch.setattr(tonprozess, "prozess_moeglich", lambda: (True, ""))
+    monkeypatch.setattr(tonprozess, "kommando",
+                        lambda *a, **k: [sys.executable, "-c", "pass"])
+    ta.beenden()
+    try:
+        assert ta.starten() is True
+        assert ta._prozess is not None
+        v = ta.motorstimme_anlegen(_Sinus(300.0, True), "6zyl", 1.0, 0.0, 0.5, 0.5)
+        assert v is not None
+        ende = time.monotonic() + 10
+        while ta._im_prozess and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert not ta._im_prozess, "kein Rueckfall"
+        rueckruf = ta._strom.callback
+        ton = np.zeros((512, 2), dtype=np.float32)
+        ende = time.monotonic() + 5
+        while not np.any(ton) and time.monotonic() < ende:
+            time.sleep(0.02)
+            rueckruf(ton, 512, None, None)
+        assert np.any(ton), "nach dem Rueckfall nur Stille"
+        # Neue Stimmen gehen jetzt direkt in den Faden.
+        assert ta.motorstimme_anlegen(_Sinus(200.0, True), "6zyl", 1.0, 0.0) is not None
+        assert ta.zustand()["erzeuger"].startswith("faden")
+    finally:
+        ta.beenden()

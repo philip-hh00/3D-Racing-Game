@@ -44,6 +44,7 @@ import os
 import subprocess
 import sys
 import time
+import weakref
 from multiprocessing import shared_memory
 
 import numpy as np
@@ -119,11 +120,30 @@ def prozess_moeglich() -> tuple[bool, str]:
     """Darf der Erzeuger als eigener Prozess laufen? Zweiter Wert: warum nicht."""
     if os.environ.get("RACING_TON_PROZESS", "1") == "0":
         return False, "per Umgebungsvariable abgeschaltet"
-    if getattr(sys, "frozen", False):
-        return False, "gepacktes Spiel"
     if not sys.executable or not os.path.isfile(sys.executable):
         return False, "kein Interpreter"
     return True, ""
+
+
+#: Argument, mit dem das gepackte Spiel (und ``main.py``) als Erzeuger startet.
+FLAGGE = "--tonprozess"
+
+
+def kommando(name: str, eltern_pid: int, kapazitaet: int, gepackt: bool | None = None,
+             interpreter: str | None = None) -> list[str]:
+    """Befehlszeile des Erzeugerprozesses.
+
+    Gepackt (PyInstaller) ist ``sys.executable`` das Spiel selbst; es wird mit
+    :data:`FLAGGE` gestartet, und ``main.py`` springt dann vor allem anderen
+    (Fenster, Einzelinstanz) in :func:`haupt`. Aus den Quellen ist es der
+    Interpreter mit ``-m``.
+    """
+    gepackt = bool(getattr(sys, "frozen", False)) if gepackt is None else gepackt
+    exe = interpreter or sys.executable
+    rest = [name, str(eltern_pid), str(kapazitaet)]
+    if gepackt:
+        return [exe, FLAGGE] + rest
+    return [exe, "-m", "src.core.tonprozess"] + rest
 
 
 class Fernstimme:
@@ -133,14 +153,29 @@ class Fernstimme:
     sie benutzt (``einstellen``, ``beenden``), dazu :meth:`drehzahl_setzen`.
     """
 
-    __slots__ = ("_s", "_i", "_beendet")
+    __slots__ = ("_s", "_i", "_beendet", "_erzeuger", "_ersatz", "__weakref__")
 
-    def __init__(self, speicher: Speicher, platz: int) -> None:
+    def __init__(self, speicher: Speicher, platz: int, erzeuger=None) -> None:
         self._s = speicher
         self._i = platz
         self._beendet = False
+        self._erzeuger = erzeuger
+        #: Stimme im Mischer des Spielprozesses, falls der Erzeuger ausgefallen
+        #: ist und der Faden uebernommen hat; dann gehen alle Aufrufe dorthin.
+        self._ersatz = None
+
+    def uebernehmen(self, mischer) -> None:
+        """Rueckfall: die Stimme im Faden des Spielprozesses weiterfuehren."""
+        if self._beendet or self._erzeuger is None:
+            return
+        w = self._s.werte[self._i]
+        self._ersatz = mischer.stimme_anlegen(self._erzeuger, float(w[W_LINKS]),
+                                              float(w[W_RECHTS]))
 
     def einstellen(self, links: float, rechts: float) -> None:
+        if self._ersatz is not None:
+            self._ersatz.einstellen(links, rechts)
+            return
         if self._beendet:
             return
         w = self._s.werte[self._i]
@@ -148,13 +183,16 @@ class Fernstimme:
         w[W_RECHTS] = max(0.0, float(rechts))
 
     def drehzahl_setzen(self, upm: float) -> None:
-        if not self._beendet:
+        if self._ersatz is None and not self._beendet:
             self._s.werte[self._i, W_UPM] = float(upm)
 
     def beenden(self) -> None:
         if self._beendet:
             return
         self._beendet = True
+        if self._ersatz is not None:
+            self._ersatz.beenden()
+            return
         self._s.werte[self._i, W_LINKS] = 0.0
         self._s.werte[self._i, W_RECHTS] = 0.0
         self._s.zustand[self._i] = ENDE
@@ -186,14 +224,33 @@ class Erzeugerprozess:
         k[K_VORRAT] = int(vorrat)
         k[K_VORRAT_IST] = int(vorrat)
         self.prozess: subprocess.Popen | None = None
+        self.fernstimmen: weakref.WeakSet = weakref.WeakSet()
+        self.gestartet = 0.0
 
     def starten(self) -> None:
         wurzel = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         flags = 0x08000000 if sys.platform == "win32" else 0   # CREATE_NO_WINDOW
+        # Gepackt liegt ``data/`` neben dem Spiel und ``main.py`` stellt das
+        # Arbeitsverzeichnis selbst um; aus den Quellen ist es die Wurzel.
+        cwd = None if getattr(sys, "frozen", False) else wurzel
+        self.gestartet = time.monotonic()
         self.prozess = subprocess.Popen(
-            [sys.executable, "-m", "src.core.tonprozess", self.speicher.shm.name,
-             str(os.getpid()), str(self.kapazitaet)],
-            cwd=wurzel, stdin=subprocess.DEVNULL, creationflags=flags)
+            kommando(self.speicher.shm.name, os.getpid(), self.kapazitaet),
+            cwd=cwd, stdin=subprocess.DEVNULL, creationflags=flags)
+
+    def stoppen(self) -> None:
+        """Prozess anhalten, Speicher **behalten** (der Rueckfall liest den Ring weiter)."""
+        try:
+            self.speicher.kopf[K_HALT] = 1
+        except Exception:
+            pass
+        p = self.prozess
+        if p is not None and p.poll() is None:
+            try:
+                p.terminate()
+                p.wait(timeout=1.0)
+            except Exception:
+                pass
 
     @property
     def bereit(self) -> bool:
@@ -203,7 +260,8 @@ class Erzeugerprozess:
         return self.prozess is not None and self.prozess.poll() is None
 
     def stimme_anlegen(self, motor: str, tonhoehe: float, faerbung: float,
-                       links: float = 0.0, rechts: float = 0.0) -> Fernstimme | None:
+                       links: float = 0.0, rechts: float = 0.0,
+                       erzeuger=None) -> Fernstimme | None:
         s = self.speicher
         zust = s.zustand
         for i in range(PLAETZE):
@@ -218,7 +276,9 @@ class Erzeugerprozess:
                 w[W_TON] = float(tonhoehe)
                 w[W_FARB] = float(faerbung)
                 zust[i] = AKTIV                     # zuletzt: macht den Platz sichtbar
-                return Fernstimme(s, i)
+                f = Fernstimme(s, i, erzeuger)
+                self.fernstimmen.add(f)
+                return f
         return None
 
     @property
@@ -431,8 +491,13 @@ def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
                 kind[0].beenden()
 
 
-if __name__ == "__main__":
+def haupt(argumente: list[str]) -> int:
+    """Einstieg des Erzeugerprozesses: ``[name, eltern_pid, kapazitaet]``."""
     try:
-        sys.exit(_lauf(sys.argv[1], int(sys.argv[2]), int(sys.argv[3])))
+        return _lauf(argumente[0], int(argumente[1]), int(argumente[2]))
     except KeyboardInterrupt:
-        sys.exit(0)
+        return 0
+
+
+if __name__ == "__main__":
+    sys.exit(haupt(sys.argv[1:]))

@@ -121,6 +121,14 @@ def _melde_laeuft_bereits() -> None:
 
 def main() -> None:
     """Parse command line arguments and launch the game."""
+    # Der Klangerzeuger laeuft als zweiter Start derselben Datei (gepackt ist
+    # das die .exe). Er braucht weder Fenster noch Einzelinstanz-Sperre und
+    # darf keine von beiden anfassen - deshalb vor allem anderen.
+    if len(sys.argv) > 1 and sys.argv[1] == "--tonprozess":
+        _fix_cwd()
+        from src.core import tonprozess
+        sys.exit(tonprozess.haupt(sys.argv[2:]))
+
     _set_dpi_aware()
     _fix_cwd()
     _patch_pygame_font()
