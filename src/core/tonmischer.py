@@ -138,7 +138,9 @@ class Mischer:
     def __init__(self, kapazitaet: int = 8192, vorrat: int = 4096,
                  stueck: int = 1024, quellrate: int = 48000,
                  ausgaberate: int | None = None,
-                 begrenzen: bool = False) -> None:
+                 begrenzen: bool = False, ring: np.ndarray | None = None,
+                 zaehler: np.ndarray | None = None,
+                 bei_entfernt=None) -> None:
         if not (0 < vorrat < kapazitaet):
             raise ValueError("vorrat muss zwischen 0 und kapazitaet liegen")
         #: Rate der Stimmen (Aufnahmen) und Rate des Geräts. Weichen sie ab,
@@ -154,9 +156,18 @@ class Mischer:
         self.vorrat = int(vorrat)
         self.stueck = int(stueck)
 
-        self._ring = np.zeros((self.kapazitaet, 2), dtype=np.float32)
-        self._geschrieben = 0
-        self._gelesen = 0
+        #: Ring und Zaehler koennen in einem gemeinsamen Speicher liegen
+        #: (``tonprozess``): der Erzeuger laeuft dann in einem anderen Prozess
+        #: und der Audiofaden hier liest nur. ``_z`` = geschrieben, gelesen,
+        #: groesster Abruf.
+        self._ring = (ring if ring is not None
+                      else np.zeros((self.kapazitaet, 2), dtype=np.float32))
+        if zaehler is None:
+            self._z = np.zeros(4, dtype=np.int64)
+        else:
+            self._z = zaehler
+        #: Wird mit jeder Stimme gerufen, die der Mischer abraeumt.
+        self.bei_entfernt = bei_entfernt
 
         #: Letzter ausgegebener Abtastwert je Kanal — Anker fürs Auslaufen.
         self._letzter = np.zeros(2, dtype=np.float32)
@@ -168,6 +179,9 @@ class Mischer:
         self.unterlaeufe = 0
         self.ausgegeben = 0
         self.erzeugt = 0
+        #: Wie viele Stimmen insgesamt gerechnet wurden (stumme zaehlen nicht).
+        self.gerechnet = 0
+        self._summe: np.ndarray | None = None
 
         #: Messwerte fuers Protokoll (Fund 01.10.2026: Starvation des Erzeugers).
         #: ``geraete_unterlaeufe`` zaehlt, was PortAudio selbst meldet
@@ -175,7 +189,6 @@ class Mischer:
         #: nicht liefern konnte. ``max_abruf`` ist der groesste Abruf des
         #: Treibers (Frames), ``erzeugen_max_ms`` das teuerste Stueck.
         self.geraete_unterlaeufe = 0
-        self.max_abruf = 0
         self.erzeugen_max_ms = 0.0
         self.erzeugen_summe_ms = 0.0
         self.erzeugen_zahl = 0
@@ -184,6 +197,30 @@ class Mischer:
         #: einen Verlauf je Stueck; ``np.linspace`` ist dafuer erstaunlich teuer
         #: und gibt dem GIL jedes Mal Gelegenheit zu wechseln.
         self._rampen: dict[int, np.ndarray] = {}
+
+    @property
+    def _geschrieben(self) -> int:
+        return int(self._z[0])
+
+    @_geschrieben.setter
+    def _geschrieben(self, wert: int) -> None:
+        self._z[0] = wert
+
+    @property
+    def _gelesen(self) -> int:
+        return int(self._z[1])
+
+    @_gelesen.setter
+    def _gelesen(self, wert: int) -> None:
+        self._z[1] = wert
+
+    @property
+    def max_abruf(self) -> int:
+        return int(self._z[2])
+
+    @max_abruf.setter
+    def max_abruf(self, wert: int) -> None:
+        self._z[2] = wert
 
     # ── Spielfaden ──────────────────────────────────────────────────────────
     def stimme_anlegen(self, erzeuger, links: float = 0.0,
@@ -275,17 +312,31 @@ class Mischer:
         if laenge <= 0:
             return 0
 
-        summe = np.zeros((laenge, 2), dtype=np.float32)
+        summe = self._summe_puffer(laenge)
         with self._schloss:
             stimmen = list(self._stimmen)
         uebrig = []
+        gruppen: dict = {}
         for stimme in stimmen:
-            fertig = self._stimme_mischen(stimme, summe, laenge)
-            if not fertig:
-                uebrig.append(stimme)
+            rechner = getattr(stimme.erzeuger, "stapel", None)
+            if rechner is None:
+                if not self._stimme_mischen(stimme, summe, laenge):
+                    uebrig.append(stimme)
+                continue
+            if stimme._ziel == (0.0, 0.0) and stimme._ist == (0.0, 0.0):
+                if not stimme.beendet:
+                    uebrig.append(stimme)
+                continue
+            gruppen.setdefault(rechner, []).append(stimme)
+        for rechner, mitglieder in gruppen.items():
+            self._stapel_mischen(rechner, mitglieder, summe, laenge, uebrig)
         if len(uebrig) != len(stimmen):
             with self._schloss:
                 self._stimmen = [s for s in self._stimmen if s in uebrig]
+            if self.bei_entfernt is not None:
+                for stimme in stimmen:
+                    if stimme not in uebrig:
+                        self.bei_entfernt(stimme)
 
         # Erst schreiben, dann den Zähler erhöhen — sonst liest der Audiofaden
         # Daten, die noch gar nicht dastehen.
@@ -356,6 +407,48 @@ class Mischer:
         self._umr_letzter = x[-1].copy()
         return aus.astype(np.float32)
 
+    def _summe_puffer(self, laenge: int) -> np.ndarray:
+        """Summenpuffer, einmal angelegt und je Stueck auf null gesetzt."""
+        p = self._summe
+        if p is None or len(p) != laenge:
+            p = self._summe = np.zeros((laenge, 2), dtype=np.float32)
+        else:
+            p.fill(0.0)
+        return p
+
+    def _stapel_mischen(self, rechner, mitglieder: list, summe: np.ndarray,
+                        laenge: int, uebrig: list) -> None:
+        """Stimmen, die ihr Rechner gemeinsam erzeugt, in einem Durchgang.
+
+        Ein Durchgang statt je Stimme einer: das spart nicht Rechenzeit,
+        sondern Wechsel des GIL (siehe ``motorstapel``). Geht der gemeinsame
+        Weg schief, faellt jede Stimme auf ihren eigenen Aufruf zurueck, damit
+        eine kaputte Quelle nicht alle mitreisst.
+        """
+        try:
+            roh = np.asarray(rechner([s.erzeuger for s in mitglieder], laenge),
+                             dtype=np.float32)
+            if roh.shape != (len(mitglieder), laenge):
+                raise ValueError("falsche Form")
+        except Exception:
+            for stimme in mitglieder:
+                if not self._stimme_mischen(stimme, summe, laenge):
+                    uebrig.append(stimme)
+            return
+        self.gerechnet += len(mitglieder)
+        ist = np.array([s._ist for s in mitglieder], dtype=np.float32)    # V x 2
+        ziel = np.array([s._ziel for s in mitglieder], dtype=np.float32)
+        rampe = self._rampe(laenge)
+        for kanal in (0, 1):
+            a = ist[:, kanal:kanal + 1]
+            verlauf = a + (ziel[:, kanal:kanal + 1] - a) * rampe[None, :]
+            summe[:, kanal] += np.einsum("vl,vl->l", roh, verlauf)
+        for stimme in mitglieder:
+            z = stimme._ziel
+            stimme._ist = z
+            if not (stimme.beendet and z == (0.0, 0.0)):
+                uebrig.append(stimme)
+
     def _stimme_mischen(self, stimme: Stimme, summe: np.ndarray,
                         laenge: int) -> bool:
         """Eine Stimme dazumischen. Gibt True, wenn sie abgeräumt werden kann."""
@@ -376,6 +469,7 @@ class Mischer:
             stimme._ist = (0.0, 0.0)
             return stimme.beendet
 
+        self.gerechnet += 1
         roh = np.asarray(roh, dtype=np.float32)
         # Lautstaerke als Verlauf, nicht als Sprung: ein Sprung ist selbst ein
         # Knacken, und bei sechs fahrenden Autos passiert er in jedem Block.

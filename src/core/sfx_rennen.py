@@ -240,6 +240,12 @@ def motor_fuer_klasse(fahrzeug_klasse: str) -> str:
 
 # ── Wiedergabe ──────────────────────────────────────────────────────────────
 
+def _mitschneiden(block) -> None:
+    from src.core import klangmitschnitt
+    if klangmitschnitt.laeuft():
+        klangmitschnitt.block_gemerkt(block, False)
+
+
 class _RingStimme:
     """Eine Motorstimme auf dem Audiofaden (06.08.2026).
 
@@ -264,15 +270,28 @@ class _RingStimme:
         self._upm = 0.0
         self._ring = None
         if self.stimme:
-            self._ring = tonausgabe.stimme_anlegen(self._erzeugen, 0.0, 0.0)
+            # Der Mischer ruft die Stimme selbst (``__call__``) und erkennt am
+            # Attribut ``stapel``, dass er mehrere in einem Durchgang rechnen darf.
+            self._ring = tonausgabe.motorstimme_anlegen(self, motor, tonhoehe,
+                                                        faerbung)
 
     def _erzeugen(self, laenge: int):
         """**Erzeugerfaden.** Der nächste Abschnitt bei der aktuellen Drehzahl."""
         block = self.stimme.block(self._upm, laenge)
-        from src.core import klangmitschnitt
-        if klangmitschnitt.laeuft():
-            klangmitschnitt.block_gemerkt(block, False)
+        _mitschneiden(block)
         return block
+
+    __call__ = _erzeugen
+
+    @staticmethod
+    def stapel(stimmen: list, laenge: int):
+        """Alle hörbaren Ringstimmen in einem Durchgang (siehe motorstapel)."""
+        from src.core import motorstapel
+        bloecke = motorstapel.bloecke([s.stimme for s in stimmen],
+                                      [s._upm for s in stimmen], laenge)
+        for block in bloecke:
+            _mitschneiden(block)
+        return bloecke
 
     def stille(self) -> None:
         if self._ring is not None:
@@ -281,6 +300,11 @@ class _RingStimme:
     def aktualisieren(self, upm: float, links: float, rechts: float) -> None:
         self._upm = float(upm)
         if self._ring is not None:
+            # Im Erzeugerprozess hat die Stimme keinen Zugriff auf ``_upm``;
+            # die Drehzahl geht dort ueber den gemeinsamen Speicher.
+            setzen = getattr(self._ring, "drehzahl_setzen", None)
+            if setzen is not None:
+                setzen(self._upm)
             self._ring.einstellen(links, rechts)
 
     def beenden(self) -> None:

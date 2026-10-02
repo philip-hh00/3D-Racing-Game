@@ -41,7 +41,7 @@ import time
 
 import numpy as np
 
-from src.core import tonmischer
+from src.core import tonmischer, tonprozess
 
 #: Wie lange ein Stück ist, das der Erzeuger am Stück rechnet (Abtastwerte).
 #: 1024 sind bei 48 kHz gut 21 ms — klein genug, dass der Vorrat fein dosiert
@@ -74,7 +74,15 @@ SCHALTINTERVALL = 0.0005
 #: genug, dass die Abfrage nicht ins Gewicht fällt.
 WACHE_SEKUNDEN = 1.0
 
+#: Laeuft der Erzeuger in einem eigenen Prozess (``tonprozess``)? Die Tests
+#: schalten es ab (Umgebungsvariable ``RACING_TON_PROZESS=0``), ein Spiel ohne
+#: die Moeglichkeit faellt von selbst auf den Faden zurueck.
+PROZESS = True
+
 _mischer: tonmischer.Mischer | None = None
+_prozess: tonprozess.Erzeugerprozess | None = None
+_wache_faden: threading.Thread | None = None
+_prozess_grund = ""
 _strom = None
 _faden: threading.Thread | None = None
 _halt = threading.Event()
@@ -129,7 +137,35 @@ def grund() -> str:
 def zustand() -> dict:
     """Was tatsächlich anliegt — fürs Protokoll und den Mitschnitt."""
     m = _mischer
+    p = _prozess
+    mess = p.speicher.mess if (p is not None and p.speicher is not None) else None
+    if mess is not None:
+        kopf = p.speicher.kopf
+        zahl = float(mess[tonprozess.M_ZAHL])
+        return {
+            "laeuft": laeuft(),
+            "grund": grund(),
+            "geraet": _geraet,
+            "rate": _rate,
+            "vorrat_frames": int(kopf[tonprozess.K_VORRAT_IST]),
+            "vorrat_ms": (round(1000.0 * int(kopf[tonprozess.K_VORRAT_IST]) / _rate, 1)
+                          if _rate else 0.0),
+            "unterlaeufe": m.unterlaeufe if m else 0,
+            "geraete_unterlaeufe": m.geraete_unterlaeufe if m else 0,
+            "abruf_frames": m.max_abruf if m else 0,
+            "erzeugen_max_ms": round(float(mess[tonprozess.M_MAX]), 2),
+            "erzeugen_mittel_ms": (round(float(mess[tonprozess.M_SUMME]) / zahl, 2)
+                                   if zahl else 0.0),
+            "erzeugen_spaet": int(mess[tonprozess.M_SPAET]),
+            "api": _api,
+            "latenz_ms": _latenz_ms,
+            "stimmen": p.stimmen,
+            "standardgeraet": _standard,
+            "wechsel": _wechsel,
+            "erzeuger": "prozess" if p.lebt() else "prozess (beendet)",
+        }
     return {
+        "erzeuger": "faden" if m else "",
         "laeuft": laeuft(),
         "grund": grund(),
         "geraet": _geraet,
@@ -171,33 +207,30 @@ def starten(rate: int = 48000) -> bool:
     try:
         import sounddevice as sd
 
-        _mischer = tonmischer.Mischer(kapazitaet=KAPAZITAET, vorrat=VORRAT,
-                                      stueck=STUECK, quellrate=rate,
-                                      begrenzen=True)
+        _prozess_vorbereiten(rate)
+        if _mischer is None:
+            _mischer = tonmischer.Mischer(kapazitaet=KAPAZITAET, vorrat=VORRAT,
+                                          stueck=STUECK, quellrate=rate,
+                                          begrenzen=True)
         m = _mischer
 
-        def _rueckruf(aus, frames, zeit, status):
-            # **Audiofaden.** Nur kopieren. Kein Rechnen, keine Sperre, kein
-            # Warten, keine Ausnahme nach draussen — was hier haengt, hoert man.
-            try:
-                m.status_melden(status)
-                aus[:] = m.abrufen(frames)
-            except Exception:
-                aus.fill(0.0)
-
-        _strom = _strom_oeffnen(sd, rate, _rueckruf)
+        _strom = _strom_oeffnen(sd, rate, _rueckruf_bauen(m))
         _rate = int(_strom.samplerate)
         m.ausgaberate_setzen(_rate)
         m.vorrat = vorrat_fuer(_rate)
         _geraet = _geraetename(sd, _strom)
         _stromdaten(sd, _strom)
-        _intervall_setzen()
-
         globals()["_standard"] = standardgeraet()
-
         _halt.clear()
-        _faden = threading.Thread(target=_erzeugen_bis_halt, name="Tonerzeuger",
-                                  daemon=True)
+        if _prozess is not None:
+            _geraeterate_melden()
+            _prozess.starten()
+            _faden = threading.Thread(target=_wachen_bis_halt, name="Tonwache",
+                                      daemon=True)
+        else:
+            _intervall_setzen()
+            _faden = threading.Thread(target=_erzeugen_bis_halt,
+                                      name="Tonerzeuger", daemon=True)
         _faden.start()
         _grund = ""
         return True
@@ -205,6 +238,84 @@ def starten(rate: int = 48000) -> bool:
         _grund = f"Audiofaden liess sich nicht oeffnen: {exc}"
         _aufraeumen()
         return False
+
+
+def _prozess_vorbereiten(rate: int) -> None:
+    """Erzeuger als eigener Prozess vorbereiten, wenn das moeglich und gewollt ist.
+
+    Setzt ``_prozess`` und den Mischer des Audiofadens (ohne eigene Erzeugung,
+    mit dem Ring im gemeinsamen Speicher). Misslingt etwas, bleibt beides
+    ``None`` und :func:`starten` nimmt den Faden.
+    """
+    global _prozess, _mischer, _prozess_grund
+    _prozess_grund = ""
+    if not PROZESS:
+        _prozess_grund = "abgeschaltet"
+        return
+    gut, warum = tonprozess.prozess_moeglich()
+    if not gut:
+        _prozess_grund = warum
+        return
+    try:
+        p = tonprozess.Erzeugerprozess(KAPAZITAET, STUECK, rate, True, VORRAT)
+    except Exception as exc:
+        _prozess_grund = f"Speicher nicht anlegbar: {exc}"
+        return
+    _prozess = p
+    sp = p.speicher
+    _mischer = tonmischer.Mischer(kapazitaet=KAPAZITAET, vorrat=VORRAT, stueck=STUECK,
+                                  quellrate=rate, begrenzen=True,
+                                  ring=sp.ring, zaehler=sp.zaehler)
+
+
+def _rueckruf_bauen(m):
+    """Der Rueckruf fuer PortAudio. Er kopiert nur (siehe Modulkopf).
+
+    Laeuft der Erzeuger in einem eigenen Prozess, gibt er bis zu dessen
+    Bereitmarke Stille aus und zaehlt dabei keine Unterlaeufe: das Laden der
+    Aufnahmen dauert einen Augenblick und ist kein Ausfall.
+    """
+    p = _prozess
+    kopf = p.speicher.kopf if (p is not None and p.speicher is not None) else None
+
+    def _rueckruf(aus, frames, zeit, status):
+        # **Audiofaden.** Nur kopieren. Kein Rechnen, keine Sperre, kein
+        # Warten, keine Ausnahme nach draussen — was hier haengt, hoert man.
+        try:
+            if kopf is not None and not kopf[tonprozess.K_BEREIT]:
+                aus.fill(0.0)
+                if frames > m.max_abruf:
+                    m.max_abruf = frames
+                return
+            m.status_melden(status)
+            aus[:] = m.abrufen(frames)
+        except Exception:
+            aus.fill(0.0)
+    return _rueckruf
+
+
+def _geraeterate_melden() -> None:
+    """Geraeterate und Vorrat an den Erzeugerprozess weitergeben."""
+    p = _prozess
+    m = _mischer
+    if p is None or p.speicher is None or m is None:
+        return
+    p.speicher.kopf[tonprozess.K_AUSGABERATE] = int(_rate)
+    p.speicher.kopf[tonprozess.K_VORRAT] = int(m.vorrat)
+
+
+def motorstimme_anlegen(erzeuger, motor: str, tonhoehe: float, faerbung: float,
+                        links: float = 0.0, rechts: float = 0.0):
+    """Motorstimme anlegen, im Erzeugerprozess oder im Faden, je nach Betrieb.
+
+    Gibt eine Stimme mit ``einstellen`` und ``beenden`` zurueck (im Prozess
+    zusaetzlich ``drehzahl_setzen``), oder ``None``, wenn der Weg nicht laeuft.
+    *erzeuger* wird nur im Fadenbetrieb gebraucht.
+    """
+    p = _prozess
+    if p is not None and p.speicher is not None:
+        return p.stimme_anlegen(motor, tonhoehe, faerbung, links, rechts)
+    return stimme_anlegen(erzeuger, links, rechts)
 
 
 def raten_kandidaten(sd, wunsch: int = 48000) -> list[int]:
@@ -379,18 +490,12 @@ def neu_verbinden() -> bool:
 
         m = _mischer
 
-        def _rueckruf(aus, frames, zeit, status):
-            try:
-                m.status_melden(status)
-                aus[:] = m.abrufen(frames)
-            except Exception:
-                aus.fill(0.0)
-
-        neu = _strom_oeffnen(sd, m.quellrate, _rueckruf)
+        neu = _strom_oeffnen(sd, m.quellrate, _rueckruf_bauen(m))
         _strom = neu
         _rate = int(neu.samplerate)
         m.ausgaberate_setzen(_rate)
         m.vorrat = vorrat_fuer(_rate)
+        _geraeterate_melden()
         _stromdaten(sd, neu)
         _geraet = _geraetename(sd, neu)
         _standard = standardgeraet()
@@ -461,6 +566,8 @@ def zaehler_zuruecksetzen() -> None:
     m = _mischer
     if m is None:
         return
+    if _prozess is not None:
+        _prozess.zuruecksetzen()
     m.unterlaeufe = 0
     m.geraete_unterlaeufe = 0
     m.erzeugen_max_ms = 0.0
@@ -477,6 +584,7 @@ def protokollzeile() -> str:
     return (f"[Klang] {z['geraet']} | {z['api']} | {z['rate']} Hz | "
             f"Latenz {z['latenz_ms']} ms | Vorrat {z['vorrat_ms']} ms | "
             f"Abruf max {z['abruf_frames']} | Stimmen {z['stimmen']} | "
+            f"Erzeuger {z.get('erzeuger', '')} | "
             f"Unterlaeufe Ring {z['unterlaeufe']} / Geraet {z['geraete_unterlaeufe']} | "
             f"Erzeugen Mittel {z['erzeugen_mittel_ms']} ms, Max {z['erzeugen_max_ms']} ms, "
             f"zu spaet {z['erzeugen_spaet']}")
@@ -525,6 +633,18 @@ def _erzeugen_bis_halt() -> None:
             time.sleep(0.01)
 
 
+def _wachen_bis_halt() -> None:
+    """Wache fuer den Prozessbetrieb: Geraetewechsel pruefen, Erzeuger beobachten."""
+    while not _halt.wait(WACHE_SEKUNDEN):
+        try:
+            _wache()
+            p = _prozess
+            if p is not None and not p.lebt() and not _halt.is_set():
+                globals()["_prozess_grund"] = "Erzeugerprozess beendet"
+        except Exception:
+            pass
+
+
 def _wache() -> None:
     """Hat das Standardgerät gewechselt? Dann neu verbinden."""
     global _standard
@@ -543,7 +663,13 @@ def beenden() -> None:
     """Ausblenden, Faden anhalten, Gerät schliessen."""
     global _grund
     m = _mischer
-    if m is not None:
+    p = _prozess
+    if p is not None and p.speicher is not None:
+        p.alle_beenden()
+        ende = time.monotonic() + 0.15
+        while time.monotonic() < ende and p.stimmen and p.lebt():
+            time.sleep(0.005)
+    elif m is not None:
         m.alle_beenden()
         # Den Ausblendungen noch einen Durchgang goennen, sonst bricht der Ton
         # mitten in der Welle ab — genau der Knacks vom 03.08.2026.
@@ -555,7 +681,7 @@ def beenden() -> None:
 
 
 def _aufraeumen() -> None:
-    global _mischer, _strom, _faden, _rate, _geraet
+    global _mischer, _strom, _faden, _rate, _geraet, _prozess
     _halt.set()
     if _faden is not None:
         _faden.join(1.0)
@@ -569,6 +695,12 @@ def _aufraeumen() -> None:
             pass
     _strom = None
     _mischer = None
+    if _prozess is not None:
+        p, _prozess = _prozess, None
+        try:
+            p.beenden()
+        except Exception:
+            pass
     _rate = 0
     _geraet = ""
     globals()["_api"] = ""

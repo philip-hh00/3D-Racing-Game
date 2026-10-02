@@ -18,6 +18,9 @@ import pytest
 # Vor dem pygame-Import setzen: ohne Fenster und ohne Tonausgabe testen.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+# Der Motorklang laeuft im Spiel in einem eigenen Prozess (tonprozess). Tests
+# starten keinen; wer ihn pruefen will, setzt ``tonausgabe.PROZESS`` selbst.
+os.environ.setdefault("RACING_TON_PROZESS", "0")
 
 
 @pytest.fixture(scope="session", autouse=True)
