@@ -274,6 +274,8 @@ class Erzeugerprozess:
         k = self.speicher.kopf if self.speicher is not None else None
         if k is None:
             return
+        # Zuerst das Handle: jetzt lebt der Erzeuger sicher noch.
+        self.kind_festhalten()
         k[K_HALT] = 1
         p = self.prozess
         if p is not None and p.poll() is None:
@@ -416,7 +418,7 @@ def _eltern_lebt(pid: int):
     if sys.platform == "win32":
         try:
             import ctypes
-            k = ctypes.windll.kernel32
+            k = _kernel32()
             k.OpenProcess.restype = ctypes.c_void_p
             k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
             handle = k.OpenProcess(0x00100000, False, int(pid))   # SYNCHRONIZE
@@ -438,6 +440,19 @@ def _eltern_lebt(pid: int):
     return lebt_posix
 
 
+_kern = None
+
+
+def _kernel32():
+    """Eigene kernel32-Instanz: ``restype``/``argtypes`` der gemeinsamen
+    ``ctypes.windll.kernel32`` gehoeren dem ganzen Prozess, nicht uns."""
+    global _kern
+    if _kern is None:
+        import ctypes
+        _kern = ctypes.WinDLL("kernel32", use_last_error=True)
+    return _kern
+
+
 def _prozess_oeffnen(pid: int):
     """Handle auf einen Prozess (nur Windows), zum Warten und Beenden.
 
@@ -448,7 +463,7 @@ def _prozess_oeffnen(pid: int):
         return None
     try:
         import ctypes
-        k = ctypes.windll.kernel32
+        k = _kernel32()
         k.OpenProcess.restype = ctypes.c_void_p
         h = k.OpenProcess(0x00100000 | 0x0001, False, int(pid))  # SYNCHRONIZE | TERMINATE
         return h or None
@@ -459,7 +474,7 @@ def _prozess_oeffnen(pid: int):
 def _prozess_beenden(handle, warte: float) -> None:
     try:
         import ctypes
-        k = ctypes.windll.kernel32
+        k = _kernel32()
         k.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
         k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
         k.TerminateProcess(handle, 1)
@@ -471,7 +486,7 @@ def _prozess_beenden(handle, warte: float) -> None:
 def _prozess_schliessen(handle) -> None:
     try:
         import ctypes
-        k = ctypes.windll.kernel32
+        k = _kernel32()
         k.CloseHandle.argtypes = [ctypes.c_void_p]
         k.CloseHandle(handle)
     except Exception:
@@ -508,7 +523,7 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
     try:
         import ctypes
         if sys.platform == "win32":
-            kern = ctypes.windll.kernel32
+            kern = _kernel32()
             kern.SetThreadPriority(kern.GetCurrentThread(), 1)   # ABOVE_NORMAL
     except Exception:
         pass
