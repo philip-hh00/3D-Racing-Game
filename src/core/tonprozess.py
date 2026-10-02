@@ -40,6 +40,7 @@ Prozess, der das Geraet nicht mehr bedient.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -59,14 +60,22 @@ K_GESCHRIEBEN, K_GELESEN, K_MAX_ABRUF = 0, 1, 2
 K_HALT, K_BEREIT, K_AUSGABERATE, K_VORRAT, K_QUELLRATE = 4, 5, 6, 7, 8
 K_BEGRENZEN, K_ZURUECK, K_KAPAZITAET, K_STUECK, K_HERZ = 9, 10, 11, 12, 13
 K_VORRAT_IST, K_KIND_PID = 14, 15
+#: Stand der Klangwerte (``motorklang``): der Spielprozess zaehlt hoch, nachdem er
+#: den Text im Wertefeld abgelegt hat; der Erzeuger meldet in ``K_NEU_IST``, was er
+#: uebernommen hat.
+K_NEU_LADEN, K_NEU_IST, K_WERTE_LAENGE, K_AUSGABERATE_IST = 16, 17, 18, 19
 KOPF_N = 32
+#: Platz fuer den Klangwerte-Text (JSON, derzeit unter 3 KB).
+WERTEFELD = 32768
 
 # Messwerte des Erzeugers (float64)
 M_MAX, M_SUMME, M_ZAHL, M_SPAET, M_GERECHNET = 0, 1, 2, 3, 4
 MESS_N = 16
 
-# Zustand eines Stimmenplatzes
-FREI, AKTIV, ENDE = 0, 1, 2
+# Zustand eines Stimmenplatzes. FEHLER setzt der Erzeuger, wenn er die Stimme nicht
+# bauen konnte; nur der Spielprozess raeumt ihn ab (ueber ENDE). So wird ein Platz
+# nie unter einer noch lebenden Fernstimme neu vergeben.
+FREI, AKTIV, ENDE, FEHLER = 0, 1, 2, 3
 
 # Spalten der Werte
 W_UPM, W_LINKS, W_RECHTS, W_TON, W_FARB = 0, 1, 2, 3, 4
@@ -97,16 +106,20 @@ class Speicher:
         pos += (-pos) % 8
         self.ring = np.ndarray((kapazitaet, 2), dtype=np.float32, buffer=buf,
                                offset=pos)
+        pos += kapazitaet * 2 * 4
+        self.wertefeld = np.ndarray((WERTEFELD,), dtype=np.uint8, buffer=buf,
+                                    offset=pos)
         self.zaehler = self.kopf[0:4]
 
     @staticmethod
     def groesse(kapazitaet: int) -> int:
         return (KOPF_N * 8 + MESS_N * 8 + PLAETZE * 4 + 8 + PLAETZE * MOTORNAME + 8
-                + PLAETZE * WERTE_N * 8 + 8 + kapazitaet * 2 * 4)
+                + PLAETZE * WERTE_N * 8 + 8 + kapazitaet * 2 * 4 + WERTEFELD)
 
     def freigeben(self) -> None:
         """Sichten loesen, damit der Block geschlossen werden kann."""
-        for name in ("kopf", "mess", "zustand", "motor", "werte", "ring", "zaehler"):
+        for name in ("kopf", "mess", "zustand", "motor", "werte", "ring", "zaehler",
+                     "wertefeld"):
             setattr(self, name, None)
         try:
             self.shm.close()
@@ -120,6 +133,11 @@ def prozess_moeglich() -> tuple[bool, str]:
     """Darf der Erzeuger als eigener Prozess laufen? Zweiter Wert: warum nicht."""
     if os.environ.get("RACING_TON_PROZESS", "1") == "0":
         return False, "per Umgebungsvariable abgeschaltet"
+    # Nur unter Windows: ``SharedMemory`` meldet sich auf POSIX beim
+    # resource_tracker an, der im gepackten Spiel dessen Programmdatei erneut
+    # startet (ohne freeze_support) und beim Ende des Erzeugers den Block loescht.
+    if sys.platform != "win32":
+        return False, "nur unter Windows"
     if not sys.executable or not os.path.isfile(sys.executable):
         return False, "kein Interpreter"
     return True, ""
@@ -166,7 +184,7 @@ class Fernstimme:
 
     def uebernehmen(self, mischer) -> None:
         """Rueckfall: die Stimme im Faden des Spielprozesses weiterfuehren."""
-        if self._beendet or self._erzeuger is None:
+        if self._beendet or self._erzeuger is None or self._s.werte is None:
             return
         w = self._s.werte[self._i]
         self._ersatz = mischer.stimme_anlegen(self._erzeuger, float(w[W_LINKS]),
@@ -176,14 +194,14 @@ class Fernstimme:
         if self._ersatz is not None:
             self._ersatz.einstellen(links, rechts)
             return
-        if self._beendet:
+        if self._beendet or self._s.werte is None:
             return
         w = self._s.werte[self._i]
         w[W_LINKS] = max(0.0, float(links))
         w[W_RECHTS] = max(0.0, float(rechts))
 
     def drehzahl_setzen(self, upm: float) -> None:
-        if self._ersatz is None and not self._beendet:
+        if self._ersatz is None and not self._beendet and self._s.werte is not None:
             self._s.werte[self._i, W_UPM] = float(upm)
 
     def beenden(self) -> None:
@@ -192,6 +210,8 @@ class Fernstimme:
         self._beendet = True
         if self._ersatz is not None:
             self._ersatz.beenden()
+            return
+        if self._s.werte is None:
             return
         self._s.werte[self._i, W_LINKS] = 0.0
         self._s.werte[self._i, W_RECHTS] = 0.0
@@ -224,6 +244,7 @@ class Erzeugerprozess:
         k[K_VORRAT] = int(vorrat)
         k[K_VORRAT_IST] = int(vorrat)
         self.prozess: subprocess.Popen | None = None
+        self.letzter_herzschlag = (-1, 0.0)
         self.fernstimmen: weakref.WeakSet = weakref.WeakSet()
         self.gestartet = 0.0
 
@@ -238,19 +259,43 @@ class Erzeugerprozess:
             kommando(self.speicher.shm.name, os.getpid(), self.kapazitaet),
             cwd=cwd, stdin=subprocess.DEVNULL, creationflags=flags)
 
-    def stoppen(self) -> None:
-        """Prozess anhalten, Speicher **behalten** (der Rueckfall liest den Ring weiter)."""
-        try:
-            self.speicher.kopf[K_HALT] = 1
-        except Exception:
-            pass
+    def _kind_beenden(self, warte: float = 1.0) -> None:
+        """Den Erzeuger sicher loswerden, auch den hinter dem Startprogramm.
+
+        Unter Windows startet die virtuelle Umgebung den eigentlichen Interpreter
+        als Kind des Startprogramms; ``prozess`` ist dann nur das Startprogramm,
+        der Schreiber im Ring aber der Prozess mit ``K_KIND_PID``. Beide werden
+        beendet und gewartet, bis der Herzschlag steht - erst dann gibt es keinen
+        zweiten Schreiber mehr.
+        """
+        k = self.speicher.kopf if self.speicher is not None else None
+        if k is None:
+            return
+        k[K_HALT] = 1
         p = self.prozess
         if p is not None and p.poll() is None:
             try:
                 p.terminate()
-                p.wait(timeout=1.0)
+                p.wait(timeout=warte)
             except Exception:
                 pass
+        pid = int(k[K_KIND_PID])
+        if pid and pid != os.getpid() and (p is None or pid != p.pid):
+            try:
+                import signal
+                os.kill(pid, signal.SIGTERM)
+            except Exception:
+                pass
+        ende = time.monotonic() + warte
+        while time.monotonic() < ende:
+            davor = int(k[K_HERZ])
+            time.sleep(0.04)
+            if int(k[K_HERZ]) == davor:
+                break
+
+    def stoppen(self) -> None:
+        """Prozess anhalten, Speicher **behalten** (der Rueckfall liest den Ring weiter)."""
+        self._kind_beenden()
 
     @property
     def bereit(self) -> bool:
@@ -288,10 +333,25 @@ class Erzeugerprozess:
     def alle_beenden(self) -> None:
         s = self.speicher
         for i in range(PLAETZE):
-            if s.zustand[i] == AKTIV:
+            if s.zustand[i] in (AKTIV, FEHLER):
                 s.werte[i, W_LINKS] = 0.0
                 s.werte[i, W_RECHTS] = 0.0
                 s.zustand[i] = ENDE
+
+    def werte_senden(self, text: str | None = None) -> None:
+        """Klangwerte (``motorklang``) an den Erzeuger geben."""
+        s = self.speicher
+        if s is None or s.kopf is None:
+            return
+        if text is None:
+            from src.core import motorklang
+            text = motorklang.stand_als_json()
+        roh = text.encode("utf-8")
+        if len(roh) > WERTEFELD:
+            return
+        s.wertefeld[:len(roh)] = np.frombuffer(roh, dtype=np.uint8)
+        s.kopf[K_WERTE_LAENGE] = len(roh)
+        s.kopf[K_NEU_LADEN] += 1
 
     def zuruecksetzen(self) -> None:
         """Messwerte des Erzeugers fuer ein neues Rennen auf null."""
@@ -303,22 +363,10 @@ class Erzeugerprozess:
         if s is None:
             return
         try:
-            s.kopf[K_HALT] = 1
+            self._kind_beenden(1.0)
         except Exception:
             pass
-        p = self.prozess
-        if p is not None:
-            try:
-                p.wait(timeout=1.0)
-            except Exception:
-                try:
-                    p.terminate()
-                    p.wait(timeout=1.0)
-                except Exception:
-                    pass
-            # Hinter dem Startprogramm der virtuellen Umgebung steckt der
-            # eigentliche Interpreter; er endet an der Haltmarke selbst.
-            self.prozess = None
+        self.prozess = None
         name = s.shm.name
         s.freigeben()
         import gc
@@ -404,6 +452,10 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
         except Exception:
             pass
 
+    neu_ist = 0
+    neu_ist = _werte_holen(sp, neu_ist)
+    k[K_NEU_IST] = neu_ist
+
     kinder: dict[int, tuple] = {}
 
     def entfernt(stimme) -> None:
@@ -424,9 +476,15 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
 
     while not k[K_HALT]:
         try:
+            if int(k[K_NEU_LADEN]) != neu_ist:
+                neu_ist = _werte_holen(sp, neu_ist)
+                for _st, kind in kinder.values():
+                    kind.stimme.werte_setzen()
+                k[K_NEU_IST] = neu_ist
             _abgleichen(sp, m, kinder, tonmischer)
             if int(k[K_AUSGABERATE]) != m.ausgaberate:
                 m.ausgaberate_setzen(int(k[K_AUSGABERATE]))
+            k[K_AUSGABERATE_IST] = m.ausgaberate
             if int(k[K_VORRAT]) != vorrat_basis:
                 vorrat_basis = int(k[K_VORRAT])
                 m.vorrat = vorrat_basis
@@ -459,12 +517,37 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
     return 0
 
 
+def _werte_holen(sp: Speicher, bekannt: int) -> int:
+    """Klangwerte aus dem gemeinsamen Speicher uebernehmen; gibt den Stand zurueck.
+
+    Wird waehrend des Lesens neu geschrieben, stimmt der Zaehler hinterher nicht
+    mehr, und es wird noch einmal gelesen.
+    """
+    from src.core import motorklang
+    for _ in range(5):
+        stand = int(sp.kopf[K_NEU_LADEN])
+        laenge = int(sp.kopf[K_WERTE_LAENGE])
+        if stand == 0 or laenge <= 0:
+            return stand
+        text = bytes(sp.wertefeld[:laenge]).decode("utf-8", "replace")
+        if int(sp.kopf[K_NEU_LADEN]) != stand:
+            continue
+        try:
+            motorklang.stand_uebernehmen(text)
+        except Exception:
+            pass
+        return stand
+    return bekannt
+
+
 def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
     """Stimmenplaetze und ihre Werte uebernehmen."""
     zust = sp.zustand.tolist()
     werte = None
     for i, z in enumerate(zust):
         kind = kinder.get(i)
+        if z == FEHLER:
+            continue
         if z == AKTIV:
             if kind is None:
                 roh = bytes(sp.motor[i]).split(b"\0", 1)[0].decode("ascii", "replace")
@@ -474,7 +557,9 @@ def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
                 except Exception:
                     stimme = None
                 if stimme is None or not stimme.stimme:
-                    sp.zustand[i] = FREI          # keine Aufnahmen: still bleiben
+                    # Keine Aufnahmen: still bleiben. Nicht FREI: der Platz
+                    # gehoert noch der Fernstimme des Spielprozesses.
+                    sp.zustand[i] = FEHLER
                     continue
                 st = m.stimme_anlegen(stimme, 0.0, 0.0)
                 kinder[i] = (st, stimme)
@@ -491,12 +576,36 @@ def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
                 kind[0].beenden()
 
 
+def _protokoll(text: str) -> None:
+    """Ausfall in eine Datei schreiben - ein Fenster gibt es hier nie."""
+    try:
+        try:
+            from src.core.paths import user_path
+            pfad = user_path("data", "settings", "tonprozess.log")
+        except Exception:
+            pfad = "tonprozess.log"
+        with open(pfad, "a", encoding="utf-8") as fh:
+            fh.write(time.strftime("%Y-%m-%d %H:%M:%S ") + text + "\n")
+    except Exception:
+        pass
+
+
 def haupt(argumente: list[str]) -> int:
-    """Einstieg des Erzeugerprozesses: ``[name, eltern_pid, kapazitaet]``."""
+    """Einstieg des Erzeugerprozesses: ``[name, eltern_pid, kapazitaet]``.
+
+    Faengt **alles** und meldet es nur in die Protokolldatei: im gepackten Spiel
+    zeigte eine unbehandelte Ausnahme einen Fehlerdialog des Bootloaders. Das
+    Spiel merkt den Ausfall an der fehlenden Bereit- bzw. Herzschlagmarke und
+    rechnet im Faden weiter.
+    """
     try:
         return _lauf(argumente[0], int(argumente[1]), int(argumente[2]))
     except KeyboardInterrupt:
         return 0
+    except BaseException:
+        import traceback
+        _protokoll("Erzeugerprozess ausgefallen:\n" + traceback.format_exc())
+        return 1
 
 
 if __name__ == "__main__":

@@ -235,3 +235,232 @@ def test_ausgefallener_erzeuger_faellt_auf_den_faden_zurueck(monkeypatch):
         assert ta.zustand()["erzeuger"].startswith("faden")
     finally:
         ta.beenden()
+
+
+# ── Nachbesserungen aus der Durchsicht ───────────────────────────────────────
+
+class _Attrappe:
+    """sounddevice-Attrappe; ``raten`` ist die Folge der Raten beim Oeffnen."""
+
+    def __init__(self, monkeypatch, raten=(48000,)):
+        import types
+        self.raten = list(raten)
+        self.strome = []
+        attrappe = self
+
+        class Strom:
+            def __init__(self, samplerate, **kw):
+                self.samplerate = attrappe.raten.pop(0) if len(attrappe.raten) > 1 \
+                    else attrappe.raten[0]
+                self.callback, self.device = kw["callback"], 0
+                attrappe.strome.append(self)
+
+            def start(self):
+                pass
+
+            def stop(self):
+                pass
+
+            def close(self):
+                pass
+
+        modul = types.ModuleType("sounddevice")
+        modul.OutputStream = lambda **kw: Strom(**kw)
+        modul.query_devices = lambda n: {"name": "Attrappe"}
+        monkeypatch.setitem(sys.modules, "sounddevice", modul)
+
+
+def _prozessbetrieb(monkeypatch, kommando=None):
+    from src.core import tonausgabe as ta
+    monkeypatch.setattr(ta, "PROZESS", True)
+    monkeypatch.delenv("RACING_TON_PROZESS", raising=False)
+    monkeypatch.setattr(tonprozess, "prozess_moeglich", lambda: (True, ""))
+    if kommando is not None:
+        monkeypatch.setattr(tonprozess, "kommando", kommando)
+    ta.beenden()
+    return ta
+
+
+def test_prozessbetrieb_nur_unter_windows(monkeypatch):
+    monkeypatch.delenv("RACING_TON_PROZESS", raising=False)
+    monkeypatch.setattr(sys, "platform", "darwin")
+    ok, warum = tonprozess.prozess_moeglich()
+    assert not ok and "Windows" in warum
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert not tonprozess.prozess_moeglich()[0]
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert tonprozess.prozess_moeglich()[0]
+
+
+def test_klangwerte_gehen_als_stand_an_den_erzeuger(monkeypatch):
+    from src.core import motorklang
+    gerufen = []
+    motorklang.beobachten(lambda: gerufen.append(1))
+    try:
+        motorklang.setzen("6zyl", "grundpegel", 0.31)
+        assert gerufen, "Aenderung wurde nicht gemeldet"
+        p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+        try:
+            p.werte_senden()
+            vorher = int(p.speicher.kopf[tonprozess.K_NEU_LADEN])
+            assert vorher >= 1
+            motorklang.neu_laden()             # Cache verwerfen, wie der Erzeuger ihn hat
+            stand = tonprozess._werte_holen(p.speicher, 0)
+            assert stand == vorher
+            assert motorklang.werte("6zyl")["grundpegel"] == pytest.approx(0.31)
+        finally:
+            p.beenden()
+    finally:
+        motorklang.neu_laden()
+        motorklang._beobachter.clear()
+
+
+def test_erzeuger_uebernimmt_geaenderte_klangwerte():
+    from src.core import motorklang
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        p.werte_senden()
+        p.starten()
+        ende = time.monotonic() + 20
+        while not p.bereit and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert p.bereit
+        k = p.speicher.kopf
+        motorklang.setzen("8zyl", "grundpegel", 0.4)
+        p.werte_senden()
+        ende = time.monotonic() + 5
+        while k[tonprozess.K_NEU_IST] != k[tonprozess.K_NEU_LADEN] \
+                and time.monotonic() < ende:
+            time.sleep(0.02)
+        assert k[tonprozess.K_NEU_IST] == k[tonprozess.K_NEU_LADEN]
+    finally:
+        motorklang.neu_laden()
+        p.beenden()
+
+
+def test_haupt_faengt_alles_und_protokolliert(tmp_path, monkeypatch):
+    log = tmp_path / "ton.log"
+    monkeypatch.setattr("src.core.paths.user_path", lambda *teile: str(log))
+    assert tonprozess.haupt([]) == 1                        # Argumente fehlen
+    assert tonprozess.haupt(["gibt_es_nicht_xyz", "1", "1024"]) == 1   # kein Speicher
+    assert tonprozess.haupt(["x", "keine_zahl", "1024"]) == 1
+    text = log.read_text(encoding="utf-8")
+    assert text.count("Erzeugerprozess ausgefallen") == 3
+
+
+def test_main_flagge_mit_falschen_argumenten_endet_leise():
+    import subprocess
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    fertig = subprocess.run([sys.executable, os.path.join(wurzel, "main.py"),
+                             tonprozess.FLAGGE, "gibt_es_nicht_xyz", "1", "1024"],
+                            capture_output=True, text=True, timeout=60, cwd=wurzel)
+    assert fertig.returncode == 1
+
+
+def test_fehlerplatz_bleibt_belegt_bis_der_spielprozess_ihn_freigibt():
+    """Ein Erzeuger, der eine Stimme nicht bauen kann, darf den Platz nicht
+    freigeben: er gehoert noch der Fernstimme des Spielprozesses."""
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        sp = p.speicher
+        m = tonmischer.Mischer(kapazitaet=1 << 14, vorrat=4800, stueck=1024)
+        v = p.stimme_anlegen("gibtsnicht", 1.0, 0.0)
+        tonprozess._abgleichen(sp, m, {}, tonmischer)
+        assert sp.zustand[v._i] == tonprozess.FEHLER
+        w = p.stimme_anlegen("6zyl", 1.0, 0.0)
+        assert w._i != v._i, "Platz doppelt vergeben"
+        v.beenden()
+        tonprozess._abgleichen(sp, m, {}, tonmischer)
+        assert sp.zustand[v._i] == tonprozess.FREI
+    finally:
+        p.beenden()
+
+
+def test_fernstimme_nach_beenden_ist_ohne_wirkung():
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    v = p.stimme_anlegen("6zyl", 1.0, 0.0)
+    p.beenden()
+    v.einstellen(0.5, 0.5)
+    v.drehzahl_setzen(3000.0)
+    v.beenden()
+
+
+_HAENGER = """
+import sys, os, time
+sys.path.insert(0, {wurzel!r})
+from multiprocessing import shared_memory
+from src.core import tonprozess as t
+sm = shared_memory.SharedMemory(name=sys.argv[1])
+sp = t.Speicher(sm, int(sys.argv[3]))
+sp.kopf[t.K_KIND_PID] = os.getpid()
+for _ in range(5):
+    sp.kopf[t.K_HERZ] += 1
+    time.sleep(0.02)
+sp.kopf[t.K_BEREIT] = 1
+for _ in range(10):
+    sp.kopf[t.K_HERZ] += 1
+    time.sleep(0.02)
+time.sleep(60)         # haengt: kein Herzschlag mehr
+"""
+
+
+def test_haengender_erzeuger_wird_beendet_und_der_faden_uebernimmt(monkeypatch):
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    skript = _HAENGER.format(wurzel=wurzel)
+    ta = _prozessbetrieb(monkeypatch, lambda name, pid, kap, *a, **k: [
+        sys.executable, "-c", skript, name, str(pid), str(kap)])
+    _Attrappe(monkeypatch)
+    monkeypatch.setattr(ta, "WACHE_SEKUNDEN", 0.2)
+    try:
+        assert ta.starten() is True
+        p = ta._prozess
+        ende = time.monotonic() + 15
+        while ta._im_prozess and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert not ta._im_prozess, "Haenger wurde nicht erkannt"
+        pid = int(p.speicher.kopf[tonprozess.K_KIND_PID])
+        assert pid
+        assert not tonprozess._eltern_lebt(pid)(), "haengender Erzeuger lebt noch"
+        assert p.prozess is None or p.prozess.poll() is not None
+    finally:
+        ta.beenden()
+
+
+def test_erzeuger_der_nicht_bereit_wird_faellt_zurueck(monkeypatch):
+    ta = _prozessbetrieb(monkeypatch, lambda *a, **k: [sys.executable, "-c",
+                                                       "import time; time.sleep(60)"])
+    _Attrappe(monkeypatch)
+    monkeypatch.setattr(ta, "WACHE_SEKUNDEN", 0.2)
+    monkeypatch.setattr(ta, "BEREIT_FRIST", 0.6)
+    try:
+        assert ta.starten() is True
+        ende = time.monotonic() + 15
+        while ta._im_prozess and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert not ta._im_prozess
+    finally:
+        ta.beenden()
+
+
+def test_neuverbinden_gibt_die_neue_rate_an_den_erzeuger(monkeypatch):
+    ta = _prozessbetrieb(monkeypatch)
+    _Attrappe(monkeypatch, raten=(48000, 44100))
+    try:
+        assert ta.starten() is True
+        p = ta._prozess
+        ende = time.monotonic() + 20
+        while not p.bereit and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert p.bereit and ta._im_prozess
+        k = p.speicher.kopf
+        ende = time.monotonic() + 5
+        while k[tonprozess.K_AUSGABERATE_IST] != 48000 and time.monotonic() < ende:
+            time.sleep(0.02)
+        assert k[tonprozess.K_AUSGABERATE_IST] == 48000
+        assert ta.neu_verbinden() is True
+        ende = time.monotonic() + 5
+        while k[tonprozess.K_AUSGABERATE_IST] != 44100 and time.monotonic() < ende:
+            time.sleep(0.02)
+        assert k[tonprozess.K_AUSGABERATE_IST] == 44100, "Erzeuger folgt der Rate nicht"
+    finally:
+        ta.beenden()

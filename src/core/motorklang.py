@@ -109,6 +109,41 @@ _DATEI = os.path.join("data", "audio", "motor_klang.json")
 
 _cache: dict[str, Any] | None = None
 
+#: Wer wissen will, dass sich Werte geaendert haben (der Erzeugerprozess des
+#: Motorklangs liest den Cache des Spiels nicht selbst; ``tonausgabe`` schickt
+#: ihm den Stand ueber den gemeinsamen Speicher).
+_beobachter: list = []
+
+
+def beobachten(rufer) -> None:
+    if rufer not in _beobachter:
+        _beobachter.append(rufer)
+
+
+def nicht_mehr_beobachten(rufer) -> None:
+    if rufer in _beobachter:
+        _beobachter.remove(rufer)
+
+
+def _geaendert() -> None:
+    for rufer in list(_beobachter):
+        try:
+            rufer()
+        except Exception:
+            pass
+
+
+def stand_als_json() -> str:
+    """Der gesamte Cache (auch ungespeicherte Laborwerte) als JSON-Text."""
+    return json.dumps(_laden(), separators=(",", ":"))
+
+
+def stand_uebernehmen(text: str) -> None:
+    """Cache durch einen mit :func:`stand_als_json` gelieferten Stand ersetzen."""
+    global _cache
+    daten = json.loads(text)
+    _cache = {"motoren": daten.get("motoren") or {}, "global": daten.get("global") or {}}
+
 
 def _pfad() -> str:
     """Die Datei über alle Wurzeln suchen — gepackte Builds legen die
@@ -166,6 +201,7 @@ def neu_laden() -> None:
     """Cache verwerfen — nach dem Speichern und beim Verwerfen im Labor."""
     global _cache
     _cache = None
+    _geaendert()
 
 
 def werte(motor: str) -> dict[str, float]:
@@ -195,6 +231,7 @@ def setzen(motor: str, schluessel: str, wert: float) -> float:
     daten = _laden()
     eintrag = daten["motoren"].setdefault(motor, {})
     eintrag[schluessel] = _begrenzen(schluessel, wert)
+    _geaendert()
     return float(eintrag[schluessel])
 
 
@@ -202,11 +239,13 @@ def global_setzen(schluessel: str, wert: float) -> float:
     daten = _laden()
     daten["global"][schluessel] = _begrenzen(
         schluessel, wert, GLOBAL_GRENZEN, GLOBAL_VORGABE)
+    _geaendert()
     return float(daten["global"][schluessel])
 
 
 def auf_vorgabe(motor: str) -> None:
     _laden()["motoren"][motor] = dict(VORGABE)
+    _geaendert()
 
 
 def speichern() -> str:

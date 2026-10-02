@@ -88,7 +88,10 @@ _prozess_grund = ""
 _im_prozess = False
 _rueckfall_schloss = threading.Lock()
 #: So lange darf der Erzeugerprozess brauchen, bis er bereit meldet.
-BEREIT_FRIST = 20.0
+BEREIT_FRIST = 8.0
+#: So lange darf der Herzschlag des bereiten Erzeugers stehen, bevor er als
+#: haengend gilt.
+HERZ_FRIST = 1.5
 _strom = None
 _faden: threading.Thread | None = None
 _halt = threading.Event()
@@ -231,8 +234,11 @@ def starten(rate: int = 48000) -> bool:
         if _prozess is not None:
             _geraeterate_melden()
             try:
+                _prozess.werte_senden()
                 _prozess.starten()
                 globals()["_im_prozess"] = True
+                from src.core import motorklang
+                motorklang.beobachten(_werte_weitergeben)
             except Exception as exc:
                 print(f"[Klang] Erzeugerprozess startet nicht ({exc}), Erzeugung im Faden")
                 _prozess.stoppen()
@@ -306,6 +312,13 @@ def _rueckruf_bauen(m):
         except Exception:
             aus.fill(0.0)
     return _rueckruf
+
+
+def _werte_weitergeben() -> None:
+    """Aenderung an den Klangwerten (Labor) an den Erzeugerprozess schicken."""
+    p = _prozess
+    if _im_prozess and p is not None:
+        p.werte_senden()
 
 
 def _geraeterate_melden() -> None:
@@ -649,18 +662,36 @@ def _erzeugen_bis_halt() -> None:
 
 
 def _wachen_bis_halt() -> None:
-    """Wache fuer den Prozessbetrieb: Geraetewechsel pruefen, Erzeuger beobachten."""
-    while not _halt.wait(WACHE_SEKUNDEN):
+    """Wache fuer den Prozessbetrieb.
+
+    Alle Viertelsekunde: lebt der Erzeuger, ist er bereit, schlaegt sein Herz?
+    Einmal je :data:`WACHE_SEKUNDEN`: hat das Standardgeraet gewechselt?
+    """
+    takt = min(0.25, WACHE_SEKUNDEN)
+    naechste_geraetewache = time.monotonic() + WACHE_SEKUNDEN
+    while not _halt.wait(takt):
         try:
-            _wache()
+            jetzt = time.monotonic()
+            if jetzt >= naechste_geraetewache:
+                naechste_geraetewache = jetzt + WACHE_SEKUNDEN
+                _wache()
             p = _prozess
-            if p is None or _halt.is_set():
+            if p is None or _halt.is_set() or p.speicher is None:
                 continue
             if not p.lebt():
                 _auf_faden_zurueck("Erzeugerprozess beendet")
                 return
-            if not p.bereit and time.monotonic() - p.gestartet > BEREIT_FRIST:
-                _auf_faden_zurueck("Erzeugerprozess wird nicht bereit")
+            if not p.bereit:
+                if jetzt - p.gestartet > BEREIT_FRIST:
+                    _auf_faden_zurueck("Erzeugerprozess wird nicht bereit")
+                    return
+                continue
+            herz = int(p.speicher.kopf[tonprozess.K_HERZ])
+            alt, seit = p.letzter_herzschlag
+            if herz != alt:
+                p.letzter_herzschlag = (herz, jetzt)
+            elif jetzt - seit > HERZ_FRIST:
+                _auf_faden_zurueck("Erzeugerprozess haengt")
                 return
         except Exception:
             pass
@@ -680,16 +711,25 @@ def _auf_faden_zurueck(warum: str) -> None:
         m = _mischer
         if not _im_prozess or p is None or m is None or p.speicher is None:
             return
-        _im_prozess = False
+        _im_prozess = False             # neue Stimmen gehen ab jetzt in den Faden
         print(f"[Klang] {warum} - Rueckfall auf den Erzeugerfaden")
-        p.stoppen()
-        p.speicher.kopf[tonprozess.K_BEREIT] = 1      # der Rueckruf gibt wieder frei
         for f in list(p.fernstimmen):
             f.uebernehmen(m)
-        _intervall_setzen()
-        _faden = threading.Thread(target=_erzeugen_bis_halt, name="Tonerzeuger",
-                                  daemon=True)
-        _faden.start()
+    # Ausserhalb der Sperre: das Beenden kann bis zu einer Sekunde dauern und
+    # soll den Spielfaden (motorstimme_anlegen) nicht aufhalten. Erst wenn der
+    # Erzeuger wirklich weg ist, darf der Faden schreiben - sonst gaebe es zwei
+    # Schreiber im Ring.
+    p.stoppen()
+    try:
+        from src.core import motorklang
+        motorklang.nicht_mehr_beobachten(_werte_weitergeben)
+    except Exception:
+        pass
+    p.speicher.kopf[tonprozess.K_BEREIT] = 1      # der Rueckruf gibt wieder frei
+    _intervall_setzen()
+    _faden = threading.Thread(target=_erzeugen_bis_halt, name="Tonerzeuger",
+                              daemon=True)
+    _faden.start()
 
 
 def _wache() -> None:
@@ -730,6 +770,11 @@ def beenden() -> None:
 def _aufraeumen() -> None:
     global _mischer, _strom, _faden, _rate, _geraet, _prozess, _im_prozess
     _halt.set()
+    try:
+        from src.core import motorklang
+        motorklang.nicht_mehr_beobachten(_werte_weitergeben)
+    except Exception:
+        pass
     _im_prozess = False
     if _faden is not None:
         _faden.join(1.0)
