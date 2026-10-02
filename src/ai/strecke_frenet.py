@@ -28,6 +28,10 @@ class StreckeFrenet:
         t /= np.maximum(np.hypot(t[:, 0], t[:, 1]), 1e-9)[:, None]
         self.normale = np.stack([-t[:, 1], t[:, 0]], axis=1)
         self.halb = float(breite) / 2.0
+        # Je Hinweis die Fensterdaten einmal ausgeschnitten (sd lief je Bild und Auto).
+        self._fenster: dict = {}
+        idx = np.arange(self.n)
+        self._alle = (self.punkte, self.seg_dir, self.seg_len, idx)
 
     # -- s ---------------------------------------------------------------
     def wrap(self, s: float) -> float:
@@ -65,17 +69,23 @@ class StreckeFrenet:
         darum gesucht, sonst überall.
         """
         if hinweis is None:
-            idx = np.arange(self.n)
+            a, richt_alle, laengen, idx = self._alle
         else:
-            idx = (int(hinweis) + np.arange(-40, 41)) % self.n
-        a = self.punkte[idx]
-        r = np.array([x, y], dtype=np.float64) - a
-        u = np.clip(np.einsum("ij,ij->i", r, self.seg_dir[idx]), 0.0, self.seg_len[idx])
-        naechst = a + self.seg_dir[idx] * u[:, None]
-        abst = np.sum((np.array([x, y]) - naechst) ** 2, axis=1)
+            h = int(hinweis) % self.n
+            fenster = self._fenster.get(h)
+            if fenster is None:
+                idx = (h + np.arange(-40, 41)) % self.n
+                fenster = self._fenster[h] = (self.punkte[idx], self.seg_dir[idx],
+                                              self.seg_len[idx], idx)
+            a, richt_alle, laengen, idx = fenster
+        p = np.array((x, y), dtype=np.float64)
+        r = p - a
+        u = np.minimum(np.maximum(np.einsum("ij,ij->i", r, richt_alle), 0.0), laengen)
+        diff = p - (a + richt_alle * u[:, None])
+        abst = np.einsum("ij,ij->i", diff, diff)
         k = int(np.argmin(abst))
         i = int(idx[k])
         rel = r[k]
-        richt = self.seg_dir[i]
+        richt = richt_alle[k]
         d = float(richt[0] * rel[1] - richt[1] * rel[0])
         return self.wrap(self.s[i] + u[k]), d, i
