@@ -661,6 +661,20 @@ def _erzeugen_bis_halt() -> None:
             time.sleep(0.01)
 
 
+def _herz_haengt(p, jetzt: float, letzter_takt: float) -> bool:
+    """Steht der Herzschlag des bereiten Erzeugers laenger als :data:`HERZ_FRIST`?
+
+    Lief die Wache selbst laenger als diese Frist nicht (Ruhezustand, Stillstand
+    des Rechners), sagt ein stehender Zaehler nichts: dann beginnt die Frist neu.
+    """
+    herz = int(p.speicher.kopf[tonprozess.K_HERZ])
+    alt, seit = p.letzter_herzschlag
+    if herz != alt or jetzt - letzter_takt > HERZ_FRIST:
+        p.letzter_herzschlag = (herz, jetzt)
+        return False
+    return jetzt - seit > HERZ_FRIST
+
+
 def _wachen_bis_halt() -> None:
     """Wache fuer den Prozessbetrieb.
 
@@ -669,9 +683,12 @@ def _wachen_bis_halt() -> None:
     """
     takt = min(0.25, WACHE_SEKUNDEN)
     naechste_geraetewache = time.monotonic() + WACHE_SEKUNDEN
+    letzter_takt = time.monotonic()
     while not _halt.wait(takt):
         try:
             jetzt = time.monotonic()
+            vorheriger_takt = letzter_takt
+            letzter_takt = jetzt
             if jetzt >= naechste_geraetewache:
                 naechste_geraetewache = jetzt + WACHE_SEKUNDEN
                 _wache()
@@ -686,11 +703,8 @@ def _wachen_bis_halt() -> None:
                     _auf_faden_zurueck("Erzeugerprozess wird nicht bereit")
                     return
                 continue
-            herz = int(p.speicher.kopf[tonprozess.K_HERZ])
-            alt, seit = p.letzter_herzschlag
-            if herz != alt:
-                p.letzter_herzschlag = (herz, jetzt)
-            elif jetzt - seit > HERZ_FRIST:
+            p.kind_festhalten()
+            if _herz_haengt(p, jetzt, vorheriger_takt):
                 _auf_faden_zurueck("Erzeugerprozess haengt")
                 return
         except Exception:
@@ -706,6 +720,8 @@ def _auf_faden_zurueck(warum: str) -> None:
     Stelle an). Wird einmal gemeldet.
     """
     global _im_prozess, _faden
+    if _halt.is_set():
+        return                          # das Spiel wird gerade beendet
     with _rueckfall_schloss:
         p = _prozess
         m = _mischer

@@ -245,6 +245,9 @@ class Erzeugerprozess:
         k[K_VORRAT_IST] = int(vorrat)
         self.prozess: subprocess.Popen | None = None
         self.letzter_herzschlag = (-1, 0.0)
+        #: Handle auf den eigentlichen Erzeuger (``K_KIND_PID``), einmal geoeffnet.
+        self.kind_handle = None
+        self._oversize_gemeldet = False
         self.fernstimmen: weakref.WeakSet = weakref.WeakSet()
         self.gestartet = 0.0
 
@@ -279,19 +282,36 @@ class Erzeugerprozess:
                 p.wait(timeout=warte)
             except Exception:
                 pass
-        pid = int(k[K_KIND_PID])
-        if pid and pid != os.getpid() and (p is None or pid != p.pid):
-            try:
-                import signal
-                os.kill(pid, signal.SIGTERM)
-            except Exception:
-                pass
+        # Nie ueber die blanke Prozessnummer: sie koennte laengst neu vergeben sein.
+        self.kind_festhalten()
+        if self.kind_handle is not None:
+            _prozess_beenden(self.kind_handle, warte)
         ende = time.monotonic() + warte
         while time.monotonic() < ende:
             davor = int(k[K_HERZ])
             time.sleep(0.04)
             if int(k[K_HERZ]) == davor:
                 break
+
+    def kind_festhalten(self) -> bool:
+        """Handle auf den Erzeuger oeffnen, solange er sicher der unsere ist.
+
+        Gemeint ist der Prozess mit ``K_KIND_PID``; geoeffnet wird einmal, nachdem
+        er sich bereit gemeldet hat (oder solange das Startprogramm noch lebt).
+        Gelingt es nicht, wird er nicht angefasst.
+        """
+        if self.kind_handle is not None:
+            return True
+        k = self.speicher.kopf if self.speicher is not None else None
+        if k is None:
+            return False
+        pid = int(k[K_KIND_PID])
+        if not pid or pid == os.getpid():
+            return False
+        if not (k[K_BEREIT] or self.lebt()):
+            return False
+        self.kind_handle = _prozess_oeffnen(pid)
+        return self.kind_handle is not None
 
     def stoppen(self) -> None:
         """Prozess anhalten, Speicher **behalten** (der Rueckfall liest den Ring weiter)."""
@@ -348,7 +368,13 @@ class Erzeugerprozess:
             text = motorklang.stand_als_json()
         roh = text.encode("utf-8")
         if len(roh) > WERTEFELD:
+            if not self._oversize_gemeldet:
+                self._oversize_gemeldet = True
+                _protokoll(f"Klangwerte ({len(roh)} Byte) passen nicht in das "
+                           f"Wertefeld ({WERTEFELD}); der Erzeuger behaelt den alten Stand")
             return
+        # Seqlock: ungerader Zaehler heisst "wird geschrieben".
+        s.kopf[K_NEU_LADEN] += 1
         s.wertefeld[:len(roh)] = np.frombuffer(roh, dtype=np.uint8)
         s.kopf[K_WERTE_LAENGE] = len(roh)
         s.kopf[K_NEU_LADEN] += 1
@@ -367,6 +393,9 @@ class Erzeugerprozess:
         except Exception:
             pass
         self.prozess = None
+        if self.kind_handle is not None:
+            _prozess_schliessen(self.kind_handle)
+            self.kind_handle = None
         name = s.shm.name
         s.freigeben()
         import gc
@@ -407,6 +436,46 @@ def _eltern_lebt(pid: int):
         except OSError:
             return False
     return lebt_posix
+
+
+def _prozess_oeffnen(pid: int):
+    """Handle auf einen Prozess (nur Windows), zum Warten und Beenden.
+
+    Ueber das Handle lebt man nicht Gefahr, eine wiederverwendete Prozessnummer
+    zu treffen: es zeigt auf genau den Prozess, der beim Oeffnen gemeint war.
+    """
+    if sys.platform != "win32" or not pid:
+        return None
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.OpenProcess.restype = ctypes.c_void_p
+        h = k.OpenProcess(0x00100000 | 0x0001, False, int(pid))  # SYNCHRONIZE | TERMINATE
+        return h or None
+    except Exception:
+        return None
+
+
+def _prozess_beenden(handle, warte: float) -> None:
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.TerminateProcess.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        k.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        k.TerminateProcess(handle, 1)
+        k.WaitForSingleObject(handle, int(warte * 1000))
+    except Exception:
+        pass
+
+
+def _prozess_schliessen(handle) -> None:
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.CloseHandle.argtypes = [ctypes.c_void_p]
+        k.CloseHandle(handle)
+    except Exception:
+        pass
 
 
 class _Kind:
@@ -477,10 +546,12 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
     while not k[K_HALT]:
         try:
             if int(k[K_NEU_LADEN]) != neu_ist:
-                neu_ist = _werte_holen(sp, neu_ist)
-                for _st, kind in kinder.values():
-                    kind.stimme.werte_setzen()
-                k[K_NEU_IST] = neu_ist
+                neu = _werte_holen(sp, neu_ist)
+                if neu != neu_ist:
+                    neu_ist = neu
+                    for _st, kind in kinder.values():
+                        kind.stimme.werte_setzen()
+                    k[K_NEU_IST] = neu_ist
             _abgleichen(sp, m, kinder, tonmischer)
             if int(k[K_AUSGABERATE]) != m.ausgaberate:
                 m.ausgaberate_setzen(int(k[K_AUSGABERATE]))
@@ -520,24 +591,26 @@ def _lauf(name: str, eltern_pid: int, kapazitaet: int) -> int:
 def _werte_holen(sp: Speicher, bekannt: int) -> int:
     """Klangwerte aus dem gemeinsamen Speicher uebernehmen; gibt den Stand zurueck.
 
-    Wird waehrend des Lesens neu geschrieben, stimmt der Zaehler hinterher nicht
-    mehr, und es wird noch einmal gelesen.
+    Seqlock: der Spielprozess zaehlt vor dem Schreiben hoch (ungerade) und danach
+    noch einmal (gerade). Gelesen wird nur bei geradem Zaehler, und nur gilt, wenn
+    er sich waehrenddessen nicht geaendert hat; sonst bleibt der alte Stand
+    (*bekannt*) und der naechste Durchlauf versucht es erneut.
     """
     from src.core import motorklang
-    for _ in range(5):
-        stand = int(sp.kopf[K_NEU_LADEN])
-        laenge = int(sp.kopf[K_WERTE_LAENGE])
-        if stand == 0 or laenge <= 0:
-            return stand
-        text = bytes(sp.wertefeld[:laenge]).decode("utf-8", "replace")
-        if int(sp.kopf[K_NEU_LADEN]) != stand:
-            continue
-        try:
-            motorklang.stand_uebernehmen(text)
-        except Exception:
-            pass
-        return stand
-    return bekannt
+    c1 = int(sp.kopf[K_NEU_LADEN])
+    if c1 % 2:
+        return bekannt
+    laenge = int(sp.kopf[K_WERTE_LAENGE])
+    if c1 == 0 or laenge <= 0:
+        return c1
+    text = bytes(sp.wertefeld[:laenge]).decode("utf-8", "replace")
+    if int(sp.kopf[K_NEU_LADEN]) != c1:
+        return bekannt
+    try:
+        motorklang.stand_uebernehmen(text)
+    except Exception:
+        pass
+    return c1
 
 
 def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
@@ -559,7 +632,10 @@ def _abgleichen(sp: Speicher, m, kinder: dict, tonmischer) -> None:
                 if stimme is None or not stimme.stimme:
                     # Keine Aufnahmen: still bleiben. Nicht FREI: der Platz
                     # gehoert noch der Fernstimme des Spielprozesses.
-                    sp.zustand[i] = FEHLER
+                    # Erst nachsehen: hat der Spielprozess inzwischen ENDE
+                    # gesetzt, darf das nicht mit FEHLER ueberschrieben werden.
+                    if sp.zustand[i] == AKTIV:
+                        sp.zustand[i] = FEHLER
                     continue
                 st = m.stimme_anlegen(stimme, 0.0, 0.0)
                 kinder[i] = (st, stimme)

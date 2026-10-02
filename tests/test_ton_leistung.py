@@ -464,3 +464,138 @@ def test_neuverbinden_gibt_die_neue_rate_an_den_erzeuger(monkeypatch):
         assert k[tonprozess.K_AUSGABERATE_IST] == 44100, "Erzeuger folgt der Rate nicht"
     finally:
         ta.beenden()
+
+
+# ── Letzte Feinheiten ────────────────────────────────────────────────────────
+
+def test_ruhezustand_ist_kein_haenger():
+    """Lief die Wache selbst laenger nicht (Ruhezustand), zaehlt ein stehender
+    Herzschlag nicht gegen den Erzeuger."""
+    import types
+    from src.core import tonausgabe as ta
+    kopf = np.zeros(tonprozess.KOPF_N, dtype=np.int64)
+    p = types.SimpleNamespace(speicher=types.SimpleNamespace(kopf=kopf),
+                              letzter_herzschlag=(-1, 0.0))
+    kopf[tonprozess.K_HERZ] = 7
+    assert ta._herz_haengt(p, 100.0, 99.75) is False          # neuer Stand gemerkt
+    assert ta._herz_haengt(p, 100.5, 100.25) is False         # noch in der Frist
+    assert ta._herz_haengt(p, 102.0, 101.75) is True          # steht zu lange
+    # Wache lief 1 h nicht: Frist beginnt neu, kein Fehlalarm.
+    assert ta._herz_haengt(p, 3702.0, 102.0) is False
+    assert ta._herz_haengt(p, 3702.5, 3702.25) is False
+    assert ta._herz_haengt(p, 3704.0, 3703.75) is True
+
+
+def test_erzeuger_wird_ueber_handle_beendet_nie_ueber_die_nummer(monkeypatch):
+    if sys.platform != "win32":
+        pytest.skip("Handle-Weg nur unter Windows")
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    skript = _HAENGER.format(wurzel=wurzel)
+    monkeypatch.setattr(tonprozess, "kommando", lambda name, pid, kap, *a, **k: [
+        sys.executable, "-c", skript, name, str(pid), str(kap)])
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        p.starten()
+        ende = time.monotonic() + 15
+        while not p.bereit and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert p.bereit
+        assert p.kind_festhalten() and p.kind_handle is not None
+        pid = int(p.speicher.kopf[tonprozess.K_KIND_PID])
+        assert tonprozess._eltern_lebt(pid)()
+        p.stoppen()
+        assert not tonprozess._eltern_lebt(pid)(), "Erzeuger lebt nach stoppen noch"
+    finally:
+        p.beenden()
+
+
+def test_ohne_handle_wird_nichts_beendet(monkeypatch):
+    if sys.platform != "win32":
+        pytest.skip("Handle-Weg nur unter Windows")
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    skript = _HAENGER.format(wurzel=wurzel)
+    monkeypatch.setattr(tonprozess, "kommando", lambda name, pid, kap, *a, **k: [
+        sys.executable, "-c", skript, name, str(pid), str(kap)])
+    monkeypatch.setattr(tonprozess, "_prozess_oeffnen", lambda pid: None)
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    pid = 0
+    try:
+        p.starten()
+        ende = time.monotonic() + 15
+        while not p.bereit and time.monotonic() < ende:
+            time.sleep(0.05)
+        assert p.bereit
+        pid = int(p.speicher.kopf[tonprozess.K_KIND_PID])
+        assert p.kind_festhalten() is False
+        aufrufe = []
+        monkeypatch.setattr(os, "kill", lambda *a: aufrufe.append(a))
+        p._kind_beenden(0.2)
+        # Nie ueber die blanke Nummer: sie koennte eine fremde sein.
+        assert aufrufe == []
+    finally:
+        monkeypatch.undo()
+        h = tonprozess._prozess_oeffnen(pid)
+        if h:
+            tonprozess._prozess_beenden(h, 1.0)
+            tonprozess._prozess_schliessen(h)
+        p.beenden()
+
+
+def test_werte_seqlock_und_zu_grosser_text(monkeypatch):
+    from src.core import motorklang
+    meldungen = []
+    monkeypatch.setattr(tonprozess, "_protokoll", meldungen.append)
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        sp = p.speicher
+        p.werte_senden('{"motoren":{"x":{"grundpegel":0.5}},"global":{}}')
+        assert int(sp.kopf[tonprozess.K_NEU_LADEN]) % 2 == 0
+        assert int(sp.kopf[tonprozess.K_NEU_LADEN]) == 2
+        # Mitten im Schreiben (ungerade): nichts uebernehmen, alten Stand melden.
+        sp.kopf[tonprozess.K_NEU_LADEN] += 1
+        assert tonprozess._werte_holen(sp, 2) == 2
+        sp.kopf[tonprozess.K_NEU_LADEN] += 1
+        assert tonprozess._werte_holen(sp, 2) == 4
+        # Zu gross: einmal melden, Stand bleibt.
+        gross = "x" * (tonprozess.WERTEFELD + 1)
+        p.werte_senden(gross)
+        p.werte_senden(gross)
+        assert len(meldungen) == 1
+        assert int(sp.kopf[tonprozess.K_NEU_LADEN]) == 4
+    finally:
+        motorklang.neu_laden()
+        p.beenden()
+
+
+def test_fehler_ueberschreibt_kein_ende(monkeypatch):
+    """Setzt der Spielprozess waehrend des Bauens ENDE, bleibt es dabei."""
+    p = tonprozess.Erzeugerprozess(1 << 14, 1024, 48000, True, 4800)
+    try:
+        sp = p.speicher
+        v = p.stimme_anlegen("gibtsnicht", 1.0, 0.0)
+
+        class Wirft:
+            def __init__(self, *a):
+                sp.zustand[v._i] = tonprozess.ENDE      # Spielprozess war schneller
+                raise RuntimeError("nicht baubar")
+
+        monkeypatch.setattr(tonprozess, "_Kind", Wirft)
+        m = tonmischer.Mischer(kapazitaet=1 << 14, vorrat=4800, stueck=1024)
+        tonprozess._abgleichen(sp, m, {}, tonmischer)
+        assert sp.zustand[v._i] in (tonprozess.ENDE, tonprozess.FREI)
+        assert sp.zustand[v._i] != tonprozess.FEHLER
+    finally:
+        p.beenden()
+
+
+def test_kein_rueckfall_waehrend_das_spiel_endet(monkeypatch):
+    ta = _prozessbetrieb(monkeypatch)
+    _Attrappe(monkeypatch)
+    try:
+        assert ta.starten() is True
+        assert ta._im_prozess
+        ta._halt.set()
+        ta._auf_faden_zurueck("Test")
+        assert ta._im_prozess, "Rueckfall trotz Beenden"
+    finally:
+        ta.beenden()
