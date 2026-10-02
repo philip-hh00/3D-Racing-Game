@@ -20,7 +20,7 @@ sounddevice>=0.4.6
 # ModernGL rendert die Szene in dasselbe pygame-Fenster. pygame behaelt
 # Fenster, Eingabe, Audio, HUD und Menues - die HUD-Flaeche wird als Textur
 # darueber gelegt. So bleiben rund 33.000 Zeilen pygame-Code unberuehrt.
-moderngl>=5.10.0
+moderngl>=5.10.0,<6
 
 # --- Modelle laden -----------------------------------------------------------
 # Das Spiel liest die GLB-Modelle zur Laufzeit selbst (src/render3d/mesh.py)

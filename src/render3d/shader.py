@@ -32,6 +32,8 @@ Instanz (Bäume, Felsen, Häuser — hunderte Exemplare in einem Aufruf).
 """
 from __future__ import annotations
 
+import struct
+
 import numpy as np
 
 _VERTEX_KOPF = """
@@ -837,6 +839,56 @@ SONNE_RICHTUNG = (0.35, 0.45, 0.82)
 SONNE_FARBE = (3.0, 2.85, 2.6)
 
 
+def _merkzettel(p) -> dict:
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = {}
+        try:
+            p._zuletzt = stand
+        except AttributeError:                       # pragma: no cover - Attrappen
+            pass
+    return stand
+
+
+def _schreiben(p, name: str, wert) -> None:
+    """Den Wert ins Programm schreiben (``KeyError``: es gibt das Uniform nicht).
+
+    moderngl packt über ``Uniform.value`` → ``write`` → ``_write_uniform``,
+    je Aufruf drei Python-Rahmen und mehrere Fallunterscheidungen. Bei
+    einfachen Uniforms (kein Feld) geht es hier gleich an den letzten Schritt.
+    """
+    schreiber = getattr(p, "_schreiber", None)
+    if schreiber is None:
+        schreiber = {}
+        try:
+            p._schreiber = schreiber
+        except AttributeError:                       # pragma: no cover - Attrappen
+            pass
+    fn = schreiber.get(name)
+    if fn is None:
+        u = p[name]
+        try:
+            if u.array_length > 1:
+                raise AttributeError
+            pack = struct.Struct(u.fmt).pack
+            roh = u.ctx._write_uniform
+            ziel = (u.program_obj, u.location, u.gl_type, u.array_length, u.element_size)
+            if u.dimension > 1:
+                fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(*w))  # noqa: E731
+            else:
+                fn = lambda w, pack=pack, roh=roh, ziel=ziel: roh(*ziel, pack(w))  # noqa: E731
+        except (AttributeError, TypeError, struct.error):
+            # Private moderngl-Schnittstelle fehlt oder hat sich geaendert: Umweg.
+            def fn(w, u=u):
+                u.value = w
+        schreiber[name] = fn
+    try:
+        fn(wert)
+    except (TypeError, struct.error):
+        schreiber[name] = lambda w, u=p[name]: setattr(u, "value", w)
+        p[name].value = wert
+
+
 def setzen(p, name: str, wert) -> None:
     """Ein Uniform setzen, wenn der Compiler es nicht wegoptimiert hat.
 
@@ -848,18 +900,33 @@ def setzen(p, name: str, wert) -> None:
     """
     stand = getattr(p, "_zuletzt", None)
     if stand is None:
-        stand = {}
-        try:
-            p._zuletzt = stand
-        except AttributeError:                       # pragma: no cover - Attrappen
-            pass
+        stand = _merkzettel(p)
     if name in stand and stand[name] == wert:
         return
     try:
-        p[name].value = wert
+        _schreiben(p, name, wert)
     except KeyError:
         pass
     stand[name] = wert
+
+
+def setzen_viele(p, paare) -> None:
+    """Wie :func:`setzen` für eine Folge ``(name, wert)`` — ohne Aufruf je Wert.
+
+    Ein Materialwechsel setzt ein Dutzend Uniforms; je Bild sind das über
+    tausend Aufrufe von :func:`setzen`, fast alle ohne Wirkung.
+    """
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = _merkzettel(p)
+    for name, wert in paare:
+        if name in stand and stand[name] == wert:
+            continue
+        try:
+            _schreiben(p, name, wert)
+        except KeyError:
+            pass
+        stand[name] = wert
 
 
 def matrix_setzen(p, name: str, m: np.ndarray) -> None:

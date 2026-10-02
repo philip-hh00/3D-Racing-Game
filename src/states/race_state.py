@@ -2477,6 +2477,9 @@ class RaceState(BaseState):
         else:
             if DEBUG and self.physics_world:
                 self.physics_world.debug_draw(screen)
+                # Zeichnet an der Schmutzverfolgung vorbei (pygame.draw direkt).
+                if hasattr(screen, "schmutz_alles"):
+                    screen.schmutz_alles()
             if self.hud:
                 self.hud.render(screen)
             if self._online:
