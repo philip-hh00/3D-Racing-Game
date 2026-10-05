@@ -93,16 +93,31 @@ def _url(pfad: Path) -> str:
     return pfad.as_posix()
 
 
+def _vertrauen(*repos: Path) -> None:
+    """Die Repos auf dem NAS gehören dem NAS-Konto, nicht dem angemeldeten
+    Benutzer — git verweigert sie dann („dubious ownership“). Einmalig in der
+    globalen Konfiguration freigeben, jedes Repo einzeln: der Platzhalter
+    ``<ordner>/*`` greift unter Windows beim Push nicht (gemessen 06.10.2026)."""
+    vorhanden = subprocess.run(["git", "config", "--global", "--get-all", "safe.directory"],
+                               capture_output=True, text=True).stdout.splitlines()
+    for repo in repos:
+        eintrag = _url(repo)
+        if eintrag not in vorhanden:
+            subprocess.run(["git", "config", "--global", "--add", "safe.directory", eintrag],
+                           check=True)
+            print(f"  git vertraut jetzt {eintrag}")
+
+
 def _bare_anlegen(pfad: Path) -> None:
     if not pfad.exists():
-        subprocess.run(["git", "init", "--bare", "-q", str(pfad)], check=True)
+        subprocess.run(["git", "init", "--bare", "-q", "-b", "main", str(pfad)], check=True)
         print(f"  angelegt: {pfad}")
 
 
 def _daten_vorbereiten(projekt: Path) -> None:
     gitdir = projekt / DATEN_GIT
     if not gitdir.exists():
-        subprocess.run(["git", "init", "-q", "--bare", str(gitdir)], check=True)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(gitdir)], check=True)
         _git("config", "core.bare", "false", cwd=projekt, daten=True)
     _git("config", "core.autocrlf", "false", cwd=projekt, daten=True)
     _git("config", "status.showUntrackedFiles", "no", cwd=projekt, daten=True)
@@ -224,6 +239,7 @@ def main() -> int:
     projekt = Path(args.projekt).resolve()
     name = args.name or projekt.name
     nas = _nas(args.nas)
+    _vertrauen(nas / f"{name}.git", nas / f"{name}-Daten.git")
     (sichern if args.aktion == "sichern" else holen)(projekt, name, nas)
     return 0
 
