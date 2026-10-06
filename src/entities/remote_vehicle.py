@@ -564,6 +564,11 @@ class RemoteVehicle:
         return self._angle
 
     @property
+    def omega(self) -> float:
+        """Gierrate in rad/s — daraus leitet die 3D-Darstellung den Lenkeinschlag ab."""
+        return self._omega
+
+    @property
     def bereit(self) -> bool:
         """Ob dieses Abbild schon eine Lage hat, die man glauben kann.
 

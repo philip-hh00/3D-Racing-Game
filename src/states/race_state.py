@@ -2224,6 +2224,7 @@ class RaceState(BaseState):
         """
         self.szene = None
         self._aufhaengungen = {}
+        self._lenk_glatt = {}
         from src.core import display
         if display.kontext() is None:
             return
@@ -2281,7 +2282,7 @@ class RaceState(BaseState):
 
     def _stand_von(self, fahrzeug, dt: float):
         """Einen Fahrzeugstand aus einem Fahrzeug des Spiels bauen."""
-        from src.render3d import rennszene, vehicle_node
+        from src.render3d import rennszene
         kennung = szenen_kennung(fahrzeug)
         nick, wank = self._neigung(kennung, fahrzeug, dt)
         vorn, hinten = self._reifenschlupf(kennung, fahrzeug)
@@ -2291,12 +2292,51 @@ class RaceState(BaseState):
             pos_m=welt3d(fahrzeug.position),
             gierwinkel_rad=float(fahrzeug.angle),
             weg_m=self._weg_in_diesem_bild(fahrzeug, dt),
-            lenkwinkel_rad=vehicle_node.lenkwinkel_aus_fahrzeug(fahrzeug),
+            lenkwinkel_rad=self._lenkwinkel(kennung, fahrzeug, dt),
             lack=lackwerte(getattr(fahrzeug, "lack", None)),
             nick_rad=nick, wank_rad=wank,
             schlupf_vorn=vorn, schlupf_hinten=hinten,
             bremse=float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
         )
+
+    #: Zeitkonstante (s), mit der der abgeleitete Lenkwinkel eines Abbilds nachzieht.
+    LENK_GLAETTUNG_S = 0.08
+
+    def _lenkwinkel(self, kennung: int, fahrzeug, dt: float) -> float:
+        """Der gezeichnete Lenkeinschlag der Vorderraeder.
+
+        Spieler und KI haben ihn in der Physik (``steer_angle``). Ein
+        ferngesteuertes Fahrzeug bringt nur Tempo und Gierrate mit — der
+        Netzstrom hat kein Feld fuer den Lenkwinkel und bleibt, wie er ist, mit
+        den Clients der 1.0.0 vertraeglich —, daraus wird er abgeleitet und
+        geglaettet, weil die Gierrate mit jedem Paket springt.
+        """
+        from src.render3d import vehicle_node
+        if getattr(fahrzeug, "physics", None) is not None:
+            return vehicle_node.lenkwinkel_aus_fahrzeug(fahrzeug)
+        omega = getattr(fahrzeug, "omega", None)
+        v = getattr(fahrzeug, "velocity", None)
+        if omega is None or v is None:
+            return 0.0
+        winkel = float(fahrzeug.angle)
+        laengs = (float(v[0]) * math.cos(winkel) + float(v[1]) * math.sin(winkel)) * M_PER_PX
+        radstand = self._radstand_m(getattr(fahrzeug, "config_key", ""))
+        ziel = vehicle_node.lenkwinkel_aus_bewegung(laengs, float(omega), radstand)
+        glatt = getattr(self, "_lenk_glatt", None)
+        if glatt is None:
+            glatt = self._lenk_glatt = {}
+        alt = glatt.get(kennung, 0.0)
+        if dt > 0.0:
+            alt += (ziel - alt) * (1.0 - math.exp(-dt / self.LENK_GLAETTUNG_S))
+        glatt[kennung] = alt
+        return vehicle_node.sichtbarer_lenkwinkel(alt)
+
+    @staticmethod
+    def _radstand_m(config_key: str) -> float:
+        """Radstand eines Fahrzeugtyps in Metern (2,5 m, wenn er nicht bekannt ist)."""
+        from src.entities.vehicle_factory import VehicleFactory
+        cfg = VehicleFactory.get_config(config_key) if config_key else None
+        return float(getattr(cfg, "wheelbase_m", 2.5) or 2.5)
 
     def _reifenschlupf(self, kennung: int, fahrzeug) -> tuple[float, float]:
         """Wie stark die Reifen rutschen, vorn und hinten — fuer Spuren und Rauch.
