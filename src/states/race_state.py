@@ -24,6 +24,7 @@ from src.states.race_manager import RaceManager
 from src.core.i18n import tr
 # Startampel: Schwellen und Stufenfunktion liegen in src/core/startampel.py,
 # damit 3D-Portal und HUD dieselbe Quelle nutzen.
+from src.core import startampel
 from src.core.startampel import AMPEL_SCHWELLEN_S, ampel_stufe, fortsetzen_stufe  # noqa: F401
 from src.ui import theme
 from src.ui import zeichnen, leinwand
@@ -200,7 +201,7 @@ class RaceState(BaseState):
         #: da ist oder keine Aufnahmen vorliegen - das Rennen laeuft dann
         #: still weiter.
         self._klang = None
-        self._startsignal_gespielt = False
+        self._startsignal_nr = 0
         # After finishing an online race, wait for the server to collect every
         # peer's result and broadcast the combined standings before showing them.
         self._online_awaiting: bool = False
@@ -226,7 +227,7 @@ class RaceState(BaseState):
         self._dialog = None
         self.quit_requested = False
         self._race_music_started = False
-        self._startsignal_gespielt = False
+        self._startsignal_nr = 0
         self.physics_world = PhysicsWorld()
         self.collision_handler = CollisionHandler(self.physics_world.space, self.event_bus)
 
@@ -1081,29 +1082,45 @@ class RaceState(BaseState):
 
             klang = sfx_rennen.Rennklang()
             klang.starten(self._klang_fahrzeuge(), schluessel)
+            klang.startsignal_vorbereiten()
             self._klang = klang
         except Exception as exc:
             # Klang ist Beiwerk: ein Fehler darf das Rennen nicht verhindern.
             print(f"[RaceState] Motorklang nicht verfuegbar: {exc}")
 
-    def _startsignal_pruefen(self) -> None:
-        """Das Startsignal anstoßen, wenn noch genau seine Länge übrig ist.
+    def _startsignal_pruefen(self, dt: float = 0.0) -> None:
+        """Die Startsignale im Takt der Ampel anstossen.
 
-        ``race-start.wav`` ist der **ganze** Countdown: Piep bei 0,0, 1,0 und
-        2,0 Sekunden, der lange Ton bei 3,0. Am Ende des Countdowns abgespielt
-        kam er also vier Sekunden zu spät. Der Auslöser hängt deshalb an der
-        Restzeit und nicht am Anfang: online läuft der Countdown 3,5 Sekunden,
-        lokal 3,0, und der lange Ton soll in beiden Fällen genau auf GO liegen.
+        Je Lampe ein Piep, bei GO der lange Ton (``startampel.SIGNALE``). Die
+        Zeiten sind die der Lampen (``AMPEL_SCHWELLEN_S``) und haengen wie die
+        Lampen an der **Restzeit** des Countdowns, nicht an dessen Anfang:
+        online laeuft er 3,5 Sekunden und kann bis zum RACE_GO gehalten werden
+        (die Restzeit steht dann still, es kommt kein Signal), lokal 3,0.
+        Wird pausiert, bleibt die Restzeit stehen und mit ihr der naechste
+        Piep. Vorgezogen wird um die Latenz des Mixers
+        (``sfx_rennen.startsignal_vorlauf_s``), sonst klaenge jeder Piep
+        mehrere Bilder nach der Lampe.
         """
-        if self._startsignal_gespielt or self._klang is None:
+        if self._klang is None:
             return
         rm = self.race_manager
-        if rm is None or rm.state != "countdown":
+        if rm is None:
+            return
+        if rm.state == "countdown":
+            rest = float(rm.countdown_timer)
+        elif (rm.state == "racing" and rm.race_time < 0.5
+              and self._startsignal_nr == len(startampel.SIGNALE) - 1):
+            # Der Countdown lief in einem Bild (Ruckler) ueber GO hinaus,
+            # bevor der lange Ton dran war: er gehoert trotzdem noch dazu.
+            rest = 0.0
+        else:
             return
         from src.core import sfx_rennen
-        if rm.countdown_timer <= sfx_rennen.STARTSIGNAL_VORLAUF:
-            self._klang.startsignal()
-            self._startsignal_gespielt = True
+        nr = startampel.faelliges_signal(
+            rest, self._startsignal_nr, sfx_rennen.startsignal_vorlauf_s(), dt)
+        if nr is not None:
+            self._klang.startsignal(nr)
+            self._startsignal_nr = nr + 1
 
     def _klang_fahrzeuge(self) -> list:
         """Alles, was klingen soll — eigene Autos, KI und ferne Mitspieler."""
@@ -1974,7 +1991,7 @@ class RaceState(BaseState):
                 from src.core import audio
                 audio.play_race_music()
                 self._race_music_started = True
-            self._startsignal_pruefen()
+            self._startsignal_pruefen(dt)
             self.race_manager.update(dt)
             self._apply_finish_effects()
 

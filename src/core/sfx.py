@@ -710,9 +710,67 @@ def _mixer_bereit() -> bool:
         return False
 
 
+_ausschnitte: dict[tuple, object] = {}
+
+
+def _ausschnitt(klang, schluessel: tuple, von_s: float, bis_s: float | None,
+                blende_s: float = 0.004):
+    """Abschnitt ``von_s``..``bis_s`` eines geladenen Klangs als eigener Klang.
+
+    Gerechnet wird einmal und dann gemerkt. Die Raender bekommen eine kurze
+    Blende, sonst knackt der harte Schnitt mitten im Ton. Ohne ``numpy``-Sicht
+    auf den Klang (Mixer ohne sndarray) gibt es ``None``: lieber stumm als das
+    ganze Original, das hier ein Vielfaches des gewuenschten Abschnitts waere.
+    """
+    if schluessel in _ausschnitte:
+        return _ausschnitte[schluessel]
+    ergebnis = None
+    try:
+        import pygame
+        rate = pygame.mixer.get_init()[0]
+        daten = pygame.sndarray.array(klang)
+        i0 = max(0, int(round(von_s * rate)))
+        i1 = len(daten) if bis_s is None else min(len(daten), int(round(bis_s * rate)))
+        teil = daten[i0:i1].astype(np.float32)
+        n = min(int(blende_s * rate), len(teil) // 2)
+        if n > 0:
+            kurve = np.linspace(0.0, 1.0, n, dtype=np.float32)
+            faktor = kurve if teil.ndim == 1 else kurve[:, None]
+            teil[:n] *= faktor
+            teil[-n:] *= faktor[::-1]
+        ergebnis = pygame.sndarray.make_sound(
+            np.ascontiguousarray(teil.astype(daten.dtype)))
+    except Exception:
+        ergebnis = None
+    _ausschnitte[schluessel] = ergebnis
+    return ergebnis
+
+
+def ausschnitt_vorladen(name: str, ausschnitt: tuple[float, float | None]) -> None:
+    """Den Ausschnitt schon einmal rechnen, damit der erste Einsatz nicht stockt."""
+    if not _mixer_bereit():
+        return
+    from src.core.resource_manager import ResourceManager
+    pfad = _pfad(f"{name}.wav")
+    if not os.path.isfile(pfad):
+        return
+    try:
+        klang = ResourceManager().load_sound(pfad)
+    except Exception:
+        return
+    _ausschnitt(klang, (pfad, ausschnitt[0], ausschnitt[1]),
+                ausschnitt[0], ausschnitt[1])
+
+
 def spielen(name: str, lautstaerke: float = 1.0, panorama: float = 0.0,
-            bereich: str = RENNEN) -> None:
-    """Einzelklang anstoßen. *panorama* von -1 (links) bis +1 (rechts)."""
+            bereich: str = RENNEN,
+            ausschnitt: tuple[float, float | None] | None = None) -> None:
+    """Einzelklang anstoßen. *panorama* von -1 (links) bis +1 (rechts).
+
+    *ausschnitt* = (von, bis) in Sekunden spielt nur diesen Teil der Datei
+    (``bis=None``: bis zum Ende) — so lassen sich aus einer Aufnahme mehrere
+    Klänge gewinnen, ohne zusätzliche Dateien im (gitignorierten) Audioordner.
+    """
     if not _mixer_bereit():
         return
     import pygame
@@ -724,6 +782,11 @@ def spielen(name: str, lautstaerke: float = 1.0, panorama: float = 0.0,
         klang = ResourceManager().load_sound(pfad)
     except Exception:
         return
+    if ausschnitt is not None:
+        klang = _ausschnitt(klang, (pfad, ausschnitt[0], ausschnitt[1]),
+                            ausschnitt[0], ausschnitt[1])
+        if klang is None:
+            return
 
     staerke = max(0.0, min(1.0, lautstaerke)) * effekt_lautstaerke(bereich)
     if staerke <= 0.001:

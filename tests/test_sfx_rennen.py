@@ -354,16 +354,14 @@ def test_leise_gegner_unter_dem_budget_bleiben_unberuehrt(monkeypatch,
 
 # ── Startsignal ────────────────────────────────────────────────────────────
 
-def test_startsignal_deckt_den_ganzen_countdown_ab():
-    """race-start.wav ist nicht das GO, sondern der ganze Countdown: Piep bei
-    0,0, 1,0 und 2,0 Sekunden, langer Ton bei 3,0. Am Ende des Countdowns
-    abgespielt kam er vier Sekunden zu spät."""
+def _wav_einsaetze():
+    """Einsatzzeiten (s) in race-start.wav; None ohne die (gitignorierte) Datei."""
     import numpy as np
     import soundfile as sf
     from src.core import sfx
     pfad = sfx._pfad("race-start.wav")
     if not os.path.isfile(pfad):
-        pytest.skip("race-start.wav fehlt")
+        return None
     x, rate = sf.read(pfad, always_2d=True, dtype="float32")
     x = np.abs(x.mean(axis=1))
 
@@ -375,15 +373,44 @@ def test_startsignal_deckt_den_ganzen_countdown_ab():
             an = True
         elif an and not np.any(x[i:i + int(rate * 0.05)] > schwelle * 0.3):
             an = False
+    return einsaetze
 
-    assert len(einsaetze) == 4, f"erwartet drei Piepser und GO, gefunden {einsaetze}"
-    assert einsaetze[-1] == pytest.approx(sr.STARTSIGNAL_VORLAUF, abs=0.05), \
-        "der lange Ton liegt nicht dort, wo der Vorlauf ihn erwartet"
+
+def test_startsignal_ausschnitte_treffen_die_einsaetze_der_datei():
+    """race-start.wav hat Piep bei 0,0, 1,0 und 2,0 Sekunden, langen Ton bei
+    3,0. Die Ausschnitte fuer die Ampel muessen dort beginnen, wo die Datei
+    tatsaechlich einsetzt: der Einsatz im Ausschnitt ist STARTSIGNAL_EINSATZ_S."""
+    einsaetze = _wav_einsaetze()
+    if einsaetze is None:
+        pytest.skip("race-start.wav fehlt")
+    assert len(einsaetze) == 4, f"erwartet drei Piepser und langen Ton, gefunden {einsaetze}"
+    piep = sr.STARTSIGNAL_AUSSCHNITTE["piep"]
+    los = sr.STARTSIGNAL_AUSSCHNITTE["los"]
+    assert einsaetze[0] - piep[0] == pytest.approx(sr.STARTSIGNAL_EINSATZ_S, abs=0.003)
+    assert einsaetze[3] - los[0] == pytest.approx(sr.STARTSIGNAL_EINSATZ_S, abs=0.003)
+    # Der Piep darf nicht in den naechsten Lampenschritt hineinlaufen und muss
+    # vor dem zweiten Piep der Datei enden.
+    from src.core import startampel
+    takt = startampel.AMPEL_SCHWELLEN_S[0] - startampel.AMPEL_SCHWELLEN_S[1]
+    assert piep[1] - piep[0] < takt
+    assert piep[1] < einsaetze[1]
+
+
+def test_startsignal_vorlauf_folgt_dem_mixerpuffer():
+    """Der Ton braucht einen Mixerpuffer, bis er zu hoeren ist: 2048 Frames bei
+    48 kHz sind 43 ms. Ohne Vorlauf klaenge jeder Piep nach der Lampe."""
+    gross = sr.startsignal_vorlauf_s(puffer=2048, rate=48000)
+    klein = sr.startsignal_vorlauf_s(puffer=256, rate=48000)
+    assert gross == pytest.approx(2048 / 48000 + sr.STARTSIGNAL_EINSATZ_S
+                                  - sr.ANZEIGE_VERZUG_S)
+    assert 0.02 < gross < 0.08
+    assert klein < gross
+    assert sr.startsignal_vorlauf_s(puffer=0, rate=48000) >= 0.0
 
 
 def test_startsignal_haengt_an_der_restzeit_nicht_am_anfang():
     """Online läuft der Countdown 3,5 Sekunden, lokal 3,0. Am Anfang ausgelöst
-    läge der lange Ton online eine halbe Sekunde vor GO."""
+    läge der Ton online eine halbe Sekunde vor den Lampen."""
     import ast
     pfad = os.path.join(_ROOT, "src", "states", "race_state.py")
     with open(pfad, encoding="utf-8") as fh:
@@ -394,7 +421,7 @@ def test_startsignal_haengt_an_der_restzeit_nicht_am_anfang():
     fn = next(f for f in klasse.body if isinstance(f, ast.FunctionDef)
               and f.name == "_startsignal_pruefen")
     text = ast.get_source_segment(quelle, fn)
-    assert "countdown_timer" in text and "STARTSIGNAL_VORLAUF" in text
+    assert "countdown_timer" in text and "faelliges_signal" in text
 
 
 # ── Verkabelung im Rennen ──────────────────────────────────────────────────

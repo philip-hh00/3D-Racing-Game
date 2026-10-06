@@ -20,7 +20,7 @@ import math
 
 import numpy as np
 
-from src.core import sfx
+from src.core import sfx, startampel
 
 #: Ab dieser Entfernung (Weltpixel) ist ein Fahrzeug nicht mehr zu hören.
 #: Rund eine halbe Bildbreite. Vorher 2600, also gut eine Bildbreite über den
@@ -32,9 +32,24 @@ HOERWEITE = 1000.0
 HALBWERT = 260.0
 #: Entfernung, ab der voll nach links oder rechts gelegt wird.
 PANORAMA_WEITE = 500.0
-#: Vorlauf des Startsignals: ``race-start.wav`` ist der ganze Countdown, der
-#: lange Ton liegt bei Sekunde 3,0. So viel vor GO muss es also anfangen.
-STARTSIGNAL_VORLAUF = 3.0
+#: ``race-start.wav`` ist ein Dreifach-Countdown: Piep bei 0,0, 1,0 und 2,0 s,
+#: langer Ton ab 3,0 s (gemessen 0,005 / 1,006 / 2,016 / 3,004 s). Fuer die
+#: Startampel wird sie zerlegt: der erste Piep (mit 5 ms Vorlauf wie in der
+#: Datei) kuerzer als der Lampentakt, damit er nicht in den naechsten laeuft,
+#: und der lange Ton ab 5 ms vor seinem Einsatz. So gibt es je Lampe einen Piep
+#: und bei GO den langen Ton — ohne neue Dateien im gitignorierten Audioordner.
+STARTSIGNAL_DATEI = "race-start"
+STARTSIGNAL_AUSSCHNITTE = {
+    startampel.SIGNAL_PIEP: (0.0, 0.255),
+    startampel.SIGNAL_LOS: (2.999, None),
+}
+#: Vorlauf in der Datei vor dem Einsatz der Ausschnitte (Sekunden). Gehoert zum
+#: Ausschnitt, nicht zum Mixer: der Ton setzt erst so spaet nach dem Anstossen ein.
+STARTSIGNAL_EINSATZ_S = 0.005
+#: So lange braucht ein Bild, bis die Lampe sichtbar ist (Zeichnen im selben
+#: Durchlauf, dann Bildwechsel): rund ein Bild bei 60 Hz. Der Ton wird um genau
+#: so viel weniger vorgezogen, sonst klaenge er vor der Lampe.
+ANZEIGE_VERZUG_S = 1.0 / 60.0
 #: Obergrenze für die **Summe der Gegner**-Lautstärken (nicht des eigenen Autos).
 #: Vorher galt ein Budget von 2,0 für *alle* Stimmen gemeinsam, und der Deckel
 #: nahm dann auch das eigene Auto zurück: im Pulk (fünf Gegner in 100–300 px)
@@ -70,6 +85,16 @@ REIFENKLAENGE = ("tire-screeching-1.wav", "tire-screeching-2.wav")
 #: Wandtreffer gemeinsam: es ist derselbe Anlass, und `car-wall` war ohnehin
 #: der lauteste Klang im Spiel.
 AUFPRALL_DAEMPFUNG = 0.7
+
+
+def startsignal_vorlauf_s(puffer: int | None = None, rate: int = sfx.SR) -> float:
+    """Wie viel frueher das Startsignal angestossen werden muss, damit es auf
+    der Lampe landet: Mixerpuffer (so lange liegt der Klang, bis das Geraet ihn
+    abholt) plus Vorlauf im Ausschnitt, abzueglich der Anzeigeverzoegerung der
+    Lampe. Nie negativ."""
+    if puffer is None:
+        puffer = sfx._puffer()
+    return max(0.0, puffer / float(rate) + STARTSIGNAL_EINSATZ_S - ANZEIGE_VERZUG_S)
 
 
 # ── Rechnen: prüfbar ohne Audiogerät ────────────────────────────────────────
@@ -609,8 +634,14 @@ class Rennklang:
             laut *= entfernt
         sfx.spielen("car-wall", laut, pano)
 
-    def startsignal(self) -> None:
-        sfx.spielen("race-start", 1.0)
+    def startsignal(self, nr: int) -> None:
+        """Startsignal Nummer ``nr`` der Zeitleiste ``startampel.SIGNALE``."""
+        sfx.spielen(STARTSIGNAL_DATEI, 1.0,
+                    ausschnitt=STARTSIGNAL_AUSSCHNITTE[startampel.SIGNALE[nr]])
+
+    def startsignal_vorbereiten(self) -> None:
+        for ausschnitt in STARTSIGNAL_AUSSCHNITTE.values():
+            sfx.ausschnitt_vorladen(STARTSIGNAL_DATEI, ausschnitt)
 
 
 # ── Kleinkram ───────────────────────────────────────────────────────────────
