@@ -61,6 +61,9 @@ class PhysicsBody:
             self.shape = pymunk.Poly.create_box(self.body, (height, width))
 
         self.shape.friction = 0.7
+        # pymunk multipliziert: zwei Autos 0,25 x 0,25 = 0,06 Stosszahl (echte
+        # Karosserien 0,1-0,2 und weniger bei Tempo), Leitplanke 0 (track.py).
+        # Siehe collision_handler.STOSSZAHL_FAHRZEUGE.
         self.shape.elasticity = 0.25
         self.shape.collision_type = COLLISION_TYPE_VEHICLE
 
@@ -80,6 +83,7 @@ class PhysicsBody:
         #: er nur, wenn ein Reifen wirklich rutscht. Daran haengt das Quietschen.
         self.reifen_schlupf_deg: float = 0.0
         self.hinten_schlupf_deg: float = 0.0
+        self.achs_griff: tuple[float, float] = (1.0, 1.0)
         self.steer_angle: float = 0.0
 
     # ---- Properties ----
@@ -124,6 +128,45 @@ class PhysicsBody:
 
     #: Reifen-Lastempfindlichkeit: Griff je kg sinkt mit der Achslast (mu ~ Last^-k).
     LAST_EMPFINDLICHKEIT = 0.15
+
+    #: Reifenkennlinie je Achse (gemeldet 06.10.2026: „rutscht wie auf Eis und
+    #: faengt sich nicht"). Ein echter Reifen hat sein Seitenkraft-Maximum bei
+    #: 6-10 Grad Schraeglauf und behaelt rutschend 75-85 % davon
+    #: (Gleitreibung). Darunter volle Haftung, darueber weich auf den
+    #: Gleitanteil, und genauso wieder zurueck — kein Gedaechtnis, sobald der
+    #: Schraeglauf faellt, ist die Haftung wieder da.
+    #:
+    #: Frueher hing das am Winkel am **Schwerpunkt** und galt fuer beide Achsen:
+    #: brach das Heck aus, verlor die Vorderachse mit, bis 30 %, und konnte
+    #: das Auto nicht mehr gegenlenkend einfangen. Am Schwerpunkt ist der
+    #: Winkel ausserdem in engen langsamen Kurven rein geometrisch 15-20 Grad.
+    SCHLUPF_SPITZE_DEG = 8.0
+    SCHLUPF_GLEITEN_DEG = 25.0
+    GLEIT_ANTEIL = 0.8
+
+    #: Handbremse: blockierte Hinterraeder gleiten mit Gleitreibung entgegen
+    #: ihrer Rutschrichtung; quer wirkt davon der Anteil ``sin(Schraeglauf)``.
+    #: Bei kleinem Winkel bleibt der bisherige Rest (das Heck kommt, wie
+    #: gewohnt), quer stehend radiert das Heck aber kraeftig statt mit 30 %
+    #: wie auf Eis weiterzugleiten.
+    HANDBREMSE_REST = 0.3
+
+    #: Kuenstliche Gierdaempfung, als Faktor je 1/60 s. Frueher je Bild: bei
+    #: 144 Bildern drehte ein Auto mit Handbremse halb so weit wie bei 60, bei
+    #: 30 doppelt so weit. Bei 60 Bildern bleibt alles wie geeicht.
+    GIER_DAEMPFUNG_60 = 0.93
+
+    @classmethod
+    def reifen_griff(cls, schlupf_deg: float) -> float:
+        """Anteil der Haftung bei diesem Schraeglauf (Grad) — 1 bis GLEIT_ANTEIL."""
+        s = abs(schlupf_deg)
+        if s <= cls.SCHLUPF_SPITZE_DEG:
+            return 1.0
+        if s >= cls.SCHLUPF_GLEITEN_DEG:
+            return cls.GLEIT_ANTEIL
+        t = (s - cls.SCHLUPF_SPITZE_DEG) / (cls.SCHLUPF_GLEITEN_DEG - cls.SCHLUPF_SPITZE_DEG)
+        t = t * t * (3.0 - 2.0 * t)     # weich an beiden Enden
+        return 1.0 - (1.0 - cls.GLEIT_ANTEIL) * t
 
     def _achspunkte(self, radstand: float) -> tuple[pymunk.Vec2d, pymunk.Vec2d]:
         """Vorder- und Hinterachse relativ zum Schwerpunkt.
@@ -275,45 +318,40 @@ class PhysicsBody:
         vel_center = body.velocity
         speed = vel_center.length
 
-        # Grip coefficients per axle (handbrake affects rear axle only)
-        front_grip = grip
-        rear_grip = grip * 0.3 if handbrake else grip
+        # Haftung je Achse nach ihrem eigenen Schraeglauf (Reifenkennlinie).
+        front_grip = grip * self.reifen_griff(je_achse[0])
+        if handbrake:
+            # Blockiert: immer Gleitreibung, quer davon nur der Anteil sin(Winkel).
+            quer_anteil = self.GLEIT_ANTEIL * math.sin(math.radians(min(90.0, je_achse[1])))
+            rear_grip = grip * max(self.HANDBREMSE_REST, quer_anteil)
+        else:
+            rear_grip = grip * self.reifen_griff(je_achse[1])
+        #: Haftungsanteil je Achse (vorn, hinten) in diesem Bild, fuer Tests und Anzeige.
+        self.achs_griff = (front_grip / grip if grip else 1.0, rear_grip / grip if grip else 1.0)
 
         # Scale grip with weight transfer to match Phase 3 lateral stability
         grip_scale = 1.0 + weight_transfer
-        front_grip *= grip_scale
-        rear_grip *= grip_scale
+        effective_grip_front = front_grip * grip_scale
+        effective_grip_rear = rear_grip * grip_scale
 
+        # Winkel am Schwerpunkt: nur noch Anzeige, Klang und KI (Gas weg beim
+        # Querrutschen), die Haftung haengt am Schraeglauf je Achse.
         if speed < 10.0:
             self.slip_angle_deg = 0.0
-            effective_grip_front = front_grip
-            effective_grip_rear = rear_grip
         else:
             angle = body.angle
             direction = pymunk.Vec2d(math.cos(angle), math.sin(angle))
             forward_speed = vel_center.dot(direction)
             ref_angle = angle if forward_speed >= 0.0 else angle + math.pi
-            
+
             vel_angle = math.atan2(vel_center.y, vel_center.x)
             diff = (vel_angle - ref_angle) % (2.0 * math.pi)
             if diff > math.pi:
                 diff -= 2.0 * math.pi
             self.slip_angle_deg = math.degrees(abs(diff))
 
-            # Grip vs slip angle (brush-tyre approximation)
-            if self.slip_angle_deg < 15.0:
-                effective_grip_front = front_grip
-                effective_grip_rear = rear_grip
-            elif self.slip_angle_deg < 40.0:
-                t = (self.slip_angle_deg - 15.0) / 25.0
-                effective_grip_front = front_grip * (1.0 - t * 0.30)
-                effective_grip_rear = rear_grip * (1.0 - t * 0.30)
-            else:
-                effective_grip_front = front_grip * 0.70
-                effective_grip_rear = rear_grip * 0.70
-
-        # Damp rotation slightly
-        body.angular_velocity *= 0.93
+        # Damp rotation slightly (je Sekunde gleich, unabhaengig von der Bildrate)
+        body.angular_velocity *= self.GIER_DAEMPFUNG_60 ** (dt * 60.0)
 
         # Axle mass split for lateral grip. We use the static split here to maintain
         # steering stability for the AI, while the drive force uses dynamic weight transfer.

@@ -97,7 +97,14 @@ def test_race_state_vehicle_contact_uses_session_client():
     })
 
     assert len(sent_bumps) == 1
-    assert sent_bumps[0] == (2, 120.0, -50.0)
+    # total_impulse ist der Impuls auf vehicle_a — hier das eigene Auto. Der
+    # Getroffene bekommt die Gegenrichtung, und davon nur seinen Massenanteil
+    # (gleich schwer: (1 + e) / 2), siehe stoss_fuer_getroffenen (06.10.2026).
+    from src.physics.collision_handler import STOSSZAHL_FAHRZEUGE
+    anteil = (1.0 + STOSSZAHL_FAHRZEUGE) * 0.5
+    ziel, jx, jy = sent_bumps[0]
+    assert ziel == 2
+    assert math.isclose(jx, -120.0 * anteil) and math.isclose(jy, 50.0 * anteil)
 
     session.clear()
 

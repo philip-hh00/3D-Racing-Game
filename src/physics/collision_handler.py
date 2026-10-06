@@ -16,6 +16,36 @@ if TYPE_CHECKING:
     from src.core.event_bus import EventBus
 
 
+#: Stosszahl zweier Autos (``0,25 x 0,25``, siehe ``PhysicsBody``): Blech und
+#: Stossfaenger verformen sich, fast nichts federt zurueck.
+STOSSZAHL_FAHRZEUGE = 0.25 * 0.25
+
+
+def stoss_fuer_getroffenen(gesamt_impuls: Any, getroffener_ist_a: bool,
+                           masse_eigen: float, masse_ziel: float) -> tuple[float, float]:
+    """Der Stoss, den ein getroffener Mitspieler online bekommt (Weltkoordinaten).
+
+    ``gesamt_impuls`` ist ``arbiter.total_impulse``: der Impuls auf den Körper
+    der **ersten** Form des Paares. Die Reihenfolge der Formen ist bei zwei
+    Autos zufällig — der Wert ging frueher unveraendert hinaus und zog den
+    Getroffenen in jedem zweiten Fall zum Verursacher hin (gemeldet
+    06.10.2026: „prallen zu weit ab").
+
+    Gemessen wurde er gegen den kinematischen Geist, also gegen eine
+    unendliche Masse: ``J = m_eigen * v_rel``. Zwei echte Autos teilen sich den
+    Stoss nach der Masse: ``J = (1 + e) * m_eigen * m_ziel / (m_eigen + m_ziel) * v_rel``.
+    Bei gleich schweren Autos ist das gut die Haelfte — frueher bekam der
+    Getroffene den vollen Wert, als waere der Verursacher eine Wand.
+    """
+    jx, jy = float(gesamt_impuls.x), float(gesamt_impuls.y)
+    if not getroffener_ist_a:
+        jx, jy = -jx, -jy
+    m_eigen = max(1.0, float(masse_eigen or 0.0))
+    m_ziel = max(1.0, float(masse_ziel or 0.0))
+    anteil = (1.0 + STOSSZAHL_FAHRZEUGE) * m_ziel / (m_eigen + m_ziel)
+    return jx * anteil, jy * anteil
+
+
 class CollisionHandler:
     """Registers pymunk collision callbacks and forwards them as EventBus events.
 
