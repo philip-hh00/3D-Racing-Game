@@ -337,3 +337,37 @@ def test_die_html_fassung_enthaelt_keinen_deutschen_rest(html):
                  "Werkstatt", "Lackier"]
     treffer = [w for w in verraeter if w in html]
     assert treffer == [], treffer
+
+
+def test_die_bildplatzhalter_sind_eindeutig_und_vollstaendig():
+    """itch.io verlangt, dass Bilder zuerst auf die Seite geladen werden.
+
+    Bis die echten ``img.itch.zone``-Adressen vorliegen, stehen im Text
+    Platzhalter der Form ``SCREENSHOT_NN_URL``. Jeder darf nur einmal vorkommen
+    (sonst ist unklar, welches Bild wohin gehoert) und braucht einen
+    Alternativtext fuer Screenreader. ``Release/store/ANLEITUNG.md`` ordnet
+    jedem Platzhalter seine Bilddatei zu.
+    """
+    with open(_HTML_PFAD, encoding="utf-8") as f:
+        roh = f.read()
+    bilder = re.findall(r"<img\b[^>]*>", roh, flags=re.IGNORECASE)
+    assert bilder, "die Seite hat keine Bilder"
+    quellen = []
+    for tag in bilder:
+        src = re.search(r'src="([^"]*)"', tag)
+        alt = re.search(r'alt="([^"]+)"', tag)
+        assert src, tag
+        assert alt, f"Alternativtext fehlt: {tag}"
+        quellen.append(src.group(1))
+    for q in quellen:
+        assert re.fullmatch(r"SCREENSHOT_0[1-9]_URL|https://img\.itch\.zone/\S+", q), q
+    assert len(quellen) == len(set(quellen)), "ein Bild kommt doppelt vor"
+
+
+def test_die_html_fassung_nennt_keine_markennamen(html):
+    """Spieler lesen „Gamepad", nicht den Namen eines Konsolenherstellers."""
+    marken = ["xbox", "playstation", "nvidia", "geforce", "gtx", "radeon",
+              "pygame", "python", "blender", "moderngl"]
+    niedrig = html.lower()
+    treffer = [m for m in marken if m in niedrig]
+    assert treffer == [], treffer

@@ -99,17 +99,18 @@ hast. Das Spiel berechnet jeden Lack live in 3D.
 
 ## 🛠️ Streckeneditor
 
-Zeichne deinen eigenen Kurs — Streckenverlauf, Breite, Untergrund, Name. Der
-Editor sagt dir sofort, ob die Runde geschlossen ist, und du kannst sie direkt
-fahren, ohne das Spiel zu verlassen.
+Baue deinen eigenen Kurs aus Geraden und Kurven — mit Name, Breite, Landschaft
+und Schwierigkeit. Der Editor sagt dir sofort, ob die Runde geschlossen ist;
+veröffentlichst du sie, steht sie im Streckenmenü neben den mitgelieferten —
+ohne das Spiel zu verlassen.
 
 **Und das Beste:** Nimmst du eine eigene Strecke mit ins Online-Rennen, bekommen
 alle Mitspieler sie automatisch übertragen. Niemand muss vorher etwas
 herunterladen oder in einen Ordner kopieren.
 
 Fünf Strecken sind fertig dabei — jede in ihrer eigenen Landschaft mit
-Hügeln, Bergen, Bäumen und Gras, abhängig vom Thema: Stadt, Wüste, Wald, Gebirge
-und Ebene.
+Hügeln, Bergen, Bäumen und Gras: Stadt, Wüste, Wald und Gebirge. Für eigene
+Strecken bietet der Editor zusätzlich die Ebene.
 
 ---
 
@@ -120,8 +121,9 @@ eigene Eingabegeräte, also zum Beispiel Tastatur und Controller.
 
 **Online** — Bis zu 6 Spieler. Der Gastgeber bekommt einen **sechsstelligen
 Code**, die anderen tippen ihn ein, fertig. Kein Konto, keine Anmeldung, keine
-Freundesliste. Die Server stehen in Helsinki und Hamburg; du siehst vor dem
-Beitreten, wie voll es ist.
+Freundesliste. Die Server stehen in Helsinki und Hamburg; vor dem Beitreten siehst
+du, welche Server erreichbar sind, wie schnell die Verbindung ist und wie viele
+Lobbys offen sind.
 
 Steigt jemand mitten im Rennen aus, übernimmt die KI sein Auto — das Rennen
 läuft weiter, statt für alle zu enden.
@@ -133,8 +135,9 @@ läuft weiter, statt für alle zu enden.
 **Tastatur** — Pfeiltasten oder `WASD`, Handbremse auf der Leertaste. Jede Taste
 lässt sich in den Einstellungen neu belegen.
 
-**Controller** (Xbox / PlayStation) — Gas und Bremse auf den Triggern, Lenkung
-auf dem linken Stick, Handbremse auf `A` bzw. `✕`. Auch die Menüs lassen sich
+**Controller** — jedes gängige Gamepad. Gas und Bremse auf den Triggern,
+Lenkung auf dem linken Stick, Handbremse auf der unteren Aktionstaste
+(`A` bzw. `✕`). Auch die Menüs lassen sich
 vollständig mit dem Controller bedienen — vom Hauptmenü bis in die Werkstatt.
 
 ---
@@ -151,13 +154,17 @@ Das Spiel ist fertig gepackt. Du brauchst nichts weiter zu installieren.
 
 ### Windows
 1. `3D-Racing-Game_Setup_v1.0.0_Windows.exe` herunterladen und starten — 
-   **Adminrechte sind nicht nötig**.
+   **Adminrechte sind nicht nötig**. Lieber ohne Installer? Das ZIP
+   `3D-Racing-Game_Portable_v1.0.0_Windows.zip` überall entpacken und
+   `3D-Racing-Game.exe` starten.
 2. Windows zeigt beim ersten Start einen Warnhinweis („Unbekannter Herausgeber").
    Das liegt daran, dass kein kostenpflichtiges Signaturzertifikat verwendet wird,
    nicht am Spiel: **Weitere Informationen** → **Trotzdem ausführen**.
 3. Starten über Desktop oder Startmenü.
 
-### macOS
+### macOS (folgt in Kürze)
+Die macOS-Fassung kommt als eigener Download. Die Schritte dann:
+
 1. `3D-Racing-Game_Portable_v1.0.0_macOS.zip` herunterladen und entpacken.
 2. Die App nach **Programme** ziehen.
 3. Beim ersten Start: **Rechtsklick auf die App → Öffnen** → im Dialog
@@ -176,9 +183,10 @@ Einstellungen und selbstgebauten Strecken.
 
 * **Windows 10/11 (64-bit)** oder **macOS 11 Big Sur** und neuer
 * Rund 500 MB Arbeitsspeicher
-* Grafikkarte mit OpenGL 3.3+: Auch Einsteiger-Grafikkarten (GTX 1050 Klasse)
-  laufen das Spiel flüssig auf niedrigen Grafikeinstellungen
-* Grafikstufen von Niedrig bis Ultra — für jeden Rechner etwas
+* Grafikkarte mit OpenGL 3.3+: Auch Einsteiger-Grafikkarten
+  spielen das Spiel flüssig auf niedrigen Grafikeinstellungen
+* Grafikstufen von Niedrig bis Ultra — beim ersten Start wählt das Spiel eine
+  passende Stufe für deine Grafikkarte, jederzeit änderbar
 * Controller optional, wird ohne Einrichtung erkannt
 * Für Online-Rennen eine Internetverbindung — für alles andere nicht
 
@@ -259,7 +267,7 @@ acceleration, top speed, grip and braking side by side.
 
 ---
 
-## 🎨 Garage
+## 🎨 Workshop
 
 Paint your car: **12 colours** and four finishes. Standard is yours from the
 start, the other three you earn:
@@ -275,17 +283,18 @@ painted it. The game renders every colour in real-time 3D.
 
 ## 🛠️ Track editor
 
-Draw your own circuit — layout, width, surface, name. The editor tells you right
-away whether the lap closes, and you can drive it immediately without leaving
-the game.
+Build your own circuit from straights and curves — with name, width, landscape
+and difficulty. The editor tells you right away whether the lap closes; publish
+it and it sits in the track menu next to the ones that ship with the game,
+without leaving the game.
 
 **And the best part:** take a custom track into an online race and every player
 receives it automatically. Nobody downloads anything or copies files into a
 folder.
 
 Five tracks ship with the game — each in its own landscape with hills, mountains,
-trees and grass, depending on the theme: City, Desert, Forest, Mountain and
-Plains.
+trees and grass: city, desert, forest and mountain. For your own circuits the
+editor offers one more landscape, the plains.
 
 ---
 
@@ -296,7 +305,8 @@ input device, so keyboard and controller, for example.
 
 **Online** — Up to 6 players. The host gets a **six-character code**, everyone
 else types it in, done. No account, no sign-up, no friends list. Servers run in
-Helsinki and Hamburg, and you see how busy they are before you join.
+Helsinki and Hamburg, and before you join you see which servers are online, how
+fast the connection is and how many lobbies are open.
 
 If someone drops out mid-race, the AI takes over their car — the race carries on
 instead of ending for everybody.
@@ -308,9 +318,9 @@ instead of ending for everybody.
 **Keyboard** — Arrow keys or `WASD`, handbrake on space. Every key can be
 remapped in the settings.
 
-**Controller** (Xbox / PlayStation) — Throttle and brake on the triggers,
-steering on the left stick, handbrake on `A` / `✕`. The menus are fully
-controller-navigable too, from the main menu through to the garage.
+**Controller** — any standard gamepad. Throttle and brake on the triggers,
+steering on the left stick, handbrake on the bottom face button (`A` / `✕`). The menus are fully
+controller-navigable too, from the main menu through to the workshop.
 
 ---
 
@@ -326,13 +336,17 @@ The game comes packaged. There's nothing else to install.
 
 ### Windows
 1. Download and run `3D-Racing-Game_Setup_v1.0.0_Windows.exe` — **no admin
-   rights needed**.
+   rights needed**. Prefer no installer? Unzip
+   `3D-Racing-Game_Portable_v1.0.0_Windows.zip` anywhere and start
+   `3D-Racing-Game.exe`.
 2. Windows shows a warning on first launch ("Unknown publisher"). That's because
    no paid signing certificate is used, not because of the game: **More info** →
    **Run anyway**.
 3. Launch from the desktop or the Start menu.
 
-### macOS
+### macOS (coming soon)
+The macOS version is on its way as a separate download. The steps will be:
+
 1. Download and unzip `3D-Racing-Game_Portable_v1.0.0_macOS.zip`.
 2. Drag the app into **Applications**.
 3. On first launch: **right-click the app → Open** → **Open** in the dialog.
@@ -352,8 +366,9 @@ tracks.
 * **Windows 10/11 (64-bit)** or **macOS 11 Big Sur** and newer
 * Around 500 MB of RAM
 * Graphics card with OpenGL 3.3+: Even entry-level graphics cards
-  (GTX 1050 class) run the game smoothly on low graphics settings
-* Graphics settings from Low to Ultra — there's something for every PC
+  run the game smoothly on low graphics settings
+* Graphics settings from Low to Ultra — on first launch the game picks a level
+  that suits your graphics card, and you can change it any time
 * Controller optional, detected without any setup
 * An internet connection for online races — for nothing else
 
