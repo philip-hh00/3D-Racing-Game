@@ -2,8 +2,9 @@
 
 Runs under pytest *and* standalone (``python tests/test_remote_vehicle.py``).
 
-Playback is snapshot interpolation: snapshots are timestamped on arrival and
-the ghost is drawn INTERP_DELAY behind real time, between the two snapshots
+Playback is snapshot interpolation: snapshots are placed on the sender's
+timeline (its send_time; the arrival time when there is none) and the ghost is
+drawn INTERP_DELAY behind it, between the two snapshots
 that bracket that render time. The regression these guard against is a ghost
 that jumps — from jitter, a late packet, or an uneven sender frame rate. It
 must instead only ever move between positions the sender actually reported,
@@ -330,10 +331,14 @@ def test_out_of_order_packet_is_dropped():
         g.apply_snapshot(_snapshot(200.0), send_time=2.0, arrival=2.0)
         n = len(g._buffer)
         # An older send_time than the newest buffered → superseded, not added.
-        g.apply_snapshot(_snapshot(150.0), send_time=1.5, arrival=2.01)
+        stale = _snapshot(150.0)
+        stale["lap"] = 0
+        g.apply_snapshot(stale, send_time=1.5, arrival=2.01)
         assert len(g._buffer) == n
-        # but it still updates the raw target (for takeover)
-        assert g._target_pos == (150.0, 0.0)
+        # ... and ignored entirely: the takeover target and the race progress
+        # stay at the newest report instead of jumping back with it.
+        assert g._target_pos == (200.0, 0.0)
+        assert g.lap == 1
     finally:
         _restore_clock()
 

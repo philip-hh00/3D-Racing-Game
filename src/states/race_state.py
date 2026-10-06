@@ -52,6 +52,14 @@ KAMERA_ZIELHOEHE_M = 1.0
 # echten Fahrzeug-Id zusammenfaellt.
 GHOST_KENNUNG = -1
 
+# Ferne Fahrzeuge tragen die Id ihres Absenders — fuer jeden Mitspieler ist das
+# 1, genau wie beim eigenen Auto. Unter dieser Kennung teilten sich beide in der
+# 3D-Szene Radknoten, Lenkung, Federung und Reifenspuren: das Abbild drehte die
+# Raeder des eigenen Autos mit, setzte dessen Lenkung und Neigung jedes Bild auf
+# null, und die Spur sprang zwischen beiden hin und her. Darum bekommen sie
+# eine eigene Kennung aus Absender und Id (wie ``sfx_rennen.kennung`` beim Ton).
+FERN_KENNUNG_BASIS = 10_000
+
 # Obergrenze fuer den Weg, den ein Fahrzeug in einem Bild zurueckgelegt haben
 # kann. Ein Sprung - Ruecksetzen an den Start, eine verspaetete Netznachricht -
 # ist kein gefahrener Weg, und ohne Deckel wuerden sich die Raeder danach
@@ -68,6 +76,19 @@ def welt3d(pos_px) -> tuple[float, float, float]:
     Genau dieser Griff hat in der Vorbereitung schon einmal Zeit gekostet.
     """
     return (pos_px[0] * M_PER_PX, pos_px[1] * M_PER_PX, 0.0)
+
+
+def szenen_kennung(fahrzeug) -> int:
+    """Kennung eines Fahrzeugs unter den Fahrzeugstaenden der 3D-Szene.
+
+    Eigene Autos und KI behalten ihre Id; ein fernes bekommt eine eigene aus
+    Absender und Id (siehe ``FERN_KENNUNG_BASIS``).
+    """
+    kennung = int(getattr(fahrzeug, "id", 0) or 0)
+    if getattr(fahrzeug, "is_remote", False):
+        slot = int(getattr(fahrzeug, "sender_slot", 0) or 0)
+        return FERN_KENNUNG_BASIS + slot * 256 + kennung
+    return kennung
 
 # Online: an AI that inherits a dropped player's car gets an id far outside the
 # regular 1..N range so it can never collide with a locally spawned vehicle.
@@ -2240,7 +2261,7 @@ class RaceState(BaseState):
     def _stand_von(self, fahrzeug, dt: float):
         """Einen Fahrzeugstand aus einem Fahrzeug des Spiels bauen."""
         from src.render3d import rennszene, vehicle_node
-        kennung = int(getattr(fahrzeug, "id", 0))
+        kennung = szenen_kennung(fahrzeug)
         nick, wank = self._neigung(kennung, fahrzeug, dt)
         vorn, hinten = self._reifenschlupf(kennung, fahrzeug)
         return rennszene.Fahrzeugstand(

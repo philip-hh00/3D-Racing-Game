@@ -12,29 +12,48 @@ from src.entities.remote_vehicle import RemoteVehicle
 from src.net import protocol
 
 
-def test_dead_reckoning_smooths_corrections_without_snapping():
+def test_dead_reckoning_smooths_corrections_without_snapping(monkeypatch):
+    """Laeuft der Puffer leer, rechnet das Abbild hoch. Kommt dann ein Paket,
+    das die Hochrechnung korrigiert, springt die gezeichnete Lage nicht — der
+    Unterschied wird ueber die naechsten Bilder abgebaut, vorwaerts."""
+    from src.entities import remote_vehicle as rv_mod
+    uhr = [100.0]
+    monkeypatch.setattr(rv_mod, "_clock", lambda: uhr[0])
     space = pymunk.Space()
     rv = RemoteVehicle(vehicle_id=1, sender_slot=1, space=space)
 
-    # Initial snapshot at origin
-    rv.apply_snapshot({"x": 0.0, "y": 0.0, "vx": 100.0, "vy": 0.0, "angle": 0.0})
+    # Erstes Paket am Ursprung, Senderuhr = eigene Uhr
+    rv.apply_snapshot({"x": 0.0, "y": 0.0, "vx": 100.0, "vy": 0.0, "angle": 0.0},
+                      send_time=100.0, arrival=100.0)
     assert rv.position == (0.0, 0.0)
 
-    # Update for 0.1s: dead reckoning moves sim_pos to (10.0, 0.0)
-    rv.update(0.1)
-    assert round(rv.position[0], 1) == 10.0
+    # 0.3 s ohne Paket: Wiedergabe laeuft ueber das Pufferende hinaus und
+    # rechnet mit vx=100 hoch.
+    for _ in range(18):
+        uhr[0] += 1.0 / 60.0
+        rv.update(1.0 / 60.0)
+    vorher = rv.position[0]
+    assert vorher > 10.0
 
-    # New packet arrives with x=12.0 (2.0px error offset absorbed into error_pos)
-    rv.apply_snapshot({"x": 12.0, "y": 0.0, "vx": 100.0, "vy": 0.0, "angle": 0.0})
-    # Instant position must start at pre-packet drawn position (10.0), NOT jump to 12.0!
-    assert abs(rv.position[0] - 10.0) < 0.1
+    # Das naechste Paket meldet den Wagen deutlich weiter hinten als hochgerechnet:
+    # er hat gebremst und rollt nun mit 40 px/s weiter.
+    rv.apply_snapshot({"x": 10.0, "y": 0.0, "vx": 40.0, "vy": 0.0, "angle": 0.0},
+                      send_time=100.3, arrival=uhr[0])
+    assert abs(rv.position[0] - vorher) < 0.1     # kein Sprung beim Eintreffen
 
-    # Over 0.1s of update frames, error decays smoothly and position converges to simulated trajectory
-    for _ in range(6):
-        rv.update(0.0166)
-
-    # Drawn position should be moving smoothly along vx=100
-    assert rv.position[0] > 10.0
+    letzte = rv.position[0]
+    for i in range(1, 91):
+        uhr[0] += 1.0 / 60.0
+        if i % 2 == 0:
+            st = 100.3 + i / 60.0
+            rv.apply_snapshot({"x": 10.0 + 40.0 * (st - 100.3), "y": 0.0, "vx": 40.0,
+                               "vy": 0.0, "angle": 0.0}, send_time=st, arrival=uhr[0])
+        rv.update(1.0 / 60.0)
+        assert rv.position[0] >= letzte - 1e-6     # nie rueckwaerts
+        letzte = rv.position[0]
+    # ... und am Ende wieder auf dem gemeldeten Weg (kurz hinter dem Sender).
+    soll = 10.0 + 40.0 * (uhr[0] - 100.3 - rv._delay)
+    assert abs(rv.position[0] - soll) < 3.0
 
 
 def test_udp_bump_packing_and_unpacking():
