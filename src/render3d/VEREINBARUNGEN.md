@@ -107,6 +107,12 @@ bereits im Achsensystem oben (`export_yup=False`); `mesh.laden` dreht nichts.
 | `rad_vl` `rad_vr` `rad_hl` `rad_hr` | Nabenmitte | rollen um Y, vorne lenken um Z |
 | `sattel_vl` … `sattel_hr` | Nabenmitte | lenken mit, rollen nicht |
 
+Reihenfolge am gelenkten Rad: `Fahrzeug · Nabe · Lenkung (Z) · Rollen (Y)`.
+Gelenkt wird um die Senkrechte durch die Nabe, gerollt danach um die Radachse
+im gelenkten Rad; der Sattel bekommt nur die Lenkung. Der Lenkwinkel in
+`Fahrzeugstand.lenkwinkel_rad` ist der Winkel der Achsmitte in Radiant (+ = links);
+`Fahrzeugknoten` verteilt ihn mit halbem Ackermann auf beide Vorderräder.
+
 Alles, was sich mit dem Rad dreht, muss um Y rotationssymmetrisch sein —
 sonst eiert es. Die Materialnamen sind Vertrag mit dem Renderer:
 
