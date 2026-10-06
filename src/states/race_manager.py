@@ -55,8 +55,11 @@ class RaceManager:
         # loading screen eats real time — from losing part of its own countdown.
         self._hold_countdown = hold_countdown
 
+        # Der Bus gehoert vor die Rundenzaehler: sie melden darauf, und wer hier
+        # einen eigenen Bus bekommt, muss die Rundenmeldungen auch dort hoeren.
+        self._event_bus = event_bus or EventBus()
         self.lap_trackers: dict[int, LapTracker] = {
-            v.id: LapTracker(v.id, track, v) for v in vehicles
+            v.id: LapTracker(v.id, track, v, self._event_bus) for v in vehicles
         }
 
         self.state: str = "countdown"        # countdown | racing | finishing | finished
@@ -74,7 +77,6 @@ class RaceManager:
         # window expires). Kept separate so the offline path is unaffected.
         self._forced_deadline: float | None = None
 
-        self._event_bus = event_bus or EventBus()
         self._event_bus.subscribe("checkpoint_crossed", self._on_checkpoint_crossed)
         self._event_bus.subscribe("lap_completed", self._on_lap_completed)
 
@@ -102,7 +104,7 @@ class RaceManager:
         if vehicle.id in self.lap_trackers:
             return
         self.vehicles.append(vehicle)
-        tracker = LapTracker(vehicle.id, self.track, vehicle)
+        tracker = LapTracker(vehicle.id, self.track, vehicle, self._event_bus)
         tracker.current_lap = max(1, int(lap))
         tracker.waypoint_progress = float(waypoint_progress)
         tracker.current_lap_time = max(0.0, float(elapsed))
@@ -140,7 +142,7 @@ class RaceManager:
                 self.countdown_timer -= dt
             if self.countdown_timer <= 0:
                 self.state = "racing"
-                EventBus().emit("race_start")
+                self._event_bus.emit("race_start")
         elif self.state in ("racing", "finishing"):
             self.race_time += dt
             for tracker in self.lap_trackers.values():
@@ -288,7 +290,7 @@ class RaceManager:
 
     def _end_race(self) -> None:
         self.state = "finished"
-        EventBus().emit("race_finish", {
+        self._event_bus.emit("race_finish", {
             "standings": [v.id for v in self._standings],
             "results": list(self.results),
         })

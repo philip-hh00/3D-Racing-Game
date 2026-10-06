@@ -589,20 +589,21 @@ class RaceState(BaseState):
         if setup.mode == "Zeitfahren":
             import os
             from src.core import ghost
-            tk = ghost.track_key(self._track_path)
-
-            if not ghost.exists(tk):
+            # Ohne gefahrene Runde faehrt die KI der Stufe Meister den ersten
+            # Ghost: aus dem Stand, von der Startstelle des Spielers, mit der
+            # echten Physik. Sie wird nicht abgelegt — ab der ersten Runde des
+            # Spielers ist dessen Zeit der Ghost, und bis dahin passt sich die
+            # KI jeder Aenderung der Strecke an.
+            if self.ghost_player is None:
                 def _ghost_progress(pct):
                     self._lade_melden("ghost", pct / 100.0)
 
+                pos = self.player.body.position
                 seed_data = ghost.generate_seed_ghost(
-                    self._track_path, progress_callback=_ghost_progress)
-                ghost.save(tk, seed_data)
-
-                # The ghost was loaded as None in enter() (no file existed yet).
-                # Attach the freshly generated seed so it also races THIS first run
-                # instead of only appearing on the replay.
-                if self.ghost_player is None and seed_data is not None:
+                    self._track_path, progress_callback=_ghost_progress,
+                    start=((pos.x, pos.y), self.player.body.angle),
+                    vehicle=getattr(self.player, "config_key", None))
+                if ghost.brauchbar(seed_data):
                     self.ghost_player = ghost.GhostPlayer(seed_data)
                     self._original_ghost_sectors = list(seed_data.sectors)
                     self._original_ghost_lap_time = seed_data.lap_time
@@ -1328,7 +1329,10 @@ class RaceState(BaseState):
 
             if best_vid is not None:
                 old_time = 9999.0
-                if self.ghost_player and self.ghost_player.data:
+                # Die KI-Runde ist kein Rekord: die erste gefahrene Runde wird
+                # der Ghost, auch wenn sie langsamer ist als die der KI.
+                if (self.ghost_player and self.ghost_player.data
+                        and not ghost.ist_seed(self.ghost_player.data)):
                     old_time = self.ghost_player.data.lap_time
 
                 if best_time < old_time:

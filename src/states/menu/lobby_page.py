@@ -314,8 +314,8 @@ class LobbyPage(Page):
 
             desc_lines = [
                 "Fahre eine einzelne Runde auf Bestzeit gegen einen transparenten Ghost.",
-                "Sollte noch keine Bestzeit existieren, wird beim ersten Start ein",
-                "simulierter Erst-Ghost (Seed) generiert.",
+                "Gibt es noch keine Bestzeit, fährt beim ersten Start die KI der",
+                "Stufe Meister als Ghost von deiner Startstelle aus eine Runde.",
                 "",
                 "Unterbietest du die Bestzeit, wird dein eigener Lauf als neuer",
                 "Bestzeit-Ghost für diese Strecke gespeichert."
