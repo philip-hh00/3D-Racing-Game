@@ -215,6 +215,9 @@ class RaceState(BaseState):
         self._send_accum: float = 0.0
         # Seconds of denser position streaming left after a car-to-car touch.
         self._contact_boost: float = 0.0
+        #: Absender-Slot -> Zeitpunkt (monotonic), an dem unser Auto seinen
+        #: Geist zuletzt beruehrt hat (siehe _bump_empfangen).
+        self._geist_beruehrt: dict[int, float] = {}
         # Online: toasts telling the HUD "X left the race [— AI takes over]".
         self._leave_toasts: list[dict] = []
         self._my_online_slot: int = 0
@@ -361,6 +364,7 @@ class RaceState(BaseState):
         self._remote_config_keys = {}
         self._send_accum = 0.0
         self._contact_boost = 0.0
+        self._geist_beruehrt = {}
         self._leave_toasts = []
         if self._online:
             self._split = False
@@ -1314,12 +1318,6 @@ class RaceState(BaseState):
         if not nc or not nc.connected:
             return
 
-        impulse = data.get("impulse", 0.0)
-        if impulse < 50.0:
-            return
-        tot_imp = data.get("total_impulse")
-        if not tot_imp:
-            return
         va = data.get("vehicle_a")
         vb = data.get("vehicle_b")
         local_p = self.player
@@ -1328,9 +1326,69 @@ class RaceState(BaseState):
             target_rv = vb
         elif vb is local_p and getattr(va, "is_remote", False):
             target_rv = va
+        if target_rv is not None and hasattr(target_rv, "sender_slot"):
+            # Diesen Stoss hat unser Auto am Geist schon gespuert — ein
+            # nachkommender Stoss von dort zaehlte ihn doppelt (_bump_empfangen).
+            import time as _t
+            self._geist_beruehrt[target_rv.sender_slot] = _t.monotonic()
+
+        impulse = data.get("impulse", 0.0)
+        if impulse < 50.0:
+            return
+        tot_imp = data.get("total_impulse")
+        if not tot_imp:
+            return
 
         if target_rv and hasattr(target_rv, "sender_slot"):
-            nc.send_bump(target_rv.sender_slot, tot_imp.x, tot_imp.y)
+            from src.physics.collision_handler import stoss_fuer_getroffenen
+            m_eigen = self._fahrzeug_masse(local_p)
+            m_ziel = self._fahrzeug_masse(target_rv) or m_eigen
+            jx, jy = stoss_fuer_getroffenen(tot_imp, target_rv is va,
+                                            m_eigen or 1.0, m_ziel or 1.0)
+            nc.send_bump(target_rv.sender_slot, jx, jy)
+
+    @staticmethod
+    def _fahrzeug_masse(fahrzeug: Any) -> float | None:
+        """Masse eines lokalen oder entfernten Fahrzeugs (kg), sonst None."""
+        koerper = getattr(getattr(fahrzeug, "physics", None), "body", None)
+        masse = getattr(koerper, "mass", None)
+        if isinstance(masse, (int, float)) and 0.0 < masse < float("inf"):
+            return float(masse)
+        schluessel = getattr(fahrzeug, "config_key", None)
+        if schluessel:
+            from src.entities.vehicle_factory import VehicleFactory
+            cfg = VehicleFactory.get_config(schluessel)
+            if cfg is not None:
+                return float(cfg.mass)
+        return None
+
+    #: So lange nach einer Beruehrung mit dem Geist eines Mitspielers gilt ein
+    #: Stoss von ihm als schon gespuert (Sekunden).
+    BUMP_DOPPELT_S = 0.3
+
+    def _bump_empfangen(self, data: dict[str, Any]) -> None:
+        """Einen Stoss von einem Mitspieler auf das eigene Auto geben.
+
+        Der Wert kommt in **Weltkoordinaten** (``stoss_fuer_getroffenen``).
+        Frueher ging er an ``apply_impulse_at_local_point`` und wurde so um den
+        Gierwinkel des eigenen Autos gedreht: wer quer zum Stoss stand, wurde
+        nach vorn oder hinten geschoben.
+
+        Hat unser Auto den Geist des Absenders gerade selbst beruehrt, hat die
+        Physik den Stoss schon geliefert — ein zweites Mal liess die Autos
+        doppelt so weit auseinanderfliegen.
+        """
+        imp = data.get("impulse", (0.0, 0.0))
+        body = getattr(self.player, "body", None) if self.player else None
+        if body is None:
+            return
+        import time as _t
+        zuletzt = self._geist_beruehrt.get(data.get("sender_slot"))
+        if zuletzt is not None and _t.monotonic() - zuletzt < self.BUMP_DOPPELT_S:
+            return
+        import pymunk
+        body.apply_impulse_at_world_point(
+            pymunk.Vec2d(float(imp[0]), float(imp[1])), body.position)
 
 
     def _on_wall_collision(self, data: dict[str, Any]) -> None:
@@ -3108,12 +3166,7 @@ class RaceState(BaseState):
 
             elif src == "udp_bump":
                 if data.get("target_slot") == nc.slot:
-                    imp = data.get("impulse", (0.0, 0.0))
-                    if self.player and getattr(self.player, "body", None):
-                        import pymunk
-                        self.player.body.apply_impulse_at_local_point(
-                            pymunk.Vec2d(float(imp[0]), float(imp[1]))
-                        )
+                    self._bump_empfangen(data)
 
 
             elif src == "tcp":

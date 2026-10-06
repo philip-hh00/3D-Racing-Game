@@ -211,7 +211,10 @@ class RemoteVehicle:
             self._shape = pymunk.Poly.create_box(self._body, (h, w))
         self._shape.collision_type = COLLISION_TYPE_VEHICLE
         self._shape.friction   = 0.2
-        self._shape.elasticity = 0.3
+        # Der Geist ist kinematisch, also fuer unser Auto unendlich schwer:
+        # mit 0,3 (x 0,25 am Auto) prallte der Verursacher eines Auffahrunfalls
+        # rueckwaerts ab, aus 100 km/h mit -8 km/h (gemeldet 06.10.2026).
+        self._shape.elasticity = 0.0
         self._space = space
         space.add(self._body, self._shape)
 
