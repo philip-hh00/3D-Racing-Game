@@ -15,14 +15,21 @@ if TYPE_CHECKING:
 class LapTracker:
     """Tracks the progress, lap count, and lap times of a single vehicle."""
 
-    def __init__(self, vehicle_id: int, track: Track, vehicle: Vehicle) -> None:
+    def __init__(self, vehicle_id: int, track: Track, vehicle: Vehicle,
+                 event_bus: EventBus | None = None) -> None:
         """Initialize the lap tracker.
 
         Args:
             vehicle_id: ID of the vehicle being tracked.
             track:      The track reference.
             vehicle:    The vehicle reference.
+            event_bus:  Bus fuer ``lap_completed`` & Co. Ohne Angabe der
+                        globale. Eine Simulation mit eigenem Bus (Seed-Ghost)
+                        muss ihn durchreichen: der Rundenzaehler meldete sonst
+                        auf dem globalen Bus, der Rennverwalter hoerte auf dem
+                        eigenen, und das Rennen wurde nie fertig.
         """
+        self._event_bus = event_bus
         self.vehicle_id: int = vehicle_id
         self.track: Track = track
         self.vehicle: Vehicle = vehicle
@@ -134,7 +141,7 @@ class LapTracker:
             self.next_checkpoint_idx = (checkpoint_idx + 1) % self.num_checkpoints
 
         # Emit checkpoint event for visual overlays or sounds
-        EventBus().emit(
+        (self._event_bus or EventBus()).emit(
             "checkpoint_registered",
             {
                 "vehicle_id": self.vehicle_id,
@@ -158,7 +165,7 @@ class LapTracker:
                 self.best_splits[cp_idx] = t
 
         # Emit lap completed event
-        EventBus().emit(
+        (self._event_bus or EventBus()).emit(
             "lap_completed",
             {
                 "vehicle_id": self.vehicle_id,

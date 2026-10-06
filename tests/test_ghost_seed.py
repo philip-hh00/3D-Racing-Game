@@ -192,14 +192,16 @@ def test_eine_alte_vergiftete_datei_heilt_von_selbst(tmp_path):
 # 3. Eine Quelle fuer die Strecke
 # ---------------------------------------------------------------------------
 
-def test_das_erste_zeitfahren_bekommt_seinen_ghost_und_legt_ihn_ab(
+def test_das_erste_zeitfahren_bekommt_seinen_ghost(
         monkeypatch, dichte_strecke):
     """Der gemeldete Fall von vorn bis hinten.
 
     Eine eigene Strecke, noch kein Ghost: das erste Zeitfahren muss einen
-    erzeugen, ihn **in diesem Lauf** schon zeigen (sonst faehrt man das erste
-    Mal gegen niemanden) und ihn unter dem Schluessel der gefahrenen Strecke
-    ablegen.
+    erzeugen und ihn **in diesem Lauf** schon zeigen (sonst faehrt man das erste
+    Mal gegen niemanden). Seit dem 06.10.2026 ist das die KI der Stufe Meister
+    (siehe ``test_ghost_ki``); sie wird **nicht** abgelegt, weil ein abgelegter
+    KI-Ghost die erste gefahrene Runde des Spielers als Rekord verdraengen
+    wuerde.
     """
     from tests import spielhilfe
 
@@ -213,16 +215,14 @@ def test_das_erste_zeitfahren_bekommt_seinen_ghost_und_legt_ihn_ab(
     rennen, _sm = spielhilfe.rennen_bauen(dichte_strecke, runden=1, feld=1,
                                           modus="Zeitfahren")
     try:
-        assert rennen.ghost_player is not None, \
-            "erstes Zeitfahren ohne Ghost — man faehrt gegen niemanden"
+        assert rennen.ghost_player is not None,             "erstes Zeitfahren ohne Ghost — man faehrt gegen niemanden"
         daten = rennen.ghost_player.data
         assert daten.samples, "der Ghost hat keine Punkte"
         assert daten.lap_time > 0, daten.lap_time
         assert rennen.ghost_player.get_position(0.0) is not None
+        assert ghost.ist_seed(daten)
 
-        assert ghost.exists(schluessel), \
-            "der erzeugte Ghost wurde nicht abgelegt — beim naechsten Mal " \
-            "wieder zwei Minuten warten"
+        assert not ghost.exists(schluessel),             "die KI-Runde liegt als Spielerrekord auf der Platte"
     finally:
         spielhilfe.alles_schliessen()
 

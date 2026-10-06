@@ -77,7 +77,7 @@ def _ghost_path(track_key: str) -> str:
     return user_path("data", "ghosts", f"{sanitized}.json")
 
 
-def _brauchbar(daten: "GhostData | None") -> bool:
+def brauchbar(daten: "GhostData | None") -> bool:
     """Ob mit diesen Daten ein Ghost fahren kann.
 
     Ein Ghost ohne Punkte ist keiner. Das klingt nach einer Selbstverstaend-
@@ -97,7 +97,7 @@ def exists(track_key: str) -> bool:
     soll sich von selbst erledigen, sonst haetten die Spieler, die schon eine
     haben, nichts von der Reparatur.
     """
-    return _brauchbar(load(track_key))
+    return brauchbar(load(track_key))
 
 
 def delete(track_key: str) -> None:
@@ -144,7 +144,7 @@ def load(track_key: str) -> GhostData | None:
     except Exception:
         return None
     # Eine leere Datei aus einer aelteren Fassung gilt als nicht vorhanden.
-    return daten if _brauchbar(daten) else None
+    return daten if brauchbar(daten) else None
 
 
 def save(track_key: str, ghost: GhostData) -> None:
@@ -153,7 +153,7 @@ def save(track_key: str, ghost: GhostData) -> None:
     Ein leerer Ghost auf der Platte ist schlimmer als keiner: er sieht fuer
     ``exists()`` aus wie einer und verhindert damit jede weitere Erzeugung.
     """
-    if not _brauchbar(ghost):
+    if not brauchbar(ghost):
         return
     path = _ghost_path(track_key)
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -298,15 +298,46 @@ class GhostPlayer:
         return None
 
 
-def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
-    """Simulate a Rookie vehicle driving 1 lap to generate a seed ghost.
+#: Fahrzeugkennung der Ghost-KI. Hoch genug, dass sie mit keinem Rennteilnehmer
+#: kollidiert; aus ihr kommt auch der Zufallskeim der KI-Fehler, die Fahrt ist
+#: also bei jedem Aufruf dieselbe.
+SEED_KENNUNG = 99
 
-    If the simulation fails or times out, returns a fallback ghost based on
-    the AI plan.
+#: Fahrername des KI-Ghosts. Daran erkennt das Rennen, dass es keine
+#: Spielerrunde ist (siehe :func:`ist_seed`).
+SEED_FAHRER = "Seed-Ghost"
+
+
+def ist_seed(daten: "GhostData | None") -> bool:
+    """Ob dieser Ghost die KI-Runde ist und keine gefahrene Spielerrunde."""
+    return bool(daten is not None and daten.driver == SEED_FAHRER)
+
+
+def generate_seed_ghost(track_path: str, progress_callback=None,
+                        start: tuple[tuple[float, float], float] | None = None,
+                        vehicle: str | None = None) -> GhostData:
+    """Den Erst-Ghost einer Strecke: die KI der Stufe *Meister* faehrt eine Runde.
+
+    Gefahren wird mit der echten Physik und demselben ``AIVehicle`` wie im
+    Rennen, aus dem Stand und von derselben Stelle wie der Spieler. Aufgezeichnet
+    wird sie als gewoehnlicher Ghost und genauso abgespielt — ohne Koerper in der
+    Welt des Rennens, also ohne Kollision, ohne Platz in der Wertung und ohne
+    Eintrag als Spielerrekord.
+
+    *start* ist ``((x, y), winkel_rad)`` des Spielers; ohne Angabe der erste
+    Startplatz der Strecke. *vehicle* ist der Fahrzeugschluessel (der des
+    Spielers, damit der Vergleich fair ist); ohne Angabe ``rookie``.
+
+    Scheitert die Simulation, kommt ein **leeres** ``GhostData`` zurueck: kein
+    Ghost ist ehrlicher als ein erfundener. Bis zum 06.10.2026 stand hier ein
+    Rueckfall, der die Zeiten aus der Ideallinie rechnete (Einheiten durcheinander,
+    Start an Punkt 0 der Ideallinie statt am Startplatz): ein Ghost, der in der
+    Streckenmitte losraste und nicht einzuholen war. Ausgeloest wurde er jedes
+    Mal — der Rennverwalter der Simulation hoerte die Rundenmeldungen nicht
+    (siehe ``LapTracker``), das Rennen wurde nie fertig, und nach dem Zeitlimit
+    galt die Simulation als gescheitert.
     """
     import math
-    import pygame
-    import pymunk
     from src.physics.physics_world import PhysicsWorld
     from src.track.track import Track
     from src.entities.vehicle_factory import VehicleFactory
@@ -343,32 +374,41 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
         )
         checkpoints.append(checkpoint)
 
-    # 2. Spawn AI Rookie
-    slots = temp_track.get_start_positions()
-    slot = slots[0] if slots else None
-    if not slot:
-        # Fallback if no start slots
+    def _aufraeumen(ai=None) -> None:
+        for cp in checkpoints:
+            cp.cleanup()
+        if ai is not None:
+            ai.cleanup(temp_space)
         physics_world.cleanup()
-        return GhostData()
 
-    diff = stufe("expert")
+    # 2. Startpose: die des Spielers, sonst der erste Startplatz
+    if start is not None:
+        start_pos = (float(start[0][0]), float(start[0][1]))
+        start_angle = float(start[1])
+    else:
+        slots = temp_track.get_start_positions()
+        if not slots:
+            _aufraeumen()
+            return GhostData()
+        start_pos, start_angle = slots[0].pos, math.radians(slots[0].angle)
 
     # Make sure vehicle configs are loaded before using the factory
     VehicleFactory.load_all_configs()
+    key = vehicle if vehicle and VehicleFactory.get_config(vehicle) else "rookie"
 
     ai = VehicleFactory.create_ai_vehicle(
-        config_key="rookie",
-        vehicle_id=99,
-        start_pos=slot.pos,
-        start_angle=math.radians(slot.angle),
+        config_key=key,
+        vehicle_id=SEED_KENNUNG,
+        start_pos=start_pos,
+        start_angle=start_angle,
         space=temp_space,
         track=temp_track,
-        difficulty=diff,
+        difficulty=stufe("expert"),
     )
 
     if ai is None:
         print("[ghost] WARNING: Could not create AI vehicle – check data/vehicles/rookie.json")
-        physics_world.cleanup()
+        _aufraeumen()
         return GhostData()
 
     # Activate AI driving (by default AIVehicle.ai_active=False and brakes are held)
@@ -397,30 +437,31 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     ai.controller.vorbereiten()
     _melden(50)
     plan = ai.controller.fahrplan
-    profile = np.maximum(plan.v_ziel, 10.0)
-    punkte = plan.strecke.xy_viele(plan.strecke.s, plan.d_ideal)
 
     # 4. Initialize race manager and collision handler
     event_bus = EventBus.create_isolated()
-    collision_handler = CollisionHandler(temp_space, event_bus)
+    collision_handler = CollisionHandler(temp_space, event_bus)  # noqa: F841 (haelt die Rueckrufe am Leben)
     race_manager = RaceManager(
         vehicles=[ai],
         track=temp_track,
         total_laps=1,
         event_bus=event_bus,
     )
+    # Aus dem Stand, ohne Countdown: die Ghost-Zeit beginnt wie die des Spielers
+    # beim Startsignal.
     race_manager.state = "racing"
     race_manager.countdown_timer = 0.0
 
     recorder = GhostRecorder()
     sim_time = 0.0
-    # Expected lap time fallback calculation
+    # Obergrenze: die Zeit, die der Fahrplan fuer die Runde erwartet, dreifach,
+    # hoechstens drei Minuten.
     expected_lap_time = float(sum(plan.strecke.seg_len / np.maximum(plan.v_ziel, 10.0)))
     max_duration = min(180.0, expected_lap_time * 3.0)
 
     # Listener for checkpoint times
     def on_cp(data):
-        if data.get("vehicle_id") == 99:
+        if data.get("vehicle_id") == SEED_KENNUNG:
             recorder.record_sector(sim_time)
 
     event_bus.subscribe("checkpoint_crossed", on_cp)
@@ -431,7 +472,7 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
     try:
         # Record the exact starting position sample at t = 0.0
         recorder.record(0.0, ai.body.position.x, ai.body.position.y, ai.body.angle)
-        
+
         while race_manager.state != "finished" and sim_time < max_duration:
             # AIVehicle.update internally calls controller.compute_inputs when ai_active=True
             ai.update(dt)
@@ -443,52 +484,30 @@ def generate_seed_ghost(track_path: str, progress_callback=None) -> GhostData:
 
             # Remaining 50% of progress bar goes to simulation
             _melden(50 + sim_time * 50 / max_duration)
-    except Exception as e:
+        # Die Runde ist meist vor der Zeitgrenze fertig: der Balken soll nicht
+        # bei dem Anteil stehenbleiben, der zufaellig dort erreicht war.
+        _melden(100)
+    except Exception:
         import traceback
         print("SEED GHOST SIMULATION FAILED:")
         traceback.print_exc()
         failed = True
     finally:
         event_bus.unsubscribe("checkpoint_crossed", on_cp)
+        finished = race_manager.state == "finished"
+        lap_time = (race_manager.results[0]["finish_time"]
+                    if race_manager.results else sim_time)
         race_manager.cleanup()
+        _aufraeumen(ai)
 
-    # Cleanup physics
-    for cp in checkpoints:
-        cp.cleanup()
-    ai.cleanup(temp_space)
-    physics_world.cleanup()
+    if failed or not finished or not recorder.samples:
+        print("[ghost] WARNING: KI-Ghost nicht fertig geworden - Zeitfahren ohne Ghost")
+        return GhostData()
 
-    # If simulation timed out or failed, build fallback ghost
-    if failed or race_manager.state != "finished" or not recorder.samples:
-        return build_fallback_ghost(punkte, profile)
-
-    lap_time = race_manager.results[0]["finish_time"] if race_manager.results else sim_time
     return GhostData(
-        lap_time=lap_time,
-        samples=recorder.samples,
-        sectors=recorder.sectors,
-        driver="Seed-Ghost",
-        vehicle="rookie"
+        lap_time=float(lap_time),
+        samples=[[float(v) for v in s] for s in recorder.samples],
+        sectors=[float(t) for t in recorder.sectors],
+        driver=SEED_FAHRER,
+        vehicle=key,
     )
-
-
-def build_fallback_ghost(punkte, profile) -> GhostData:
-    samples = []
-    t = 0.0
-    n = len(punkte)
-    for i in range(n):
-        p = punkte[i]
-        next_p = punkte[(i + 1) % n]
-        angle = math.atan2(next_p[1] - p[1], next_p[0] - p[0])
-        samples.append([round(t, 3), round(p[0], 1), round(p[1], 1), round(angle, 4)])
-
-        dx = next_p[0] - p[0]
-        dy = next_p[1] - p[1]
-        ds = math.sqrt(dx*dx + dy*dy)
-        v = profile[i] if i < len(profile) else 200.0
-        if v < 10.0:
-            v = 10.0
-        dt = ds / v
-        t += dt
-
-    return GhostData(lap_time=t, samples=samples, sectors=[], driver="Seed-Ghost", vehicle="rookie")
