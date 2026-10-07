@@ -66,6 +66,57 @@ RESOLUTIONS: list[tuple[str, tuple[int, int]]] = [
 ]
 RESOLUTION_LABELS = [r[0] for r in RESOLUTIONS]
 
+#: Anteil des Bildschirms, den ein Fenster hoechstens belegt: Titelleiste,
+#: Menueleiste und Dock (macOS) bzw. Taskleiste (Windows) brauchen Platz.
+FENSTER_ANTEIL_B = 0.96
+FENSTER_ANTEIL_H = 0.88
+
+
+def _desktop_groesse() -> tuple[int, int] | None:
+    """Groesse des Hauptbildschirms in Bildpunkten, oder ``None``."""
+    try:
+        groessen = pygame.display.get_desktop_sizes()
+    except Exception:                                # pragma: no cover - alte pygame
+        return None
+    if not groessen:
+        return None
+    b, h = groessen[0]
+    return (int(b), int(h)) if b > 0 and h > 0 else None
+
+
+def passende_fenstergroesse(w: int, h: int,
+                            desktop: tuple[int, int] | None = None) -> tuple[int, int]:
+    """Die Fenstergroesse, auf den Bildschirm begrenzt.
+
+    Bis 1.0.0 ging die eingestellte Groesse unveraendert an das Fenster. Auf
+    einem MacBook (1440×900 Punkte) war das Vorgabefenster 1920×1080 groesser
+    als der Bildschirm und wurde abgeschnitten (gemeldet 07.10.2026). Passt
+    die Groesse nicht, wird sie im Seitenverhaeltnis verkleinert.
+    """
+    desktop = desktop or _desktop_groesse()
+    if desktop is None:
+        return (w, h)
+    max_b = int(desktop[0] * FENSTER_ANTEIL_B)
+    max_h = int(desktop[1] * FENSTER_ANTEIL_H)
+    faktor = min(1.0, max_b / w, max_h / h)
+    if faktor >= 1.0:
+        return (w, h)
+    return (max(640, int(w * faktor)), max(360, int(h * faktor)))
+
+
+def verfuegbare_aufloesungen(desktop: tuple[int, int] | None = None) -> list[str]:
+    """Die Aufloesungen, deren Fenster auf den Bildschirm passt.
+
+    Die kleinste bleibt immer in der Liste, auch auf einem winzigen Schirm.
+    Im Vollbild gilt ohnehin die Groesse des Bildschirms.
+    """
+    desktop = desktop or _desktop_groesse()
+    if desktop is None:
+        return list(RESOLUTION_LABELS)
+    passend = [label for label, (w, h) in RESOLUTIONS
+               if passende_fenstergroesse(w, h, desktop) == (w, h)]
+    return passend or [RESOLUTION_LABELS[0]]
+
 # Virtual render dimensions (never change)
 VIRT_W = SCREEN_WIDTH   # 1920
 VIRT_H = SCREEN_HEIGHT  # 1080
@@ -316,7 +367,7 @@ def apply_settings(*, resolution: str = "1920x1080",
     global _current_w, _current_h, _current_fullscreen, _current_vsync
     global _opengl_fenster
 
-    w, h = _aufloesung_lesen(resolution)
+    w, h = passende_fenstergroesse(*_aufloesung_lesen(resolution))
 
     if _current_w is not None:
         _umschalten(w, h, fullscreen)

@@ -290,10 +290,12 @@ class SettingsPage(Page):
             col.add(b1)
             self._content_group = FocusGroup([b1])
         elif name == "Video":
-            from src.core.display import RESOLUTION_LABELS, resolution_str_to_label
-            res_labels = RESOLUTION_LABELS
+            from src.core.display import verfuegbare_aufloesungen, resolution_str_to_label
+            # Nur, was als Fenster auf diesen Bildschirm passt (MacBook: 1440×900).
+            res_labels = verfuegbare_aufloesungen()
             cur_res = resolution_str_to_label(self._eff("resolution", profile.current().resolution))
-            res_idx = res_labels.index(cur_res) if cur_res in res_labels else 2  # default 1920×1080
+            res_idx = (res_labels.index(cur_res) if cur_res in res_labels
+                       else len(res_labels) - 1)   # sonst die groesste, die passt
             fs_opts = [tr("Fenster"), tr("Vollbild")]
             fs_idx = 1 if self._eff("fullscreen", profile.current().fullscreen) else 0
             fps_opts = ["30", "60", "120", "144", "240", tr("Unbegrenzt")]
