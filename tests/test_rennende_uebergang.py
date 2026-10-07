@@ -56,6 +56,8 @@ def test_ausblenden_starten_ist_idempotent():
     r._outro_active = False
     r._outro_timer = 0.0
     r._outro_rows = None
+    r._zielanzeige_rest = 0.0
+    r._ausblenden_vorgemerkt = False
     r._starte_ausblenden(None)
     assert r._outro_active and r._outro_timer == RESULTS_OUTRO_SECONDS
     r._outro_timer = 0.3                              # laeuft schon
