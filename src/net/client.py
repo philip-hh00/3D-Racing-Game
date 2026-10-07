@@ -47,6 +47,9 @@ _RECV_BUF    = 8192
 _MAX_TCP_MSG = 2 * 1024 * 1024   # 2 MB safety cap
 _TCP_TIMEOUT = 60.0               # recv timeout between messages
 _UDP_TIMEOUT = 0.1                # non-blocking poll interval
+#: TCP-Keepalive: so viele **echte** Sekunden zwischen zwei PINGs. Der Server
+#: wartet in ``_recv`` hoechstens 60 s auf die naechste Nachricht.
+TCP_KEEPALIVE_S = 20.0
 
 
 class NetworkClient:
@@ -66,9 +69,10 @@ class NetworkClient:
         # Ping state
         self._ping_sent:    float = 0.0
         self._ping_ms:      float = 0.0
-        self._ping_accum:   float = 0.0
         self._ping_interval: float = 1.0
-        self._tcp_ping_accum: float = 0.0
+        # Zeitpunkt (time.monotonic) des letzten TCP-PING bzw. UDP-Pings.
+        self._tcp_ping_zuletzt: float = 0.0
+        self._udp_ping_zuletzt: float = 0.0
 
     # ── Connection ────────────────────────────────────────────────────────────
 
@@ -278,19 +282,25 @@ class NetworkClient:
                 return
 
     def update(self, dt: float):
-        """Send periodic UDP pings. Call once per game frame."""
+        """Send periodic UDP pings and the TCP keepalive. Call once per game frame.
+
+        Gemessen wird an der Uhr, nicht an *dt*: die Hauptschleife kappt jedes
+        Bild auf 0,1 s, und ein langes Bild (Modell laden, 3D-Vorschau der
+        Fahrzeugauswahl) zaehlte sonst nur als Zehntelsekunde. So verstrichen
+        zwischen zwei PINGs mehr als die 60 s des Servers, und er warf den
+        Spieler aus der Lobby (Playtest 06.10.2026).
+        """
         if not (self._alive and self._lobby_id):
             return
-        self._ping_accum += dt
-        if self._ping_accum >= self._ping_interval:
-            self._ping_accum    = 0.0
-            self._ping_sent     = time.monotonic()
+        jetzt = time.monotonic()
+        if jetzt - self._udp_ping_zuletzt >= self._ping_interval:
+            self._udp_ping_zuletzt = jetzt
+            self._ping_sent        = jetzt
             self._udp_send(pack_ping(self._lobby_id, self._slot, self._ping_sent))
 
         # TCP keepalive to prevent server timeout (timeout=60s in server's _recv)
-        self._tcp_ping_accum += dt
-        if self._tcp_ping_accum >= 20.0:
-            self._tcp_ping_accum = 0.0
+        if jetzt - self._tcp_ping_zuletzt >= TCP_KEEPALIVE_S:
+            self._tcp_ping_zuletzt = jetzt
             self.send_tcp({"type": "PING"})
 
     # ── Properties ────────────────────────────────────────────────────────────

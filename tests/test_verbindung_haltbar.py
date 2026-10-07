@@ -176,10 +176,10 @@ def test_der_ping_abstand_passt_zur_wartezeit_des_servers():
 
     from src.net import client as netz_client
 
+    # Seit 06.10.2026 an der Uhr gemessen, nicht an dt (tests/test_keepalive_wanduhr.py).
     quelle = inspect.getsource(netz_client.NetworkClient.update)
-    treffer = re.search(r"_tcp_ping_accum\s*>=\s*([\d.]+)", quelle)
-    assert treffer, "der TCP-Keepalive ist nicht mehr zu finden"
-    abstand = float(treffer.group(1))
+    assert "TCP_KEEPALIVE_S" in quelle, "der TCP-Keepalive ist nicht mehr zu finden"
+    abstand = float(netz_client.TCP_KEEPALIVE_S)
 
     with open(os.path.join(_ROOT, "server", "server.py"), encoding="utf-8") as fh:
         server_quelle = fh.read()
