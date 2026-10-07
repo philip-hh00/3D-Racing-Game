@@ -122,6 +122,35 @@ sonst eiert es. Die Materialnamen sind Vertrag mit dem Renderer:
 * `glas` — `alphaMode BLEND`, wird nach allem Deckenden gezeichnet.
 * Übrige (`chrom`, `felge`, `gummi`, `licht_vorn` …) bleiben, wie sie sind.
 
+**Cockpit (ab 1.1.0)** — zusätzliche Knoten nur in `<key>.glb`, nicht im LOD1.
+Alle Koordinaten im Fahrzeugsystem oben (+X vorne, +Z oben, Ursprung
+Fahrzeugmitte am Boden):
+
+| Knoten | Ursprung | Bewegung |
+|---|---|---|
+| `augpunkt` | Augenmitte des Fahrers (leeres Objekt) | keine; Cockpitkamera, Blick nach +X |
+| `lenkrad` | Mitte des Lenkradkranzes auf der Lenksäulenachse | dreht um die **lokale X-Achse** (= Lenksäule, zeigt zum Fahrer hin geneigt); + = links |
+| `nadel_tacho` `nadel_drehzahl` | Drehpunkt der Nadel | drehen um die **lokale X-Achse** (Blickrichtung ins Instrument); in Ruhe zeigt die Nadel auf den Skalenanfang |
+| `spiegel_innen` `spiegel_l` `spiegel_r` | Mitte der Spiegelfläche | starr; Spiegelglas als eigenes Netz mit Material `spiegel`, UV 0..1 über die Fläche (U nach rechts, wie der Fahrer hineinschaut) |
+
+`<key>_teile.json` bekommt den Block `"cockpit"`:
+
+```json
+"cockpit": {
+  "augpunkt": [x, y, z],
+  "haube": [x, y, z],
+  "lenkrad_uebersetzung": 12.0,
+  "tacho_max_kmh": 320, "tacho_winkel_grad": [-135, 135],
+  "drehzahl_max": 9000, "drehzahl_winkel_grad": [-135, 135]
+}
+```
+
+`haube` ist der Kamerapunkt der Motorhaubenansicht. Die Winkelangaben sind
+die Drehung um die lokale X-Achse der Nadel bei 0 und bei Maximum. Der
+Lenkradwinkel ist der sichtbare Lenkwinkel der Räder mal
+`lenkrad_uebersetzung`. Fehlt ein Knoten oder der Block, zeichnet der
+Renderer ohne (alte GLBs bleiben gültig).
+
 **Fahrzeug-LOD1** (`assets/vehicles/<key>_lod1.glb`, neben `<key>.glb`):
 dieselben Knoten mit denselben Ursprüngen und dieselben Materialnamen
 (`lack`, `lack2`, `glas` …), nur mit weniger Dreiecken und ohne Kleinteile.
