@@ -381,6 +381,12 @@ class OnlineLobbyPage(Page):
         """Return to the pre-race lobby view after a finished online race,
         reusing the still-connected session so everyone stays in the lobby."""
         self._view       = _LOBBY
+        # Die Serienebene gilt nur, solange die Serie laeuft - laeuft sie
+        # weiter, setzt _enter_gp_overview sie unten wieder. Stehengeblieben
+        # ("Grand Prix beenden/abbrechen" auf der Ergebnisseite) fuehrte der
+        # Startknopf bei der naechsten Serie an der Uebersicht vorbei direkt
+        # in ein Rennen (Playtest 06.10.2026).
+        self._gp_phase   = "lobby"
         self._race_begun = False          # allow starting the next race
         self._lobby_ready = False
         self._msg        = ""
@@ -601,6 +607,11 @@ class OnlineLobbyPage(Page):
             self._offer_chunks = []
             self._offer_name = ""
             self._close_offer_picker()
+            # Ebenso die Serienebene: wer aus einer Uebersicht geflogen ist
+            # (Lobby geschlossen, Verbindung weg), faengt in der neuen Lobby
+            # nicht mitten in einer fremden Serie an.
+            self._gp_phase = "lobby"
+            self._gp_ui = None
             from src.net import session
             net = session.get()
             if net:
