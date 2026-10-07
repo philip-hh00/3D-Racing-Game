@@ -51,6 +51,8 @@ Usage in game.py
 """
 from __future__ import annotations
 
+import sys
+
 import pygame
 from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 
@@ -325,6 +327,7 @@ def apply_settings(*, resolution: str = "1920x1080",
     from src.core.version import version_string
     pygame.display.set_caption(f"3D-Racing-Game {version_string()}")
     flags = pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE
+    _gl_version_anfordern()
     schirm = _versuche_modus((w, h), flags, vsync)
     _opengl_fenster = schirm is not None
     if schirm is None:
@@ -339,6 +342,27 @@ def apply_settings(*, resolution: str = "1920x1080",
     if fullscreen:
         _umschalten(w, h, True)
     return schirm
+
+
+def _gl_version_anfordern(plattform: str | None = None) -> bool:
+    """Unter macOS ausdruecklich OpenGL 3.3 Core anfordern.
+
+    Ohne Anforderung gibt macOS nur einen alten 2.1-Kontext heraus, auf dem
+    keiner der Shader (``#version 330``) uebersetzt — das Spiel zeigte dort
+    nur ein schwarzes Bild (gemeldet 07.10.2026). Windows und Linux liefern
+    von sich aus einen Kontext, der 3.3 kann, und bleiben unberuehrt: ein
+    erzwungenes Core-Profil koennte dort Treiber stoeren, die bisher laufen.
+    macOS kennt nur Core mit Vorwaertskompatibilitaet und hoechstens 4.1.
+    """
+    if (plattform or sys.platform) != "darwin":
+        return False
+    for attribut, wert in (
+            (pygame.GL_CONTEXT_MAJOR_VERSION, 3),
+            (pygame.GL_CONTEXT_MINOR_VERSION, 3),
+            (pygame.GL_CONTEXT_PROFILE_MASK, pygame.GL_CONTEXT_PROFILE_CORE),
+            (pygame.GL_CONTEXT_FLAGS, pygame.GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)):
+        pygame.display.gl_set_attribute(attribut, wert)
+    return True
 
 
 def _versuche_modus(size, flags, vsync: bool):
