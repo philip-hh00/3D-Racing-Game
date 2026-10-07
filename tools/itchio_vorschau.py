@@ -111,9 +111,9 @@ _SEITE = """<!doctype html>
     <aside>
       <div class="box">
         <h4>Download</h4>
-        <div class="download"><span>3D-Racing-Game_Setup_v1.0.0_Windows.exe<small>Windows, installer</small></span><span class="knopf">Download</span></div>
-        <div class="download"><span>3D-Racing-Game_Portable_v1.0.0_Windows.zip<small>Windows, portable</small></span><span class="knopf">Download</span></div>
-        <div class="download"><span>3D-Racing-Game_Portable_v1.0.0_macOS.zip<small>macOS, coming soon</small></span><span class="knopf aus">Soon</span></div>
+        <div class="download"><span>3D-Racing-Game_Setup_v1.0.1_Windows.exe<small>Windows, installer</small></span><span class="knopf">Download</span></div>
+        <div class="download"><span>3D-Racing-Game_Portable_v1.0.1_Windows.zip<small>Windows, portable</small></span><span class="knopf">Download</span></div>
+        <div class="download"><span>3D-Racing-Game_Portable_v1.0.1_macOS.zip<small>macOS, coming soon</small></span><span class="knopf aus">Soon</span></div>
       </div>
       <div class="box">
         <h4>Info</h4>

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from datetime import date
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 # Packaged (PyInstaller) builds are releases → dev tools hidden.
 # Running from source shows them.
 IS_RELEASE = getattr(sys, "frozen", False)

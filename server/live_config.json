@@ -1,5 +1,5 @@
 {
-  "required_version": "1.0.0",
+  "required_version": "1.0.1",
   "announcements": [
     {
       "id": "2026-07-17-welcome",
@@ -122,15 +122,27 @@
       }
     },
     {
-      "id": "2026-09-27-neue-version-1-0-0",
-      "date": "2026-09-27",
+      "id": "2026-10-02-version-1-0-0",
+      "date": "2026-10-02",
       "title": {
-        "de": "Version 1.0.0 – jetzt in 3D",
-        "en": "Version 1.0.0 – now in 3D"
+        "de": "Version 1.0.0",
+        "en": "Version 1.0.0"
       },
       "text": {
-        "de": "Das Rennspiel ist jetzt dreidimensional.\n\n- 15 neu gebaute Fahrzeuge mit echten Leuchten, Bremslichtern, Reifen und Innenraum – weiter in der Werkstatt lackierbar.\n- Jede Strecke liegt in einer Landschaft ihres Themas mit Hügeln, Bergen, Bäumen und Gras – auch eigene Strecken aus dem Editor.\n- Neues Start/Ziel-Portal mit Startampel, neuer Countdown.\n- Grafikeinstellungen von Niedrig bis Ultra für jeden Rechner.",
-        "en": "The racing game is now fully 3D.\n\n- 15 rebuilt cars with real lights, brake lights, tyres and interiors – still paintable in the workshop.\n- Every track sits in a landscape matching its theme with hills, mountains, trees and grass – including your own editor tracks.\n- New start/finish gantry with start lights and a new countdown.\n- Graphics settings from Low to Ultra for every PC."
+        "de": "Neue Veröffentlichung. 3d-Racing-Game jetzt verfügbar. \nhttps://philip-hh.itch.io/\nhttps://gamejolt.com/games/3D-Racing-Game/1104023",
+        "en": "New release. 3d-Racing-Game is now available. \nhttps://philip-hh.itch.io/\nhttps://gamejolt.com/games/3D-Racing-Game/1104023"
+      }
+    },
+    {
+      "id": "2026-10-07-version-1-0-1",
+      "date": "2026-10-07",
+      "title": {
+        "de": "Version 1.0.1",
+        "en": "Version 1.0.1"
+      },
+      "text": {
+        "de": "Fehlerbehebungen für das 2D- und das 3D-Rennspiel.\n\nOnline\n\n- Wer nicht als Erster ins Ziel kommt, sieht jetzt ebenfalls „ZIEL!“.\n- Nach der Fahrzeugwahl in der Lobby fliegt man nicht mehr aus der Lobby.\n- Grand Prix startet auch nach einer vorherigen Serie wieder als Grand Prix.\n- Die Autos der anderen Spieler fahren flüssig statt zu ruckeln oder zurückzuspringen.\n- Zusammenstöße teilen den Stoß richtig auf, niemand prallt mehr wie ein Gummiball ab.\n\nFahren\n\n- Ein rutschendes Auto fängt sich wieder, statt wie auf Eis zu gleiten.\n- Zeitfahren: Der erste Ghost einer Strecke ist die stärkste KI und startet an deinem Startplatz.\n\n3D-Racing-Game\n\n- Der Startton passt zur Startampel.\n- Die Vorderräder lenken sichtbar ein.\n- macOS: kein schwarzes Bild mehr beim Start.\n\nWichtig: Online-Rennen gehen nur mit Version 1.0.1.",
+        "en": "Bug fixes for the 2D and the 3D racing game.\n\nOnline\n\n- Players who don't finish first now see \"FINISH!\" too.\n- Choosing a car in the lobby no longer drops you from the lobby.\n- Grand Prix starts as a Grand Prix again after a previous series.\n- Other players' cars move smoothly instead of stuttering or jumping back.\n- Collisions share the impact correctly; nobody bounces off like a rubber ball anymore.\n\nDriving\n\n- A sliding car catches itself again instead of gliding as if on ice.\n- Time trial: a track's first ghost is the strongest AI and starts from your grid slot.\n\n3D Racing Game\n\n- The start sound matches the start lights.\n- The front wheels visibly steer.\n- macOS: no more black screen at launch.\n\nImportant: online races require version 1.0.1."
       }
     }
   ]

@@ -153,9 +153,9 @@ Komplett übersetzt, umschaltbar im laufenden Spiel.
 Das Spiel ist fertig gepackt. Du brauchst nichts weiter zu installieren.
 
 ### Windows
-1. `3D-Racing-Game_Setup_v1.0.0_Windows.exe` herunterladen und starten — 
+1. `3D-Racing-Game_Setup_v1.0.1_Windows.exe` herunterladen und starten — 
    **Adminrechte sind nicht nötig**. Lieber ohne Installer? Das ZIP
-   `3D-Racing-Game_Portable_v1.0.0_Windows.zip` überall entpacken und
+   `3D-Racing-Game_Portable_v1.0.1_Windows.zip` überall entpacken und
    `3D-Racing-Game.exe` starten.
 2. Windows zeigt beim ersten Start einen Warnhinweis („Unbekannter Herausgeber").
    Das liegt daran, dass kein kostenpflichtiges Signaturzertifikat verwendet wird,
@@ -165,7 +165,7 @@ Das Spiel ist fertig gepackt. Du brauchst nichts weiter zu installieren.
 ### macOS (folgt in Kürze)
 Die macOS-Fassung kommt als eigener Download. Die Schritte dann:
 
-1. `3D-Racing-Game_Portable_v1.0.0_macOS.zip` herunterladen und entpacken.
+1. `3D-Racing-Game_Portable_v1.0.1_macOS.zip` herunterladen und entpacken.
 2. Die App nach **Programme** ziehen.
 3. Beim ersten Start: **Rechtsklick auf die App → Öffnen** → im Dialog
    **Öffnen**. Nur einmal nötig.
@@ -335,9 +335,9 @@ Fully translated, switchable while the game is running.
 The game comes packaged. There's nothing else to install.
 
 ### Windows
-1. Download and run `3D-Racing-Game_Setup_v1.0.0_Windows.exe` — **no admin
+1. Download and run `3D-Racing-Game_Setup_v1.0.1_Windows.exe` — **no admin
    rights needed**. Prefer no installer? Unzip
-   `3D-Racing-Game_Portable_v1.0.0_Windows.zip` anywhere and start
+   `3D-Racing-Game_Portable_v1.0.1_Windows.zip` anywhere and start
    `3D-Racing-Game.exe`.
 2. Windows shows a warning on first launch ("Unknown publisher"). That's because
    no paid signing certificate is used, not because of the game: **More info** →
@@ -347,7 +347,7 @@ The game comes packaged. There's nothing else to install.
 ### macOS (coming soon)
 The macOS version is on its way as a separate download. The steps will be:
 
-1. Download and unzip `3D-Racing-Game_Portable_v1.0.0_macOS.zip`.
+1. Download and unzip `3D-Racing-Game_Portable_v1.0.1_macOS.zip`.
 2. Drag the app into **Applications**.
 3. On first launch: **right-click the app → Open** → **Open** in the dialog.
    Once only.
@@ -410,7 +410,7 @@ ist öffentlich. Bei Bedarf kann der Link auf der Verkaufsseite hinzugefügt wer
 **Zahlen, die veralten, wenn sich etwas ändert:** 15 Fahrzeuge, 5 Klassen,
 5 mitgelieferte Strecken, 12 Farben, 4 Lackarten, 6 Spieler online, 4 Modi.
 Sie stimmen mit dem Stand zum Release 1.0.0 überein. Dateinamen:
-`3D-Racing-Game_Setup_v1.0.0_Windows.exe` und `3D-Racing-Game_Portable_v1.0.0_macOS.zip`.
+`3D-Racing-Game_Setup_v1.0.1_Windows.exe` und `3D-Racing-Game_Portable_v1.0.1_macOS.zip`.
 
 **Beide Sprachfassungen sagen dasselbe.** Ändert sich eine Zahl oben, ändert sie
 sich in zwei Fassungen — sonst steht auf der Seite je nach Sprache etwas
