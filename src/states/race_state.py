@@ -97,6 +97,13 @@ DNF_COAST_SECONDS = 2.0
 # weiter, ein schwarzer Schleier zieht auf; danach der Schnitt in die Ergebnisse.
 RESULTS_OUTRO_SECONDS = 1.2
 
+# So lange steht nach der eigenen Zieldurchfahrt „ZIEL!" im Bild, bevor das
+# Ausblenden beginnen darf (Playtest 06.10.2026). Online sah sie nur, wer zuerst
+# ankam: der Letzte meldet sein Ergebnis, der Server schickt die Gesamtwertung
+# sofort zurueck, und das Ausblenden begann im naechsten Bild. Der Hinweis hing
+# am Warten auf andere — und auf niemanden wartet, wer als Letzter ankommt.
+ZIEL_ANZEIGE_SECONDS = 2.5
+
 
 def score_team_rows(rows: list[dict]) -> tuple[float, float]:
     """Write ``score_time`` into every row and return (team_a_avg, team_b_avg).
@@ -215,6 +222,8 @@ class RaceState(BaseState):
         self._outro_active: bool = False        # >0: Ausblenden vor den Ergebnissen laeuft
         self._outro_timer: float = 0.0
         self._outro_rows = None                 # online: Ergebniszeilen fuer danach
+        self._zielanzeige_rest: float = 0.0     # >0: „ZIEL!" der eigenen Zieldurchfahrt steht
+        self._ausblenden_vorgemerkt = False     # Ausblenden wartet auf das Ende von „ZIEL!"
 
     def enter(self, **kwargs) -> None:
         """Initialize the physics world, load the track, spawn player vehicle, camera, and HUD."""
@@ -281,6 +290,8 @@ class RaceState(BaseState):
         self._outro_active = False
         self._outro_timer = 0.0
         self._outro_rows = None
+        self._zielanzeige_rest = 0.0
+        self._ausblenden_vorgemerkt = False
         self._online_await_deadline = 0.0
         self._hold_since = 0.0
         self._hold_abort_btn = None
@@ -659,6 +670,10 @@ class RaceState(BaseState):
                 if v in self._humans:
                     self._start_player_ai_takeover(v)
                     ctrl = getattr(v, "controller", None)
+                    # Eine echte Zieldurchfahrt bekommt ihren Moment — ein DNF nicht.
+                    if not any(r["vehicle_id"] == v.id and r.get("dnf")
+                               for r in self.race_manager.results):
+                        self._zielanzeige_rest = ZIEL_ANZEIGE_SECONDS
                 if ctrl is not None:
                     ctrl.speed_multiplier = 0.5
                 self._finish_applied.add(v.id)
@@ -1188,6 +1203,13 @@ class RaceState(BaseState):
             return None
         return rm.sekunden_bis_dnf()
 
+    def _zielanzeige_zeigen(self, vehicle_id: int) -> bool:
+        """Ob dieses Auto gerade sein „ZIEL!" zeigt — im Splitscreen nur der
+        Spieler, der durch ist, nicht der, der noch faehrt."""
+        rm = self.race_manager
+        return (self._zielanzeige_rest > 0.0 and rm is not None
+                and vehicle_id in rm.finished_ids)
+
     def _online_position(self, vehicle_id: int) -> int:
         """Race position across the whole online field: local vehicles via their
         lap trackers plus every remote car via its last reported progress."""
@@ -1425,12 +1447,28 @@ class RaceState(BaseState):
         Schleier darueberlegt (siehe _render_outro); erst danach _go_to_results.
 
         Idempotent: ein zweiter Aufruf verlaengert das Ausblenden nicht.
+
+        Steht gerade „ZIEL!" der eigenen Zieldurchfahrt, wird das Ausblenden nur
+        vorgemerkt und beginnt, wenn die Anzeige abgelaufen ist
+        (_zielanzeige_fortschreiben).
         """
         if self._outro_active:
             return
+        self._outro_rows = online_rows
+        if self._zielanzeige_rest > 0.0:
+            self._ausblenden_vorgemerkt = True
+            return
         self._outro_active = True
         self._outro_timer = RESULTS_OUTRO_SECONDS
-        self._outro_rows = online_rows
+
+    def _zielanzeige_fortschreiben(self, dt: float) -> None:
+        """„ZIEL!" herunterzaehlen; danach ein vorgemerktes Ausblenden starten."""
+        if self._zielanzeige_rest <= 0.0:
+            return
+        self._zielanzeige_rest = max(0.0, self._zielanzeige_rest - dt)
+        if self._zielanzeige_rest <= 0.0 and self._ausblenden_vorgemerkt:
+            self._ausblenden_vorgemerkt = False
+            self._starte_ausblenden(self._outro_rows)
 
     def _outro_alpha(self) -> int:
         """Deckung des Schleiers: 0 zu Beginn, voll schwarz am Ende — dann geht
@@ -2015,6 +2053,8 @@ class RaceState(BaseState):
                         # diesen und die naechsten Bilder weiter.
                         self._starte_ausblenden(None)
 
+            # Erst „ZIEL!" der eigenen Zieldurchfahrt, dann das Ausblenden.
+            self._zielanzeige_fortschreiben(dt)
             # Ausblenden ticken — laeuft auch, wenn _results_sent schon steht.
             if self._outro_active:
                 self._outro_timer -= dt
@@ -2103,6 +2143,7 @@ class RaceState(BaseState):
                     waiting_for_field=(self.race_manager.state == "finishing"
                                        or self._online_awaiting),
                     dnf_seconds=self._dnf_restzeit(p.id),
+                    zielanzeige=self._zielanzeige_zeigen(p.id),
                     live_diff=live_diff,
                     standings=standings_info,
                     dt=dt
@@ -2143,6 +2184,7 @@ class RaceState(BaseState):
                 waiting_for_field=(self.race_manager.state == "finishing"
                                    or self._online_awaiting),
                 dnf_seconds=self._dnf_restzeit(self.player.id),
+                zielanzeige=self._zielanzeige_zeigen(self.player.id),
                 live_diff=live_diff,
                 standings=standings_info,
                 dt=dt

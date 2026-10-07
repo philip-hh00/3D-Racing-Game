@@ -82,6 +82,8 @@ class HUD:
         self._waiting_for_field: bool = False
         #: Restsekunden bis zum DNF, solange man selbst noch faehrt.
         self._dnf_seconds: float | None = None
+        #: Die eigene Zieldurchfahrt ist gerade erst passiert („ZIEL!").
+        self._zielanzeige: bool = False
         self._live_diff: float | None = None
         self._standings_list: list[dict[str, Any]] = []
 
@@ -124,6 +126,7 @@ class HUD:
         live_diff: float | None = None,
         standings: list[dict[str, Any]] | None = None,
         dnf_seconds: float | None = None,
+        zielanzeige: bool = False,
         dt: float = 1.0 / 60.0,
     ) -> None:
         """Update live variables for rendering."""
@@ -151,6 +154,7 @@ class HUD:
         self._live_diff = live_diff
         self._standings_list = standings or []
         self._dnf_seconds = dnf_seconds
+        self._zielanzeige = zielanzeige
 
         # Detect countdown transition to GO!
         if self._last_countdown_timer is not None and countdown_timer is None:
@@ -658,10 +662,16 @@ class HUD:
             self._render_dnf_countdown(screen, w, h, scale)
             return
 
-        if self._waiting_for_field:
-            text = self._overlay_body_font.render(
-                tr("ZIEL! Warte auf weitere Fahrzeuge..."), True, self._COL_GEAR_TEXT
-            )
+        # Erst die eigene Zieldurchfahrt, dann das Warten. Am Warten allein
+        # haengend sah „ZIEL!" online nur, wer zuerst ankam: der Letzte wartet
+        # auf niemanden, seine Gesamtwertung kommt sofort (Playtest 06.10.2026).
+        meldung = None
+        if self._zielanzeige:
+            meldung = tr("ZIEL!")
+        elif self._waiting_for_field:
+            meldung = tr("ZIEL! Warte auf weitere Fahrzeuge...")
+        if meldung is not None:
+            text = self._overlay_body_font.render(meldung, True, self._COL_GEAR_TEXT)
             rect = text.get_rect(center=(w // 2, int(60 * scale)))
             bg = leinwand.flaeche((rect.width + int(40 * scale), rect.height + int(16 * scale)), pygame.SRCALPHA)
             bg.fill((10, 10, 15, 190))
