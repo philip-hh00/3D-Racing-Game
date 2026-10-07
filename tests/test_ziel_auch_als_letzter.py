@@ -135,7 +135,9 @@ def test_wer_als_letzter_ankommt_sieht_seine_zieldurchfahrt(monkeypatch):
     rennen.race_manager._record_finish(rennen.player)
 
     verlauf = []
-    for _ in range(int((ZIEL_ANZEIGE_SECONDS + RESULTS_OUTRO_SECONDS + 2.0) / dt)):
+    # Seit 1.1.0 zeigt der Movie-Modus noch NACHLAUF_S nach der Gesamtwertung.
+    from src.render3d.tv_regie import NACHLAUF_S
+    for _ in range(int((ZIEL_ANZEIGE_SECONDS + NACHLAUF_S + RESULTS_OUTRO_SECONDS + 2.0) / dt)):
         rennen.update(dt)
         hud = rennen.hud
         zeigt_ziel = hud._dnf_seconds is None and (

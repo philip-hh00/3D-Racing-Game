@@ -21,6 +21,7 @@ from src.entities.vehicle import VehicleConfig
 from src.hud.hud import HUD
 from src.physics.checkpoint import Checkpoint
 from src.states.race_manager import RaceManager
+from src.states.movie_modus import MovieModus
 from src.core.i18n import tr
 # Startampel: Schwellen und Stufenfunktion liegen in src/core/startampel.py,
 # damit 3D-Portal und HUD dieselbe Quelle nutzen.
@@ -249,6 +250,7 @@ class RaceState(BaseState):
         self._outro_rows = None                 # online: Ergebniszeilen fuer danach
         self._zielanzeige_rest: float = 0.0     # >0: „ZIEL!" der eigenen Zieldurchfahrt steht
         self._ausblenden_vorgemerkt = False     # Ausblenden wartet auf das Ende von „ZIEL!"
+        self._movie = MovieModus(self)          # Film nach der Zieldurchfahrt (movie_modus.py)
 
     def enter(self, **kwargs) -> None:
         """Initialize the physics world, load the track, spawn player vehicle, camera, and HUD."""
@@ -317,6 +319,7 @@ class RaceState(BaseState):
         self._outro_rows = None
         self._zielanzeige_rest = 0.0
         self._ausblenden_vorgemerkt = False
+        self._movie.zuruecksetzen()
         self._online_await_deadline = 0.0
         self._hold_since = 0.0
         self._hold_abort_btn = None
@@ -701,6 +704,7 @@ class RaceState(BaseState):
                     if not any(r["vehicle_id"] == v.id and r.get("dnf")
                                for r in self.race_manager.results):
                         self._zielanzeige_rest = ZIEL_ANZEIGE_SECONDS
+                        self._movie.beginnen(v)
                 if ctrl is not None:
                     ctrl.speed_multiplier = 0.5
                 self._finish_applied.add(v.id)
@@ -1554,6 +1558,9 @@ class RaceState(BaseState):
         """
         if self._outro_active:
             return
+        movie = getattr(self, "_movie", None)
+        if movie is not None and movie.zurueckhalten(online_rows):
+            return      # der Film laeuft noch (Nachlauf, siehe movie_modus.py)
         self._outro_rows = online_rows
         if self._zielanzeige_rest > 0.0:
             self._ausblenden_vorgemerkt = True
@@ -2009,8 +2016,8 @@ class RaceState(BaseState):
                     return
             
             # Non-paused events:
-            if not self.paused and event.type == pygame.KEYDOWN:
-                pass  # ENTER-skip removed: race ends directly via _go_to_results()
+            if not self.paused and self._movie.taste(event):
+                continue    # Enter/A im Film: weiter zu den Ergebnissen
 
         # Driving input is read from each human's input source in update().
 
@@ -2155,6 +2162,7 @@ class RaceState(BaseState):
 
             # Erst „ZIEL!" der eigenen Zieldurchfahrt, dann das Ausblenden.
             self._zielanzeige_fortschreiben(dt)
+            self._movie.tick(dt)
             # Ausblenden ticken — laeuft auch, wenn _results_sent schon steht.
             if self._outro_active:
                 self._outro_timer -= dt
@@ -2194,6 +2202,7 @@ class RaceState(BaseState):
                 hp.handle_input()   # read this human's input source
             hp.update(dt)
             cam.folgen(welt3d(hp.position), hp.angle, dt)
+        self._movie.fortschreiben(dt)
 
         # Was in diesem Bild zu sehen ist, einmal je Bild einsammeln - nicht
         # beim Zeichnen. Im Splitscreen wird zweimal gezeichnet, aber es
@@ -2582,12 +2591,14 @@ class RaceState(BaseState):
         else:
             haelften = [briefkasten]
 
-        for ausschnitt, kam in zip(haelften, self._kameras):
+        haelften, kameras = self._movie.ansichten(haelften, self._kameras)
+        for ausschnitt, kam in zip(haelften, kameras):
             _vx, _vy, vb, vh = ausschnitt
             ctx.viewport = ausschnitt
             ctx.scissor = ausschnitt
             projektion = kamera3d.perspektive(
-                SICHTFELD_GRAD, vb / max(1, vh), NAHE_EBENE_M, FERNE_EBENE_M)
+                getattr(kam, "sichtfeld_grad", SICHTFELD_GRAD), vb / max(1, vh),
+                NAHE_EBENE_M, FERNE_EBENE_M)
             mvp = projektion @ kam.blickmatrix()
             self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=kam.ziel)
             self._letzte_sicht = (mvp, ausschnitt, briefkasten)
@@ -2649,11 +2660,14 @@ class RaceState(BaseState):
         """
         self._welt_zeichnen()
 
-        if self._split:
-            for x, hud_obj in [(0, self.hud1), (SCREEN_WIDTH // 2, self.hud2)]:
+        if self._split and self._movie.geteilt_gesamt():
+            self._movie.gesamt_banner(screen)       # beide im Ziel: ein Bild, ein Banner
+        elif self._split:
+            for i, (x, hud_obj) in enumerate([(0, self.hud1), (SCREEN_WIDTH // 2, self.hud2)]):
                 if hud_obj:
                     sub = screen.subsurface((x, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
-                    hud_obj.render(sub, scale=0.75)
+                    if not self._movie.hud_zeichnen(sub, i, 0.75):
+                        hud_obj.render(sub, scale=0.75)
             zeichnen.line(screen, (12, 12, 18),
                              (SCREEN_WIDTH // 2, 0), (SCREEN_WIDTH // 2, SCREEN_HEIGHT), 4)
         else:
@@ -2662,14 +2676,14 @@ class RaceState(BaseState):
                 # Zeichnet an der Schmutzverfolgung vorbei (pygame.draw direkt).
                 if hasattr(screen, "schmutz_alles"):
                     screen.schmutz_alles()
-            if self.hud:
+            if not self._movie.hud_zeichnen(screen, 0) and self.hud:
                 self.hud.render(screen)
             if self._online:
                 self._render_ping_overlay(screen)
                 self._render_leave_toasts(screen)
 
         # Shared minimap (all vehicles).
-        if getattr(self, "minimap", None):
+        if getattr(self, "minimap", None) and not self._movie.alle_menschen_im_film():
             vehicles = [*self._humans, *self.ai_vehicles, *self._remote_vehicles]
             pid = self.player.id if self.player else None
             self.minimap.render(screen, vehicles, player_id=pid)

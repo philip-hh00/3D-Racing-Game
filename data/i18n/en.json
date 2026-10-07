@@ -794,5 +794,10 @@
   "Eigen": "Custom",
   "Grafikstufe": "Graphics preset",
   "Grafik": "Graphics",
-  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race."
+  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race.",
+  "ZIEL - Position {pos}": "FINISH - Position {pos}",
+  "ENTER: Ergebnisse": "ENTER: Results",
+  "A: Ergebnisse": "A: Results",
+  "Warte auf die Ergebnisse...": "Waiting for the results...",
+  "Ergebnisse in {n} s": "Results in {n} s"
 }
