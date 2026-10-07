@@ -77,6 +77,144 @@ def teile_lesen(pfad: str | Path) -> tuple[list[Radplatz], float]:
     return plaetze, float(daten.get("raddurchmesser_m", 0.65))
 
 
+#: Namen der animierten Cockpitknoten (siehe VEREINBARUNGEN.md, "Cockpit").
+LENKRAD = "lenkrad"
+NADEL_TACHO = "nadel_tacho"
+NADEL_DREHZAHL = "nadel_drehzahl"
+
+#: Vorgaben, wenn ``<key>_teile.json`` keinen Block ``cockpit`` hat.
+LENKRAD_UEBERSETZUNG = 12.0
+TACHO_MAX_KMH = 320.0
+TACHO_WINKEL_GRAD = (-135.0, 135.0)
+DREHZAHL_MAX = 9000.0
+DREHZAHL_WINKEL_GRAD = (-135.0, 135.0)
+
+
+@dataclass
+class Cockpitmasse:
+    """Der Block ``cockpit`` aus ``<key>_teile.json``, Fahrzeugsystem in Metern.
+
+    ``augpunkt`` ist die Augenmitte des Fahrers, ``haube`` der Kamerapunkt der
+    Motorhaubenansicht. Fehlt der Block oder ein Punkt darin, wird er aus den
+    Fahrzeugmaßen abgeschätzt (:func:`cockpit_aus_masse`), damit auch ein altes
+    Modell eine brauchbare Ansicht bekommt. ``aus_datei`` sagt, ob mindestens
+    ein Punkt aus dem Modell stammt oder alles geschätzt ist.
+    """
+
+    augpunkt: np.ndarray
+    haube: np.ndarray
+    lenkrad_uebersetzung: float = LENKRAD_UEBERSETZUNG
+    tacho_max_kmh: float = TACHO_MAX_KMH
+    tacho_winkel_grad: tuple[float, float] = TACHO_WINKEL_GRAD
+    drehzahl_max: float = DREHZAHL_MAX
+    drehzahl_winkel_grad: tuple[float, float] = DREHZAHL_WINKEL_GRAD
+    aus_datei: bool = False
+
+
+def cockpit_aus_masse(laenge_m: float, breite_m: float, hoehe_m: float) -> Cockpitmasse:
+    """Augpunkt und Hauben-Kamerapunkt aus den Fahrzeugmaßen schätzen.
+
+    Linkslenker (+Y ist links): der Fahrer sitzt links der Mitte, die
+    Augen etwa in Fahrzeugmitte. Die
+    Haubenkamera sitzt auf der Mittellinie am Fuß der Frontscheibe, knapp über
+    der Haube. Die Werte sind an den fünf Fahrzeugen von 1.0 abgelesen; die
+    echten Punkte stehen im Block ``cockpit`` der ``teile.json``.
+    """
+    # Die Augen liegen drei Dezimeter unter dem Dach, bei hohen Wagen bei vier Fünfteln
+    # der Höhe: ein flacher Sportwagen sähe sonst nur sein Dach.
+    augenhoehe = max(0.5, min(0.80 * hoehe_m, hoehe_m - 0.30))
+    augpunkt = np.array([-0.04 * laenge_m, 0.16 * breite_m, augenhoehe])
+    haube = np.array([0.27 * laenge_m, 0.0, 0.80 * hoehe_m])
+    return Cockpitmasse(augpunkt=augpunkt, haube=haube)
+
+
+def _paar(wert, vorgabe: tuple[float, float]) -> tuple[float, float]:
+    try:
+        a, b = wert
+        return float(a), float(b)
+    except (TypeError, ValueError):
+        return vorgabe
+
+
+def _punkt(wert) -> np.ndarray | None:
+    try:
+        p = np.asarray([float(w) for w in wert], dtype=np.float64)
+    except (TypeError, ValueError):
+        return None
+    return p if p.shape == (3,) and np.all(np.isfinite(p)) else None
+
+
+def cockpit_lesen(daten: dict) -> Cockpitmasse:
+    """Aus dem geladenen JSON von ``<key>_teile.json``. Nie ``None``: Lücken werden geschätzt."""
+    schaetzung = cockpit_aus_masse(float(daten.get("laenge_m", 4.3)),
+                                   float(daten.get("breite_m", 2.0)),
+                                   float(daten.get("hoehe_m", 1.4)))
+    block = daten.get("cockpit")
+    if not isinstance(block, dict):
+        return schaetzung
+    aug = _punkt(block.get("augpunkt"))
+    haube = _punkt(block.get("haube"))
+
+    def zahl(name: str, vorgabe: float, nur_positiv: bool) -> float:
+        try:
+            w = float(block.get(name, vorgabe))
+        except (TypeError, ValueError):
+            return vorgabe
+        return w if (w > 0.0 or not nur_positiv) else vorgabe
+
+    return Cockpitmasse(
+        augpunkt=aug if aug is not None else schaetzung.augpunkt,
+        haube=haube if haube is not None else schaetzung.haube,
+        lenkrad_uebersetzung=zahl("lenkrad_uebersetzung", LENKRAD_UEBERSETZUNG, False),
+        tacho_max_kmh=zahl("tacho_max_kmh", TACHO_MAX_KMH, True),
+        tacho_winkel_grad=_paar(block.get("tacho_winkel_grad"), TACHO_WINKEL_GRAD),
+        drehzahl_max=zahl("drehzahl_max", DREHZAHL_MAX, True),
+        drehzahl_winkel_grad=_paar(block.get("drehzahl_winkel_grad"), DREHZAHL_WINKEL_GRAD),
+        aus_datei=aug is not None or haube is not None,
+    )
+
+
+def cockpit_aus_datei(pfad: str | Path) -> Cockpitmasse | None:
+    """``cockpit`` aus ``<key>_teile.json``; ``None``, wenn die Datei fehlt oder kaputt ist."""
+    try:
+        with open(pfad, encoding="utf-8") as fh:
+            return cockpit_lesen(json.load(fh))
+    except (OSError, ValueError):
+        return None
+
+
+def nadelwinkel(wert: float, maximum: float, winkel_grad: tuple[float, float]) -> float:
+    """Drehung einer Nadel um ihre lokale X-Achse in Radiant.
+
+    ``winkel_grad`` ist die Drehung bei 0 und bei ``maximum`` (aus
+    ``teile.json``); dazwischen wird linear gemischt, außerhalb gehalten — die
+    Nadel schlägt nicht über den Anschlag.
+    """
+    anteil = 0.0 if maximum <= 0.0 else max(0.0, min(1.0, float(wert) / maximum))
+    a0, a1 = winkel_grad
+    return math.radians(a0 + (a1 - a0) * anteil)
+
+
+def lenkradwinkel(lenkwinkel_rad: float, uebersetzung: float) -> float:
+    """Drehung des Lenkrads um die lokale X-Achse in Radiant.
+
+    Der sichtbare Radeinschlag mal Übersetzung. Aus Fahrersicht (Blick entlang
+    +X) ist eine positive Drehung um +X im Uhrzeigersinn; links (positiver
+    Lenkwinkel) soll gegen den Uhrzeigersinn drehen, daher das Minus. Bei den
+    Nadeln gilt dagegen die Drehung wie angegeben: mehr Tempo = im Uhrzeigersinn.
+    """
+    return -float(lenkwinkel_rad) * float(uebersetzung)
+
+
+def aufbau_aus_neigung(nick_rad: float, wank_rad: float, radradius_m: float) -> np.ndarray | None:
+    """Die Neigung des Aufbaus um den Wankpol (Nabenhöhe), ``None`` ohne Neigung."""
+    if not nick_rad and not wank_rad:
+        return None
+    pol = matrix.verschiebung(0.0, 0.0, radradius_m)
+    zurueck = matrix.verschiebung(0.0, 0.0, -radradius_m)
+    return pol @ matrix.drehung_y(nick_rad) @ matrix.drehung_x(wank_rad) @ zurueck
+
+
 class Fahrzeugknoten:
     """Karosserie und Räder eines Fahrzeugs, in Bewegung.
 
@@ -85,10 +223,23 @@ class Fahrzeugknoten:
     Knoten prüfbar, ohne dass ein Grafikkontext nötig wäre.
     """
 
-    def __init__(self, raedern: list[Radplatz], raddurchmesser_m: float) -> None:
+    def __init__(self, raedern: list[Radplatz], raddurchmesser_m: float,
+                 cockpit: Cockpitmasse | None = None,
+                 anbauteile: dict[str, np.ndarray] | None = None) -> None:
         if raddurchmesser_m <= 0:
             raise ValueError("Raddurchmesser muss positiv sein")
         self.raeder = list(raedern)
+        #: Übersetzungen und Skalen des Cockpits (``None``: nichts animieren).
+        self.cockpit = cockpit
+        #: Alle weiteren Knoten des Modells mit Netz — Name -> Ursprung im
+        #: Fahrzeugsystem. Sie hängen starr am Aufbau; Lenkrad und Nadeln
+        #: drehen sich zusätzlich (:meth:`anbauteil_matrix`). Ohne diese Liste
+        #: zeichnet die Szene nur Karosserie, Räder und Sättel.
+        self.anbauteile: dict[str, np.ndarray] = {
+            str(n): np.asarray(v, dtype=np.float64) for n, v in (anbauteile or {}).items()
+            if n != KAROSSERIE and not str(n).startswith(("rad_", "sattel_"))}
+        self.tempo_kmh = 0.0
+        self.drehzahl = 0.0
         self.radradius_m = raddurchmesser_m / 2.0
         self.rollwinkel_rad = 0.0
         self.lenkwinkel_rad = 0.0
@@ -101,7 +252,7 @@ class Fahrzeugknoten:
     def aus_datei(cls, pfad: str | Path) -> "Fahrzeugknoten":
         """Aus ``<key>_teile.json``."""
         plaetze, durchmesser = teile_lesen(pfad)
-        return cls(plaetze, durchmesser)
+        return cls(plaetze, durchmesser, cockpit=cockpit_aus_datei(pfad))
 
     # -- Zustand ---------------------------------------------------------
     def weg_zuruecklegen(self, weg_m: float) -> None:
@@ -114,6 +265,11 @@ class Fahrzeugknoten:
 
     def lenken(self, winkel_rad: float) -> None:
         self.lenkwinkel_rad = float(winkel_rad)
+
+    def instrumente(self, tempo_kmh: float = 0.0, drehzahl: float = 0.0) -> None:
+        """Tempo (km/h, Betrag) und Drehzahl (1/min) für die Nadeln im Armaturenbrett."""
+        self.tempo_kmh = abs(float(tempo_kmh))
+        self.drehzahl = max(0.0, float(drehzahl))
 
     def neigen(self, nick_rad: float = 0.0, wank_rad: float = 0.0) -> None:
         """Den Aufbau nicken (+: Front runter) und wanken (+: rechts runter) lassen.
@@ -132,11 +288,7 @@ class Fahrzeugknoten:
         sichtbar, während der Schweller kaum wandert — wie bei einem echten
         Auto, dessen Wankachse knapp über der Straße liegt.
         """
-        if not self.nick_rad and not self.wank_rad:
-            return None
-        pol = matrix.verschiebung(0.0, 0.0, self.radradius_m)
-        zurueck = matrix.verschiebung(0.0, 0.0, -self.radradius_m)
-        return pol @ matrix.drehung_y(self.nick_rad) @ matrix.drehung_x(self.wank_rad) @ zurueck
+        return aufbau_aus_neigung(self.nick_rad, self.wank_rad, self.radradius_m)
 
     def setzen(self, rollwinkel_rad: float = 0.0, lenkwinkel_rad: float = 0.0) -> None:
         self.rollwinkel_rad = float(rollwinkel_rad)
@@ -212,6 +364,26 @@ class Fahrzeugknoten:
         """Wo dieses Rad steht, relativ zum Fahrzeug."""
         return self.lenk_matrix(rad) @ matrix.drehung_y(self.rollwinkel_rad)
 
+    def anbauteil_matrix(self, name: str, ursprung) -> np.ndarray:
+        """Lage eines Knotens am Aufbau: sein Ursprung, dazu die Drehung für Lenkrad und Nadeln.
+
+        Gedreht wird um die X-Achse durch den Knotenursprung; die Drehung des
+        Knotens selbst steckt schon in den Punkten (siehe
+        :func:`src.render3d.mesh.laden`). Alle anderen Teile sitzen starr.
+        """
+        m = matrix.verschiebung(ursprung)
+        c = self.cockpit
+        if c is None:
+            return m
+        if name == LENKRAD:
+            if self.lenkwinkel_rad:
+                m = m @ matrix.drehung_x(lenkradwinkel(self.lenkwinkel_rad, c.lenkrad_uebersetzung))
+        elif name == NADEL_TACHO:
+            m = m @ matrix.drehung_x(nadelwinkel(self.tempo_kmh, c.tacho_max_kmh, c.tacho_winkel_grad))
+        elif name == NADEL_DREHZAHL:
+            m = m @ matrix.drehung_x(nadelwinkel(self.drehzahl, c.drehzahl_max, c.drehzahl_winkel_grad))
+        return m
+
     def matrizen(self, pos_m, gierwinkel_rad: float,
                  karosserie: np.ndarray | None = None) -> dict[str, np.ndarray]:
         """Modellmatrix je Teilname, einschließlich Karosserie und Sätteln.
@@ -223,7 +395,10 @@ class Fahrzeugknoten:
         basis = matrix.fahrzeug(pos_m, gierwinkel_rad)
         if karosserie is None:
             karosserie = self.aufbau_matrix()
-        ergebnis = {KAROSSERIE: basis if karosserie is None else basis @ karosserie}
+        aufbau = basis if karosserie is None else basis @ karosserie
+        ergebnis = {KAROSSERIE: aufbau}
+        for name, ursprung in self.anbauteile.items():
+            ergebnis[name] = aufbau @ self.anbauteil_matrix(name, ursprung)
         # Rollen ist für alle Räder gleich, und die Lenkmatrix braucht Rad und
         # Sattel: je einmal rechnen. Acht Autos, drei Durchgänge — das zählt.
         rollen = matrix.drehung_y(self.rollwinkel_rad)

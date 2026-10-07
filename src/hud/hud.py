@@ -47,6 +47,10 @@ class HUD:
     #: Wie lange „LOS!“ nach dem Countdown eingeblendet bleibt.
     _GO_DISPLAY_SECONDS: float = 1.2
 
+    #: Ob die Rundinstrumente unten in der Mitte gezeichnet werden. Die Cockpitansicht
+    #: schaltet sie ab: dort zeigen Nadeln im Armaturenbrett dieselben Werte.
+    dashboard_sichtbar: bool = True
+
     def __init__(self) -> None:
         pygame.font.init()
         self._init_fonts(1.0)
@@ -190,6 +194,8 @@ class HUD:
 
     def _render_dashboard(self, screen: pygame.Surface, w: int, h: int, scale: float) -> None:
         """Draw the dual-dial dashboard console at the bottom center."""
+        if not self.dashboard_sichtbar:
+            return
         panel_w = int(520 * scale)
         panel_h = int(120 * scale)
         panel_x = (w - panel_w) // 2

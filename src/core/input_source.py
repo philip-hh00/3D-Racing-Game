@@ -33,6 +33,11 @@ class KeyboardSource:
         handbrake = bool(kb.pressed(keys, "handbrake"))
         return accel, decel, steer, handbrake
 
+    def kamera(self) -> tuple[bool, bool]:
+        """``(Ansicht-wechseln gedrückt, Zurückschauen gedrückt)`` — Zustand, keine Flanke."""
+        keys = pygame.key.get_pressed()
+        return bool(kb.pressed(keys, "camera")), bool(kb.pressed(keys, "look_back"))
+
 
 def _trigger(j, axis: int) -> float:
     """Normalise an SDL2 trigger axis (rest −1 → 0, pressed +1 → 1) with deadzone."""
@@ -71,6 +76,18 @@ class GamepadSource:
             handbrake = False
         return accel, decel, steer, handbrake
 
+    #: Kamera auf dem Pad: Y wechselt die Ansicht, Druck auf den rechten Stick schaut zurück.
+    KAMERA_WECHSEL = gamepad.BTN_Y
+    KAMERA_ZURUECK = gamepad.BTN_RS
+
+    def kamera(self) -> tuple[bool, bool]:
+        """``(Ansicht-wechseln gedrückt, Zurückschauen gedrückt)`` — Zustand, keine Flanke."""
+        j = gamepad.device(self.index)
+        if j is None:
+            return False, False
+        return (gamepad.knopf_gedrueckt(j, self.KAMERA_WECHSEL),
+                gamepad.knopf_gedrueckt(j, self.KAMERA_ZURUECK))
+
 
 class CombinedSource:
     """Keyboard + first gamepad merged: whichever device is actively used wins.
@@ -104,6 +121,12 @@ class CombinedSource:
             self.is_analog = (steer == p_steer and p_steer != 0.0)
             return accel, decel, steer, (k_hb or p_hb)
         return k_accel, k_decel, k_steer, k_hb
+
+    def kamera(self) -> tuple[bool, bool]:
+        """Tastatur oder erstes Pad: wer gerade drückt, gewinnt."""
+        k_wechsel, k_zurueck = self._kb.kamera()
+        p_wechsel, p_zurueck = self._pad.kamera()
+        return k_wechsel or p_wechsel, k_zurueck or p_zurueck
 
 
 _keyboard_singleton = KeyboardSource()

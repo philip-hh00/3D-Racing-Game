@@ -794,5 +794,11 @@
   "Eigen": "Custom",
   "Grafikstufe": "Graphics preset",
   "Grafik": "Graphics",
-  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race."
+  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race.",
+  "Kamera wechseln": "Switch camera",
+  "Zurückschauen": "Look back",
+  "Verfolger fern": "Chase, far",
+  "Verfolger nah": "Chase, close",
+  "Motorhaube": "Hood",
+  "Cockpit": "Cockpit"
 }

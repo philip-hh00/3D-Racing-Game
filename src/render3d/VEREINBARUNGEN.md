@@ -151,6 +151,24 @@ Lenkradwinkel ist der sichtbare Lenkwinkel der Räder mal
 `lenkrad_uebersetzung`. Fehlt ein Knoten oder der Block, zeichnet der
 Renderer ohne (alte GLBs bleiben gültig).
 
+Wie der Renderer die Knoten bewegt (`vehicle_node.Fahrzeugknoten`):
+
+* Jeder Netzknoten, der nicht `karosserie`, `rad_*` oder `sattel_*` heißt,
+  hängt starr am Aufbau (Nicken/Wanken inklusive), mit seinem Ursprung aus
+  der GLB — Innenraum- und Spiegelteile brauchen also nichts weiter.
+* `lenkrad`: Drehung um die X-Achse durch den Knotenursprung, Winkel
+  `-sichtbarer_lenkwinkel · lenkrad_uebersetzung`. Aus Fahrersicht (Blick
+  entlang +X) ist ein positiver Winkel um +X im Uhrzeigersinn; links
+  (positiver Lenkwinkel) dreht das Lenkrad deshalb gegen den Uhrzeigersinn.
+* Nadeln: Winkel um die X-Achse wie in `teile.json` angegeben, linear nach
+  Tempo (km/h) bzw. Drehzahl, an den Anschlägen gehalten. Positiv =
+  Uhrzeigersinn aus Fahrersicht, also „mehr Tempo = nach rechts“.
+* Die Drehung des Knotens selbst steckt schon in den Punkten (`mesh.laden`);
+  gedreht wird um die Fahrzeug-X-Achse durch den Ursprung. Eine geneigte
+  Lenksäule gehört deshalb in die Geometrie, nicht in die Knotendrehung.
+* Fehlt `augpunkt` oder `haube` im Block, schätzt der Renderer sie aus
+  `laenge_m`/`breite_m`/`hoehe_m` (`vehicle_node.cockpit_aus_masse`).
+
 **Fahrzeug-LOD1** (`assets/vehicles/<key>_lod1.glb`, neben `<key>.glb`):
 dieselben Knoten mit denselben Ursprüngen und dieselben Materialnamen
 (`lack`, `lack2`, `glas` …), nur mit weniger Dreiecken und ohne Kleinteile.

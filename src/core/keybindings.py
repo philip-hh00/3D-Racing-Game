@@ -23,6 +23,9 @@ ACTIONS: list[tuple[str, str, int]] = [
     ("left",      "Lenken links", pygame.K_LEFT),
     ("right",     "Lenken rechts", pygame.K_RIGHT),
     ("handbrake", "Handbremse",  pygame.K_SPACE),
+    # Kamera (ab 1.1.0): Ansicht umschalten, solange gehalten nach hinten schauen.
+    ("camera",    "Kamera wechseln", pygame.K_c),
+    ("look_back", "Zurückschauen", pygame.K_b),
 ]
 
 RESERVED = {pygame.K_ESCAPE, pygame.K_RETURN}

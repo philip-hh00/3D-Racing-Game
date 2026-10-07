@@ -958,6 +958,7 @@ class SettingsPage(Page):
         rows = [
             ("RT", "Gas"), ("LT", "Bremse / Rückwärts"), ("Linker Stick", "Lenken"),
             ("A", "Handbremse / Bestätigen"), ("B", "Zurück"),
+            ("Y", "Kamera wechseln"), ("R-Stick", "Zurückschauen"),
             ("D-Pad / Stick", "Navigieren"), ("LB / RB", "Menü wechseln"),
         ]
         yy = y2 + 34

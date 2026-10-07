@@ -8,7 +8,7 @@ import pygame
 
 from src.states.base_state import BaseState
 from src.core.settings import (
-    SCREEN_WIDTH, SCREEN_HEIGHT, DEBUG, M_PER_PX,
+    SCREEN_WIDTH, SCREEN_HEIGHT, DEBUG, M_PER_PX, KMH_PER_PXS,
     AI_OPPONENT_COUNT, AI_DEFAULT_DIFFICULTY, AI_VEHICLE_KEYS,
 )
 from src.core.event_bus import EventBus
@@ -184,6 +184,8 @@ class RaceState(BaseState):
         self.szene = None
         self.camera = None
         self._kameras: list = []
+        self._kamera_taste_war: dict = {}
+        self._ansicht_hinweis: dict = {}
         #: Was in diesem Bild gezeichnet werden soll. In update() gefuellt,
         #: in render() nur noch gelesen.
         self._staende: list = []
@@ -499,15 +501,15 @@ class RaceState(BaseState):
             # Subscribe to checkpoint crossed for sector splits
             self.event_bus.subscribe("checkpoint_crossed", self._on_checkpoint_crossed_ghost)
 
-        # Verfolgerkameras: eine je Mensch. Im Splitscreen bekommt jede ihre
-        # eigene Bildhaelfte, das Seitenverhaeltnis rechnet _welt_zeichnen aus.
-        from src.render3d import camera as kamera3d
+        # Kameras: eine je Mensch. Im Splitscreen bekommt jede ihre eigene
+        # Bildhaelfte, das Seitenverhaeltnis rechnet _welt_zeichnen aus. Die
+        # Ansicht (Verfolger, Haube, Cockpit) steht im Profil (1.1.0).
         self._humans = [self.player] + ([self.player2] if self.player2 else [])
         self._kameras = []
-        for hp in self._humans:
-            kam = kamera3d.Verfolgerkamera(abstand_m=KAMERA_ABSTAND_M,
-                                           hoehe_m=KAMERA_HOEHE_M,
-                                           zielhoehe_m=KAMERA_ZIELHOEHE_M)
+        self._kamera_taste_war = {}
+        self._ansicht_hinweis = {}
+        for slot, hp in enumerate(self._humans, start=1):
+            kam = self._kamera_bauen(hp, slot)
             # Ohne Nachziehen: zum Start steht die Kamera schon hinter dem
             # Auto und faehrt nicht erst von der Streckenmitte heran.
             kam.setzen(welt3d(hp.position), hp.angle)
@@ -2193,6 +2195,7 @@ class RaceState(BaseState):
             else:
                 hp.handle_input()   # read this human's input source
             hp.update(dt)
+            self._kamera_eingabe(self._humans.index(hp) + 1, hp, cam, dt)
             cam.folgen(welt3d(hp.position), hp.angle, dt)
 
         # Was in diesem Bild zu sehen ist, einmal je Bild einsammeln - nicht
@@ -2311,6 +2314,77 @@ class RaceState(BaseState):
                 self._starte_ausblenden(None)   # fallback: local results only
 
     # ------------------------------------------------------------------
+    # Kameraansichten (1.1.0)
+    # ------------------------------------------------------------------
+
+    #: Wie lange der Name der Ansicht nach dem Umschalten eingeblendet bleibt (s).
+    ANSICHT_HINWEIS_S = 1.6
+
+    def _kamera_bauen(self, mensch, slot: int):
+        """Die Kamera eines Menschen: gespeicherte Ansicht, Maße seines Wagens."""
+        from src.core import profile as _profile
+        from src.render3d import ansichten
+        kam = ansichten.Ansichtskamera(_profile.current().ansicht(slot))
+        kam.masse_setzen(self._cockpitmasse(getattr(mensch, "config_key", "")))
+        return kam
+
+    @staticmethod
+    def _cockpitmasse(schluessel: str):
+        """Augpunkt und Haubenpunkt eines Fahrzeugtyps aus ``<key>_teile.json`` (sonst geschaetzt)."""
+        from src.core.paths import bundle_dir
+        from src.render3d import vehicle_node
+        ordner = bundle_dir() / "assets" / "vehicles"
+        for kandidat in (schluessel, "rookie"):
+            if kandidat:
+                masse = vehicle_node.cockpit_aus_datei(ordner / f"{kandidat}_teile.json")
+                if masse is not None:
+                    return masse
+        return None
+
+    def _kamera_eingabe(self, slot: int, mensch, kam, dt: float = 0.0) -> None:
+        """Ansicht wechseln (Flanke) und Zurueckschauen (gehalten) eines Menschen lesen."""
+        if slot in self._ansicht_hinweis:
+            name, rest = self._ansicht_hinweis[slot]
+            if rest - dt <= 0.0:
+                del self._ansicht_hinweis[slot]
+            else:
+                self._ansicht_hinweis[slot] = (name, rest - dt)
+        quelle = getattr(mensch, "input_source", None)
+        lesen = getattr(quelle, "kamera", None)
+        if lesen is None:
+            return
+        wechsel, zurueck = lesen()
+        if wechsel and not self._kamera_taste_war.get(slot, False):
+            self._ansicht_gewechselt(slot, kam.wechseln())
+        self._kamera_taste_war[slot] = wechsel
+        kam.rueckblick = zurueck
+
+    def _ansicht_gewechselt(self, slot: int, ansicht: str) -> None:
+        """Gewaehlte Ansicht merken (Profil) und kurz anzeigen."""
+        from src.core import profile as _profile
+        from src.render3d import ansichten
+        _profile.current().set_ansicht(slot, ansicht)
+        self._ansicht_hinweis[slot] = (ansichten.NAMEN[ansicht], self.ANSICHT_HINWEIS_S)
+
+    def _ansicht_huds(self, screen: pygame.Surface) -> None:
+        """Das HUD an die Ansicht anpassen und den Namen der neuen Ansicht einblenden.
+
+        Im Cockpit zeigen Tacho und Drehzahlmesser im Armaturenbrett die
+        Werte; die Rundinstrumente des HUD entfallen dort. Alles andere
+        (Position, Runde, Minimap, Startampel) bleibt.
+        """
+        huds = [self.hud1, self.hud2] if self._split else [self.hud]
+        for hud, kam in zip(huds, self._kameras):
+            if hud is not None:
+                hud.dashboard_sichtbar = getattr(kam, "ansicht", "") != "cockpit"
+        mitten = ([SCREEN_WIDTH // 4, SCREEN_WIDTH * 3 // 4] if self._split
+                  else [SCREEN_WIDTH // 2])
+        for slot, (name, rest) in self._ansicht_hinweis.items():
+            if slot - 1 < len(mitten):
+                theme.text(screen, tr(name), theme.LABEL, theme.ACCENT,
+                           (mitten[slot - 1], 100), center=True)
+
+    # ------------------------------------------------------------------
     # Die Welt in 3D
     # ------------------------------------------------------------------
 
@@ -2397,6 +2471,8 @@ class RaceState(BaseState):
             nick_rad=nick, wank_rad=wank,
             schlupf_vorn=vorn, schlupf_hinten=hinten,
             bremse=float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
+            tempo_kmh=abs(float(getattr(fahrzeug, "signed_speed", 0.0) or 0.0)) * KMH_PER_PXS,
+            drehzahl=float(getattr(fahrzeug, "rpm", 0.0) or 0.0),
         )
 
     #: Zeitkonstante (s), mit der der abgeleitete Lenkwinkel eines Abbilds nachzieht.
@@ -2582,14 +2658,21 @@ class RaceState(BaseState):
         else:
             haelften = [briefkasten]
 
-        for ausschnitt, kam in zip(haelften, self._kameras):
+        for ausschnitt, kam, mensch in zip(haelften, self._kameras, self._humans):
             _vx, _vy, vb, vh = ausschnitt
             ctx.viewport = ausschnitt
             ctx.scissor = ausschnitt
+            # Die starren Ansichten (Haube, Cockpit) haengen an der gezeichneten
+            # Neigung des Aufbaus; dieselbe Matrix, mit der die Karosserie steht.
+            if hasattr(kam, "aufbau_setzen"):
+                knoten = self.szene.knotenspeicher.knoten(szenen_kennung(mensch))
+                kam.aufbau_setzen(knoten.aufbau_matrix() if knoten is not None else None)
             projektion = kamera3d.perspektive(
-                SICHTFELD_GRAD, vb / max(1, vh), NAHE_EBENE_M, FERNE_EBENE_M)
+                getattr(kam, "sichtfeld_grad", SICHTFELD_GRAD), vb / max(1, vh),
+                getattr(kam, "nahe_m", NAHE_EBENE_M), FERNE_EBENE_M)
             mvp = projektion @ kam.blickmatrix()
-            self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=kam.ziel)
+            self.szene.zeichnen(mvp, kam.auge, self._staende,
+                                fokus=getattr(kam, "fokus", kam.ziel))
             self._letzte_sicht = (mvp, ausschnitt, briefkasten)
 
     def auf_bildschirm(self, pos_px, hoehe_m: float = 0.0):
@@ -2648,6 +2731,7 @@ class RaceState(BaseState):
         Untergrund und der Himmel.
         """
         self._welt_zeichnen()
+        self._ansicht_huds(screen)
 
         if self._split:
             for x, hud_obj in [(0, self.hud1), (SCREEN_WIDTH // 2, self.hud2)]:
