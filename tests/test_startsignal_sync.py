@@ -189,8 +189,10 @@ def test_ausschnitte_aus_der_echten_datei(monkeypatch):
     pygame.mixer.quit()
     pygame.mixer.init(frequency=sfx.SR, size=-16, channels=2, buffer=512)
     try:
-        from src.core.resource_manager import ResourceManager
-        ganz = ResourceManager().load_sound(sfx._pfad("race-start.wav"))
+        # Frisch laden, nicht ueber den ResourceManager: dessen Zwischenspeicher
+        # haelt sonst einen Klang aus einem frueheren Test, der mit anderer
+        # Mixerrate geladen wurde - dann stimmen Laengen und Einsatz nicht.
+        ganz = pygame.mixer.Sound(sfx._pfad("race-start.wav"))
         rate = pygame.mixer.get_init()[0]
         gemessen = {}
         for art, (von, bis) in sfx_rennen.STARTSIGNAL_AUSSCHNITTE.items():
