@@ -55,7 +55,8 @@ class Profile:
                  announcements_seeded: bool = False,
                  grafik: dict | None = None,
                  kamera_ansichten: dict | None = None,
-                 fahrhilfen: dict | None = None) -> None:
+                 fahrhilfen: dict | None = None,
+                 tageszeit: str = "Tag") -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -108,6 +109,12 @@ class Profile:
         #: ``linie`` (Ideallinie) als Wahrheitswerte, ``vibration`` 0..3. Fehlende
         #: Schluessel gelten als Standard (alle Hilfen aus), siehe ``FAHRHILFEN_STANDARD``.
         self.fahrhilfen: dict = dict(fahrhilfen) if isinstance(fahrhilfen, dict) else {}
+
+        #: Zuletzt gewählte Tageszeit des Rennens ("Tag", "Abend", "Nacht").
+        #: Ein Profil von vor 1.1.0 kennt das Feld nicht: dann Tag. Unbekanntes
+        #: (von Hand verbogen) wird ebenfalls zu Tag.
+        from src.render3d import tageszeit as _tz
+        self.tageszeit: str = _tz.normiere(tageszeit)
 
     # -- Fahrhilfen und Vibration -----------------------------------------
     def fahrhilfe(self, name: str):
@@ -163,6 +170,7 @@ class Profile:
                 data.get("grafik"),
                 kamera_ansichten=data.get("kamera_ansichten"),
                 fahrhilfen=data.get("fahrhilfen"),
+                tageszeit=data.get("tageszeit", "Tag"),
             )
         except Exception:
             return cls()
@@ -196,6 +204,7 @@ class Profile:
                 "grafik": self.grafik,
                 "kamera_ansichten": self.kamera_ansichten,
                 "fahrhilfen": self.fahrhilfen,
+                "tageszeit": self.tageszeit,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass
@@ -261,6 +270,13 @@ class Profile:
             return
         self.kamera_ansichten[str(slot)] = ansicht
         self.save()
+    def set_tageszeit(self, name: str) -> None:
+        """Die gewählte Tageszeit merken (Lobby); speichert nur bei Änderung."""
+        from src.render3d import tageszeit as _tz
+        name = _tz.normiere(name)
+        if name != self.tageszeit:
+            self.tageszeit = name
+            self.save()
 
     # -- Lackierungen ----------------------------------------------------
     def paint(self, vehicle_key: str) -> str:

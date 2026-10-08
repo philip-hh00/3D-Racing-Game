@@ -38,7 +38,8 @@ from pathlib import Path
 
 import numpy as np
 
-from . import begrenzung, grafik, matrix, mesh, schatten, shader, track_mesh, vehicle_node
+from . import begrenzung, grafik, matrix, mesh, schatten, shader, tageszeit, track_mesh, vehicle_node
+from . import tageszeit as tageszeit_modul   # der Parameter ``tageszeit`` der Szene verdeckt den Namen
 from .nachbearbeitung import Nachbearbeitung
 from .reifenspuren import ERSATZRAEDER, Reifenspuren
 from .deko import Dekozeichner, material_setzen
@@ -199,6 +200,8 @@ class Fahrzeugmodell:
     #: ``<key>_lod1.glb``, wenn es daneben liegt: dieselben Knoten und
     #: Materialien mit halb so vielen Dreiecken, für ferne Autos.
     lod1: mesh.Modell | None = None
+    #: Wo Scheinwerfer und Rücklichter sitzen (Nacht, ``tageszeit.py``).
+    leuchten: tageszeit.Leuchtpunkte | None = None
 
     def knoten(self) -> vehicle_node.Fahrzeugknoten | None:
         """Ein frischer Knoten für **ein** Fahrzeug dieses Typs."""
@@ -270,6 +273,9 @@ class Modellspeicher:
             schluessel=echter,
             modell=mesh.hochladen(self.ctx, self.programm, daten),
             teile=teile,
+            leuchten=tageszeit.leuchtpunkte_aus_modell(
+                daten, teile.laenge_m if teile else ERSATZMASSE_M[0],
+                teile.breite_m if teile else ERSATZMASSE_M[1]),
         )
         lod1_pfad = self.ordner / f"{echter}_lod1.glb"
         schattendaten = daten
@@ -489,14 +495,24 @@ def lack_effekt(name: str, metallic_werk: float, lack: Lackwerte | None) -> tupl
 
 
 def lack_material_setzen(p, hm: mesh.HochgeladenesMaterial, lack: Lackwerte | None,
-                         bremse: float = 0.0) -> None:
+                         bremse: float = 0.0, leuchten: tuple | None = None) -> None:
     """Material setzen; ``lack`` und ``lack2`` bekommen die Lackierung,
-    ``bremslicht`` leuchtet nach dem Bremspedal."""
+    ``bremslicht`` leuchtet nach dem Bremspedal.
+
+    ``leuchten``: (vorn, hinten) — Faktoren auf die Emission der Scheinwerfer
+    und Rückleuchten (Nacht); ``None`` lässt sie, wie das Modell sie hat."""
     material_setzen(p, hm)
     name = hm.daten.name
     shader.setzen(p, "lack_effekt", lack_effekt(name, hm.daten.metallic, lack))   # Strang L
     if name == "bremslicht":
-        shader.setzen(p, "emission", bremslicht_emission(hm.daten.emission, bremse))
+        emission = bremslicht_emission(hm.daten.emission, bremse)
+        if leuchten is not None:
+            emission = tuple(c * leuchten[1] for c in emission)
+        shader.setzen(p, "emission", emission)
+        return
+    if leuchten is not None and name in ("licht_vorn", "licht_hinten"):
+        faktor = leuchten[0] if name == "licht_vorn" else leuchten[1]
+        shader.setzen(p, "emission", tuple(float(c) * faktor for c in hm.daten.emission))
         return
     if name in ("lack", "lack2"):
         shader.setzen(p, "klarlack", 1.0)
@@ -542,7 +558,7 @@ def _zeichenplan(modell: mesh.Modell) -> dict:
 
 def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                            lack: Lackwerte | None, durchsichtig,
-                           bremse: float = 0.0) -> None:
+                           bremse: float = 0.0, leuchten: tuple | None = None) -> None:
     """Alle Teile eines Fahrzeugs an ihren Matrizen zeichnen.
 
     ``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles.
@@ -571,7 +587,7 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                 continue
             if not material_gesetzt:
                 if hm is not None:
-                    lack_material_setzen(p, hm, lack, bremse)
+                    lack_material_setzen(p, hm, lack, bremse, leuchten)
                 material_gesetzt = True
             if name != zuletzt:
                 b = bytes_je_teil.get(name)
@@ -613,8 +629,10 @@ class Rennszene:
                  himmelordner: str | Path | None = None,
                  umgebungsordner: str | Path | None = None,
                  platzierungen=None, fahrzeuge=(), schattenwurf: bool = True,
-                 sofort: bool = True) -> None:
+                 sofort: bool = True, tageszeit: str = tageszeit.STANDARD) -> None:
         self.ctx = ctx
+        #: Tag, Abend oder Nacht (``tageszeit.py``); fehlt oder ist unbekannt: Tag.
+        self.tageszeit = tageszeit_modul.vorgabe(tageszeit)
         self.netz = streckennetz
         self.modellordner = Path(modellordner)
         self.thema = thema
@@ -643,6 +661,9 @@ class Rennszene:
         #: Schatten der Berge (Strang W2): Sonnensichtkarte, siehe licht.py.
         self.gelaendesicht = None
         self._radplaetze: dict = {}
+        #: Nacht: Lichter von Laternen und Masten, die Masten selbst.
+        self._lampen: list = []
+        self.masten = None
         #: Belichtung des Themas; angewendet in der Nachbearbeitung.
         self.belichtung = 1.0
         self._texturen: dict = {}
@@ -682,7 +703,10 @@ class Rennszene:
 
         yield 0.06, "Himmel"
         name = getattr(self.thema, "himmel", "") if self.thema else ""
-        self.himmel = licht.Himmel(ctx, self.himmelordner or ".", name)
+        # Die Sonne der Tageszeit steht in ``himmel.sonne``, vor Schattenkarte
+        # und Geländeschatten: beide lesen sie dort. Der Tag lässt sie, wie das
+        # Himmelsbild sie hat.
+        self.himmel = licht.Himmel(ctx, self.himmelordner or ".", name, self.tageszeit)
         self._umgebung_setzen()
 
         yield 0.08, "Gelände"
@@ -706,30 +730,57 @@ class Rennszene:
             anzahl = max(1, len(self.deko._gruppen))
             for i, modell in enumerate(self.deko.schritte()):
                 yield 0.5 + 0.48 * i / anzahl, f"Umgebung {modell}"
+        if self.tageszeit.lichter:
+            yield 0.99, "Nacht"
+            self._nachtlichter_bauen()
         self.fertig = True
         yield 1.0, "Fertig"
 
     def _umgebung_setzen(self) -> None:
         t = self.thema
+        tz = self.tageszeit
+        werte = None
+        if t is not None:
+            werte = dict(
+                sonne_farbe=tuple(t.sonne_farbe), himmel_helligkeit=float(t.himmel_helligkeit),
+                nebel_farbe=tuple(t.nebel_farbe), nebel_dichte=float(t.nebel_dichte),
+                boden_farbe=tuple(t.boden_farbe), himmel_zenit=tuple(t.himmel_zenit),
+                himmel_horizont=tuple(t.himmel_horizont), belichtung=float(t.belichtung))
+        elif tz.aktiv:
+            werte = dict(
+                sonne_farbe=shader.SONNE_FARBE, himmel_helligkeit=1.0, nebel_farbe=shader.HIMMEL_HORIZONT,
+                nebel_dichte=0.0, boden_farbe=shader.BODEN_FARBE, himmel_zenit=shader.HIMMEL_ZENIT,
+                himmel_horizont=shader.HIMMEL_HORIZONT, belichtung=1.0)
+        if werte is not None:
+            werte = tageszeit_modul.umgebung_werte(tz, werte)
+        schalter = tageszeit_modul.himmel_schalter(tz)
         for p in (self.programm, self.programm_instanz, self.himmel.programm):
             sonne = tuple(float(c) for c in self.himmel.sonne)
             shader.setzen(p, "sonne_richtung", sonne)
             shader.setzen(p, "hat_himmel", 1.0 if self.himmel.textur is not None else 0.0)
             shader.setzen(p, "himmel_mips", max(1.0, self.himmel.mips - 1.0))
-            if t is not None:
-                shader.setzen(p, "himmel_zenit", tuple(t.himmel_zenit))
-                shader.setzen(p, "himmel_horizont", tuple(t.himmel_horizont))
-                shader.setzen(p, "boden_farbe", tuple(t.boden_farbe))
-                self._boden_thema = tuple(t.boden_farbe)
-                shader.setzen(p, "sonne_farbe", tuple(t.sonne_farbe))
-                shader.setzen(p, "himmel_helligkeit", float(t.himmel_helligkeit))
-                self.belichtung = float(t.belichtung)
-                shader.setzen(p, "nebel_farbe", tuple(t.nebel_farbe))
-                shader.setzen(p, "nebel_dichte", float(t.nebel_dichte))
+            if werte is not None:
+                shader.setzen(p, "himmel_zenit", tuple(werte["himmel_zenit"]))
+                shader.setzen(p, "himmel_horizont", tuple(werte["himmel_horizont"]))
+                shader.setzen(p, "boden_farbe", tuple(werte["boden_farbe"]))
+                self._boden_thema = tuple(werte["boden_farbe"])
+                shader.setzen(p, "sonne_farbe", tuple(werte["sonne_farbe"]))
+                shader.setzen(p, "himmel_helligkeit", float(werte["himmel_helligkeit"]))
+                self.belichtung = float(werte["belichtung"])
+                shader.setzen(p, "nebel_farbe", tuple(werte["nebel_farbe"]))
+                shader.setzen(p, "nebel_dichte", float(werte["nebel_dichte"]))
+            if tz.aktiv:
+                shader.setzen(p, "tz_himmel", schalter)
+                shader.setzen(p, "tz_tint_oben", tz.tint_oben)
+                shader.setzen(p, "tz_tint_horizont", tz.tint_horizont)
+                shader.setzen(p, "tz_glut", tz.glut)
+                shader.setzen(p, "tz_scheibe", tz.scheibe)
+                shader.setzen(p, "schatten_bias", tz.schatten_bias)
         if self.reifenspuren is not None:
             # Rauch ist hell und matt: grob Sonne von schräg plus Himmel.
-            sonne = np.asarray(t.sonne_farbe if t is not None else shader.SONNE_FARBE, dtype=float)
-            himmel = np.asarray(t.himmel_horizont if t is not None else shader.HIMMEL_HORIZONT, dtype=float)
+            sonne = np.asarray(werte["sonne_farbe"] if werte is not None else shader.SONNE_FARBE, dtype=float)
+            himmel = np.asarray(werte["himmel_horizont"] if werte is not None else shader.HIMMEL_HORIZONT,
+                                dtype=float)
             self.reifenspuren.rauch_farbe = tuple(float(c) for c in 0.72 * (sonne * 0.2 + himmel * 0.75))
 
     def _strecke_hochladen(self) -> None:
@@ -1030,6 +1081,8 @@ class Rennszene:
         if self.gelaendesicht is not None:                # Strang W2
             self.gelaendesicht.setzen((self.programm, self.programm_instanz),
                                       an=einstellung.gelaende_schatten > 0)
+        if self.tageszeit.lichter:
+            self._lichter_setzen(staende, fokus, einstellung)
 
         # Deckendes von nah nach fern: was verdeckt ist, verwirft der
         # Tiefentest, bevor der teure Fragment-Shader läuft. In der
@@ -1056,6 +1109,8 @@ class Rennszene:
             self.deko.zeichnen(mvp, kamera_position, "farbe")
         if self.fernwald is not None:
             self.fernwald.zeichnen()
+        if self.masten is not None:
+            self.masten.zeichnen(kamera_position)
         self._strecke_zeichnen()
         self.himmel.zeichnen(mvp, kamera_position)
         spuren = self.reifenspuren is not None and einstellung.reifenspuren
@@ -1078,6 +1133,54 @@ class Rennszene:
             self.reifenspuren.rauch_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position,
                                              tiefe, self.nachbearbeitung.groesse)
         self.nachbearbeitung.abschliessen(self.belichtung)
+
+    # -- Nacht: Lampen, Masten, Lichterliste ---------------------------------
+    def _nachtlichter_bauen(self) -> None:
+        """Laternen des Themas und, wo es keine gibt, Flutlichtmasten zu Lichtern machen."""
+        self._lampen = []
+        katalog = self.deko.katalog if self.deko is not None else {}
+        if self.deko is not None:
+            self.deko.lampen_leuchten = self.tageszeit.lampen_leuchten
+        if self.umgebungsordner is not None:
+            for name in sorted({pl.modell for pl in self.platzierungen}):
+                pfad = self.umgebungsordner / f"{name}.glb"
+                if not pfad.is_file() or "laterne" not in name:
+                    continue
+                kopf = tageszeit_modul.birne_aus_modell(mesh.laden(pfad))
+                if kopf is not None:
+                    self._lampen += tageszeit_modul.laternen_lichter(self.platzierungen, name, kopf, katalog)
+        if self._lampen:
+            return
+        orte = tageszeit_modul.mast_orte(self.netz, self.platzierungen, katalog)
+        if len(orte) == 0:
+            return
+        hoehen = None
+        if self.gelaende is not None:
+            hoehen = np.asarray(self.gelaende.hoehe(orte[:, 0], orte[:, 1]), dtype=np.float64)
+        from .masten import Mastzeichner
+        self.masten = Mastzeichner(self.ctx, self.programm_instanz, orte, hoehen)
+        self._lampen = tageszeit_modul.mast_lichter(orte, hoehen)
+
+    def _leuchtpunkte_von(self, stand: Fahrzeugstand):
+        fm = self.speicher.holen(stand.schluessel)
+        punkte = fm.leuchten if fm is not None else None
+        return punkte if punkte is not None else tageszeit_modul.Leuchtpunkte()
+
+    def _lichter_setzen(self, staende, fokus, einstellung) -> None:
+        """Die wichtigsten Lichter dieses Bildes in die Shader hochladen."""
+        n_max = max(0, min(int(einstellung.lichter_max), shader.MAX_LICHTER))
+        anzahl = 0
+        if n_max > 0:
+            kandidaten = tageszeit_modul.lichter_sammeln(staende, fokus, self._leuchtpunkte_von,
+                                                         self._lampen)
+            gewaehlt = tageszeit_modul.lichter_waehlen(kandidaten, fokus, n_max)
+            pos, farbe, richtung, anzahl = tageszeit_modul.lichter_packen(gewaehlt, shader.MAX_LICHTER)
+        for p in (self.programm, self.programm_instanz):
+            shader.setzen(p, "lichter_anzahl", int(anzahl))
+            if anzahl:
+                shader.feld_setzen(p, "lichter_pos", pos)
+                shader.feld_setzen(p, "lichter_farbe", farbe)
+                shader.feld_setzen(p, "lichter_richtung", richtung)
 
     def _schattenkarte_zeichnen(self, staende, fokus) -> None:
         karte = self.schattenkarte
@@ -1238,8 +1341,10 @@ class Rennszene:
         # 30.09.2026: gruener Stich an Heckschuerze und Schwellern).
         shader.setzen(p, "boden_farbe", FAHRZEUG_BODEN)
 
+        tz = self.tageszeit
+        leuchten = (tz.vorn_leuchten, tz.hinten_leuchten) if tz.lichter and not stand.entfaerbt else None
         fahrzeugteile_zeichnen(p, modell, self._teilmatrizen(stand, fahrzeugmodell),
-                               stand.lack, durchsichtig, stand.bremse)
+                               stand.lack, durchsichtig, stand.bremse, leuchten)
         shader.setzen(p, "boden_farbe", getattr(self, "_boden_thema", shader.BODEN_FARBE))
 
         self.ctx.depth_mask = True
@@ -1266,6 +1371,9 @@ class Rennszene:
         self._eigene_texturen = []
         if getattr(self, "deko", None) is not None:
             self.deko.freigeben()
+        if getattr(self, "masten", None) is not None:
+            self.masten.freigeben()
+            self.masten = None
         for ding in (getattr(self, "gelaendezeichner", None), getattr(self, "graszeichner", None),
                      getattr(self, "fernwald", None), getattr(self, "gelaendesicht", None)):
             if ding is not None:

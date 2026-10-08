@@ -45,9 +45,15 @@ except ImportError:                              # pragma: no cover
 
 
 class Himmel:
-    """Das Himmelspanorama als Textur plus Hintergrund-Durchgang."""
+    """Das Himmelspanorama als Textur plus Hintergrund-Durchgang.
 
-    def __init__(self, ctx, ordner: str | Path, name: str) -> None:
+    ``tageszeit`` (``tageszeit.Tageszeit``): Abend und Nacht bekommen ein
+    verbogenes, getöntes Bild und die Sonne (den Mond) der Tageszeit; der Tag
+    (oder ``None``) lädt das Bild unverändert. ``sonne_bild`` bleibt die
+    Richtung der Sonne im Bild des Themas.
+    """
+
+    def __init__(self, ctx, ordner: str | Path, name: str, tageszeit=None) -> None:
         self.ctx = ctx
         self.textur = None
         self.sonne = np.asarray(shader.SONNE_RICHTUNG, dtype=np.float64)
@@ -56,11 +62,6 @@ class Himmel:
         ordner = Path(ordner)
         bild_pfad = ordner / f"{name}.jpg"
         if name and bild_pfad.is_file():
-            from PIL import Image
-            from .mesh import textur_hochladen
-            self.textur = textur_hochladen(ctx, Image.open(bild_pfad), wiederholen=True)
-            self.textur.repeat_y = False
-            self.mips = float(np.floor(np.log2(max(self.textur.size))))
             try:
                 with open(ordner / f"{name}.json", encoding="utf-8") as fh:
                     daten = json.load(fh)
@@ -68,10 +69,39 @@ class Himmel:
                 self.sonne = s / np.linalg.norm(s)
             except (OSError, KeyError, ValueError):
                 pass
+        self.sonne_bild = np.array(self.sonne, dtype=np.float64)
+        aktiv = tageszeit is not None and tageszeit.aktiv
+        if aktiv:
+            from . import tageszeit as tz_modul
+            self.sonne = tz_modul.sonne_richtung(tageszeit, self.sonne_bild)
+        if name and bild_pfad.is_file():
+            from PIL import Image
+            from .mesh import textur_hochladen
+            bild = Image.open(bild_pfad)
+            if aktiv:
+                self.textur = self._graden(bild, tageszeit)
+            else:
+                self.textur = textur_hochladen(ctx, bild, wiederholen=True)
+            self.textur.repeat_y = False
+            self.mips = float(np.floor(np.log2(max(self.textur.size))))
         self.programm = shader.himmelprogramm(ctx)
         ecken = np.array([[-1, -1], [3, -1], [-1, 3]], dtype="f4")
         self._puffer = ctx.buffer(ecken.tobytes())
         self.vao = ctx.vertex_array(self.programm, [(self._puffer, "2f", "in_ecke")])
+
+    def _graden(self, bild, tageszeit):
+        """Das Himmelsbild der Tageszeit als Fließkommatextur (RGBA16F) mit Mipmaps."""
+        from . import tageszeit as tz_modul
+        roh = np.asarray(bild.convert("RGB"), dtype=np.uint8)
+        graded = tz_modul.himmel_bild(roh, tageszeit, self.sonne_bild)
+        rgba = np.ones((*graded.shape[:2], 4), dtype=np.float16)
+        rgba[..., :3] = np.minimum(graded, 60000.0)
+        rgba = np.ascontiguousarray(rgba[::-1])      # GL: v = 0 ist die Unterkante
+        textur = self.ctx.texture((rgba.shape[1], rgba.shape[0]), 4, rgba.tobytes(), dtype="f2")
+        textur.build_mipmaps()
+        textur.repeat_x = True
+        textur.repeat_y = False
+        return textur
 
     def binden(self, einheit: int = 2) -> None:
         if self.textur is not None:

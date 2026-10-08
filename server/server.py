@@ -132,6 +132,9 @@ LAST_VOLL = "ausgelastet"
 SETTINGS_KEYS = frozenset({
     "mode", "roster_size", "vehicle_class", "track_path", "track_name",
     "laps", "ai_difficulty", "ai_roster", "gp_races", "offers_enabled",
+    # Tageszeit des Rennens (1.1.0): der Host legt sie fest. Fehlt das Feld, gilt
+    # Tag; ein Host mit älterem Spiel schickt es gar nicht.
+    "tageszeit",
     # Grand Prix: Serienzustand reist im selben Block mit (§3 D/G-Entwurf).
     "gp_tracks", "gp_track_key", "gp_active", "gp_phase", "gp_finished",
     "gp_locked", "gp_members", "gp_race", "gp_total", "gp_points", "gp_raced",
@@ -140,6 +143,9 @@ SETTINGS_KEYS = frozenset({
     # ein Aufraeumen es nicht wegwirft.
     "picks",
 })
+
+#: Gültige Werte für ``settings["tageszeit"]``; alles andere wird zu "Tag".
+TAGESZEITEN = frozenset({"Tag", "Abend", "Nacht"})
 
 #: Zeichen, die in einem Spielernamen zusaetzlich zu Buchstaben und Ziffern
 #: erlaubt sind (H2.13).
@@ -949,6 +955,9 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 # Relay verteilt ``settings`` an alle, und was er nicht kennt,
                 # muss er auch nicht weitertragen.
                 bekannt = {k: v for k, v in payload.items() if k in SETTINGS_KEYS}
+                if "tageszeit" in bekannt and not (isinstance(bekannt["tageszeit"], str)
+                                                   and bekannt["tageszeit"] in TAGESZEITEN):
+                    bekannt["tageszeit"] = "Tag"
                 unbekannt = len(payload) - len(bekannt)
                 if unbekannt:
                     log.warning(f"Lobby {lobby.lobby_id}: {unbekannt} unbekannte "

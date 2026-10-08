@@ -27,6 +27,7 @@ from src.ui.widgets import Button, Stepper, TextInput, OnScreenKeyboard, ServerR
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
+from src.render3d import tageszeit as tz
 from src.states.menu.gp_overview import GPOverview
 from src.ui import zeichnen, leinwand
 
@@ -157,6 +158,12 @@ class OnlineLobbyPage(Page):
         self._selected_vehicle    = s.player_vehicle
         self._selected_difficulty = s.ai_difficulty
         self._selected_laps       = s.laps
+        # Tageszeit: der Host wählt (zuletzt gewählter Wert aus dem Profil), der
+        # Gast liest sie aus den Lobbyeinstellungen. Fehlt das Feld dort (Host
+        # mit älterem Spiel), ist es Tag.
+        from src.core import profile as _profil
+        self._selected_tageszeit  = tz.normiere(_profil.current().tageszeit)
+        s.time_of_day             = self._selected_tageszeit
 
         self._roster_size    = _ROSTER_SIZE
         self._selected_mode  = "Rennen"        # "Rennen" | "Team-Zeitfahren"
@@ -298,6 +305,10 @@ class OnlineLobbyPage(Page):
             pygame.Rect(0, 0, w, h), "Runden",
             [str(n) for n in range(1, 11)], self._selected_laps - 1,
         )
+        self._tageszeit_stepper = Stepper(
+            pygame.Rect(0, 0, w, h), tr("Tageszeit"), [tr(n) for n in tz.NAMEN],
+            tz.NAMEN.index(self._selected_tageszeit), action="set_tageszeit",
+        )
         self._diff_stepper = Stepper(
             pygame.Rect(0, 0, w, h), "KI-Schwierigkeit",
             _DIFF_LABELS,
@@ -321,7 +332,7 @@ class OnlineLobbyPage(Page):
         self._btn_ready_c   = Button(pygame.Rect(0, 0, w, h),
                                      tr("Bereit"), "toggle_ready")
 
-        col_c = theme.Column(x, 390, gap=gap)
+        col_c = theme.Column(x, 420, gap=gap)
         col_c.add(self._btn_vehicle_c)
         col_c.skip(16)
         col_c.add(self._btn_ready_c)
@@ -766,6 +777,8 @@ class OnlineLobbyPage(Page):
                 if "laps" in srv:
                     self._selected_laps = int(srv.get("laps", 3))
                     self._laps_stepper.index = max(0, min(9, self._selected_laps - 1))
+                # Fehlt das Feld (Host mit älterem Spiel), ist es Tag.
+                self._tageszeit_setzen(srv.get("tageszeit"))
                 if "ai_difficulty" in srv:
                     self._selected_difficulty = srv.get("ai_difficulty", "medium")
                     if self._selected_difficulty in _DIFF_KEYS:
@@ -1072,6 +1085,7 @@ class OnlineLobbyPage(Page):
                  self._laps_stepper]
         if gp_mode and self._gp_races_stepper.focusable:
             reihe.append(self._gp_races_stepper)
+        reihe.append(self._tageszeit_stepper)
         # Der Schalter fuer Streckenvorschlaege stand hier bis zum 05.08.2026.
         # Er sitzt jetzt in der Grand-Prix-Uebersicht, „eine Seite später":
         # dort liegt die Liste, auf die er sich bezieht, und dort kann der Host
@@ -1122,6 +1136,8 @@ class OnlineLobbyPage(Page):
         if self._is_host:
             self._laps_stepper.enabled   = True
             self._laps_stepper.focusable = True
+            self._tageszeit_stepper.enabled   = True
+            self._tageszeit_stepper.focusable = True
             self._mode_stepper.enabled   = True
             self._mode_stepper.focusable = True
             self._class_stepper.enabled  = True
@@ -1153,6 +1169,8 @@ class OnlineLobbyPage(Page):
         else:
             self._laps_stepper.enabled   = False
             self._laps_stepper.focusable = False
+            self._tageszeit_stepper.enabled   = False
+            self._tageszeit_stepper.focusable = False
             self._mode_stepper.enabled   = False
             self._mode_stepper.focusable = False
             self._size_stepper.enabled   = False
@@ -1375,6 +1393,13 @@ class OnlineLobbyPage(Page):
             for d in race_setup.current().ai_roster
         ]
 
+    def _tageszeit_setzen(self, name) -> None:
+        """Die Tageszeit übernehmen (Gast: vom Host; Host: eigene Wahl) und in den Rennaufbau legen."""
+        self._selected_tageszeit = tz.normiere(name)
+        self._tageszeit_stepper.index = tz.NAMEN.index(self._selected_tageszeit)
+        from src.core import race_setup
+        race_setup.current().time_of_day = self._selected_tageszeit
+
     def _push_settings(self) -> None:
         from src.net import session
         net = session.get()
@@ -1389,6 +1414,7 @@ class OnlineLobbyPage(Page):
             "track_path":    self._selected_track_path,
             "track_name":    _track_name_from_path(self._selected_track_path),
             "laps":          self._selected_laps,
+            "tageszeit":     self._selected_tageszeit,
             "ai_difficulty": self._selected_difficulty,
             "ai_roster":     self._ai_roster_payload(),
             # Serienlaenge reist immer mit, auch bevor die Serie laeuft - sonst
@@ -1797,6 +1823,7 @@ class OnlineLobbyPage(Page):
         s.is_multiplayer = False
         s.track_path     = resolved
         s.laps           = self._selected_laps
+        s.time_of_day    = self._selected_tageszeit
         s.player_vehicle = self._selected_vehicle
         s.ai_difficulty  = self._selected_difficulty
         s.vehicle_class  = self._selected_class
@@ -2558,6 +2585,7 @@ class OnlineLobbyPage(Page):
             return
 
         old_laps  = self._laps_stepper.index
+        old_tz    = self._tageszeit_stepper.index
         old_mode  = self._mode_stepper.index
         old_size  = self._size_stepper.index
         old_class = self._class_stepper.index
@@ -2628,6 +2656,11 @@ class OnlineLobbyPage(Page):
         size_changed  = self._is_host and self._size_stepper.index != old_size
         class_changed = self._is_host and self._class_stepper.index != old_class
         laps_changed  = self._is_host and self._laps_stepper.index != old_laps
+        tz_changed    = self._is_host and self._tageszeit_stepper.index != old_tz
+        if tz_changed:
+            self._tageszeit_setzen(tz.NAMEN[self._tageszeit_stepper.index])
+            from src.core import profile as _profil
+            _profil.current().set_tageszeit(self._selected_tageszeit)
 
         if mode_changed:
             self._selected_mode = _MODE_KEYS[self._mode_stepper.index]
@@ -2665,7 +2698,7 @@ class OnlineLobbyPage(Page):
             self._rebuild_roster_widgets()
             self._refresh_focus_group()
 
-        if laps_changed or mode_changed or size_changed or class_changed:
+        if laps_changed or tz_changed or mode_changed or size_changed or class_changed:
             self._push_settings()
 
     # ── Draw ─────────────────────────────────────────────────────────────────
@@ -2850,6 +2883,7 @@ class OnlineLobbyPage(Page):
             tn = _track_name_from_path(self._selected_track_path)
             lines.append((tr("Strecke:"), tn))
             lines.append((tr("Runden:"), str(self._selected_laps)))
+            lines.append((tr("Tageszeit:"), tr(self._selected_tageszeit)))
 
             ly = 192
             for label, value in lines:
@@ -2858,11 +2892,11 @@ class OnlineLobbyPage(Page):
                 ly += 32
             # AI difficulty is shown per driver in the right-hand roster, so no
             # separate left-side "Schwierigkeit" line for the client.
-            zeichnen.line(screen, theme.BORDER, (x, 360), (x + 700, 360), 1)
+            zeichnen.line(screen, theme.BORDER, (x, max(360, ly + 6)), (x + 700, max(360, ly + 6)), 1)
             self._btn_vehicle_c.draw(screen, focused is self._btn_vehicle_c)
             self._btn_ready_c.draw(screen,   focused is self._btn_ready_c)
             theme.text(screen, tr("Warte auf Host-Start ..."),
-                       theme.BODY, theme.TEXT_DIM, (x + 16, 570))
+                       theme.BODY, theme.TEXT_DIM, (x + 16, 600))
 
         # ── Right panel ────────────────────────────────────────────────────────
         rx = _RX

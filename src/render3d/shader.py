@@ -36,6 +36,10 @@ import struct
 
 import numpy as np
 
+#: So viele Lichter (Scheinwerfer, Rücklichter, Lampen) kennt der Shader
+#: höchstens je Bild; ``grafik.lichter_max`` begrenzt es je Stufe darunter.
+MAX_LICHTER = 24
+
 _VERTEX_KOPF = """
 #version 330
 uniform mat4 mvp;
@@ -155,6 +159,18 @@ uniform vec3  nebel_farbe;
 uniform float nebel_dichte;
 uniform float nebel_faktor;      // Kulisse: weniger Dunst, sonst verschwinden die Berge
 
+/* Tageszeit (tageszeit.py): Tag laeuft an allem hier vorbei (tz_himmel.x = 0). */
+uniform vec4  tz_himmel;         // an (0/1), -, -, Sterne 0..1. Das Himmelsbild selbst ist beim Laden
+                                 // verbogen und getoent (licht.Himmel), hier nur der Farbverlauf ohne Bild
+uniform vec3  tz_tint_oben;      // Himmelsfarbe im Zenit wird so getoent
+uniform vec3  tz_tint_horizont;  // ... und zur Sonne hin am Horizont
+uniform vec2  tz_glut;           // Abfall mit der Hoehe, Anteil abseits der Sonne
+uniform vec2  schatten_bias;     // Schattenversatz: konstant, je Neigung
+uniform int   lichter_anzahl;    // Scheinwerfer, Ruecklichter, Lampen (tageszeit.py)
+uniform vec4  lichter_pos[@MAX_LICHTER@];       // xyz, Reichweite (m)
+uniform vec4  lichter_farbe[@MAX_LICHTER@];     // rgb linear mit Staerke, w: cos Innenkegel
+uniform vec4  lichter_richtung[@MAX_LICHTER@];  // xyz zeigt vom Licht weg, w: cos Aussenkegel (2: Punktlicht)
+
 /* Fuer den Ghost: entfaerben und durchscheinend zeichnen. */
 uniform float entfaerbung;
 uniform float deckkraft;
@@ -174,6 +190,17 @@ vec2 equirect(vec3 d) {
     float u = 0.5 + atan(d.y, d.x) / (2.0 * PI);
     float v = 0.5 + asin(clamp(d.z, -1.0, 1.0)) / PI;
     return vec2(u, v);
+}
+
+/* Tageszeit: Tint des Farbverlaufs (nur ohne Himmelsbild; das Bild ist beim
+   Laden schon verbogen und getoent, siehe licht.Himmel und
+   tageszeit.himmel_bild — dort kostet es keine Bildzeit). */
+vec3 tz_himmel_ton(vec3 d) {
+    float h = clamp(d.z, 0.0, 1.0);
+    vec2 sxy = sonne_richtung.xy / max(length(sonne_richtung.xy), 1e-5);
+    float zur_sonne = 0.5 + 0.5 * dot(d.xy / max(length(d.xy), 1e-5), sxy);
+    float w = exp(-h * tz_glut.x) * mix(tz_glut.y, 1.0, zur_sonne * zur_sonne);
+    return mix(tz_tint_oben, tz_tint_horizont, w);
 }
 
 /* Der Himmel als Funktion einer Richtung und einer Unschaerfe (0..1). */
@@ -196,6 +223,7 @@ vec3 himmel(vec3 richtung, float unschaerfe) {
         }
         return karte;
     }
+    if (tz_himmel.x > 0.5) verlauf *= tz_himmel_ton(d);
     return verlauf;
 }
 
@@ -230,7 +258,7 @@ float sonnenlicht(vec3 n, vec3 l) {
     vec3 p = licht_position.xyz / licht_position.w * 0.5 + 0.5;
     if (p.x <= 0.0 || p.x >= 1.0 || p.y <= 0.0 || p.y >= 1.0 || p.z >= 1.0) return 1.0;
     float neigung = clamp(1.0 - dot(n, l), 0.0, 1.0);
-    float versatz = 0.0006 + 0.0025 * neigung;
+    float versatz = schatten_bias.x + schatten_bias.y * neigung;
     vec2 texel = 1.0 / vec2(textureSize(schatten_karte, 0));
     float summe = 0.0;
     for (int x = -1; x <= 1; x++) {
@@ -687,7 +715,48 @@ void main() {
     vec3 umgebung = umgebung_streuend * (vec3(1.0) - fr) + umgebung_spiegelnd * fr;
     if (hat_verdeckung > 0.5) umgebung *= texture(verdeckungskarte, tuv).r;
 
-    vec3 farbe = licht + umgebung;
+    /* --- Lokale Lichter: Scheinwerfer, Rücklichter, Lampen -------------------
+       Nur nachts (lichter_anzahl > 0). Je Licht ein Fenster auf der
+       Reichweite, ein weicher Kegel; der Kosinus wird zum Boden hin
+       aufgehellt (Scheinwerfer streifen die Fahrbahn flach, ohne das bliebe
+       der Lichtkegel auf dem Asphalt unsichtbar). */
+    vec3 lok_streu = vec3(0.0);
+    vec3 lok_spieg = vec3(0.0);
+    for (int i = 0; i < lichter_anzahl; i++) {
+        vec4 lp = lichter_pos[i];
+        vec3 dl = lp.xyz - welt_position;
+        float d2 = dot(dl, dl);
+        if (d2 > lp.w * lp.w) continue;
+        float dist = sqrt(d2);
+        vec3 Lv = dl / max(dist, 1e-4);
+        float nl = dot(N, Lv);
+        if (nl <= 0.0) continue;
+        vec4 ld = lichter_richtung[i];
+        float kegel = 1.0;
+        if (ld.w < 1.5) {
+            kegel = smoothstep(ld.w, lichter_farbe[i].w, dot(-Lv, ld.xyz));
+            if (kegel <= 0.0) continue;
+        }
+        float r = dist / lp.w;
+        float fenster = clamp(1.0 - r * r * r * r, 0.0, 1.0);
+        float strahl = fenster * fenster * kegel / (d2 + 16.0);
+        float nl_h = mix(nl, sqrt(nl), 0.55);
+        vec3 E = lichter_farbe[i].rgb * (strahl * nl_h);
+        // Rauer Boden (Asphalt, Gras, Fels) glaenzt im Scheinwerfer nicht; die
+        // Spiegelung rechnet nur, wo sie zu sehen ist (Lack, Glas, Chrom, Nasses).
+        if (rauheit < 0.65 || metallic > 0.3) {
+            vec3 Hl = normalize(V + Lv);
+            float dlg = verteilung_ggx(max(dot(N, Hl), 0.0), rauheit);
+            float ggl = geometrie_smith(n_dot_v, max(nl, 1e-4), rauheit);
+            vec3 flg = fresnel_schlick(max(dot(Hl, V), 0.0), f0);
+            lok_spieg += (dlg * ggl * flg) / max(4.0 * n_dot_v * max(nl, 1e-4), 1e-6) * E;
+            lok_streu += (vec3(1.0) - flg) * (1.0 - metallic) * basis / PI * E;
+        } else {
+            lok_streu += (1.0 - metallic) * basis / PI * E;
+        }
+    }
+
+    vec3 farbe = licht + umgebung + lok_streu + lok_spieg;
 
     /* Strang L: Scheibe. Die Spiegelung liegt auf dem Glas, sie wird nicht
        mit der Toenung ausgeblendet; die Durchsicht nimmt zum flachen Winkel
@@ -695,8 +764,8 @@ void main() {
        Deckung so, dass Farbe*Deckung = Spiegelung + Toenung. */
     if (lack_effekt.z > 0.5) {
         float w = fr.g;
-        vec3 spiegel = spiegelnd * sonne_farbe * n_dot_l * schatten + umgebung_spiegelnd * fr;
-        vec3 toenung = streuend * sonne_farbe * n_dot_l * schatten + umgebung_streuend * (vec3(1.0) - fr);
+        vec3 spiegel = spiegelnd * sonne_farbe * n_dot_l * schatten + umgebung_spiegelnd * fr + lok_spieg;
+        vec3 toenung = streuend * sonne_farbe * n_dot_l * schatten + umgebung_streuend * (vec3(1.0) - fr) + lok_streu;
         float a = 1.0 - (1.0 - alpha) * (1.0 - w);
         farbe = (spiegel + toenung * alpha) / max(a, 1e-3);
         alpha = a;
@@ -730,6 +799,8 @@ void main() {
     ausgabe = vec4(mix(farbe, vec3(grau), entfaerbung), deckkraft * alpha);
 }
 """
+
+FRAGMENT = FRAGMENT.replace("@MAX_LICHTER@", str(MAX_LICHTER))
 
 # ---------------------------------------------------------------------------
 # Schattenkarte: nur Tiefe
@@ -802,10 +873,41 @@ uniform vec3 boden_farbe;
 uniform vec3 sonne_richtung;
 uniform vec3 nebel_farbe;
 uniform float himmel_helligkeit;
+uniform vec4  tz_himmel;         // an (0/1), Sonnenhoehe im Ziel (rad), im Himmelsbild (rad), Sterne 0..1
+uniform vec3  tz_tint_oben;
+uniform vec3  tz_tint_horizont;
+uniform vec2  tz_glut;
+uniform vec4  tz_scheibe;        // Sonnen-/Mondscheibe: rgb, Staerke
 in vec2 ndc;
 out vec4 ausgabe;
 
 vec3 nach_linear(vec3 srgb) { return pow(max(srgb, vec3(0.0)), vec3(2.2)); }
+
+vec3 tz_himmel_ton(vec3 d) {
+    float h = clamp(d.z, 0.0, 1.0);
+    vec2 sxy = sonne_richtung.xy / max(length(sonne_richtung.xy), 1e-5);
+    float zur_sonne = 0.5 + 0.5 * dot(d.xy / max(length(d.xy), 1e-5), sxy);
+    float w = exp(-h * tz_glut.x) * mix(tz_glut.y, 1.0, zur_sonne * zur_sonne);
+    return mix(tz_tint_oben, tz_tint_horizont, w);
+}
+
+vec3 tz_hash3(vec3 p) {
+    p = fract(p * vec3(0.1031, 0.1030, 0.0973));
+    p += dot(p, p.yxz + 33.33);
+    return fract((p.xxy + p.yxx) * p.zyx);
+}
+
+/* Sterne: je Zelle einer Kugelschale hoechstens einer, ein kleiner heller Fleck. */
+float tz_sterne(vec3 d) {
+    vec3 p = d * 150.0;
+    vec3 zelle = floor(p);
+    vec3 h = tz_hash3(zelle);
+    if (h.x < 0.965) return 0.0;
+    vec3 mitte = zelle + 0.2 + 0.6 * tz_hash3(zelle + 7.7);
+    float abstand = length(p - mitte);
+    float groesse = 0.09 + 0.16 * h.y;
+    return smoothstep(groesse, groesse * 0.2, abstand) * (0.35 + 0.65 * h.z * h.z) * 6.0;
+}
 
 void main() {
     vec4 fern = inverse_vp * vec4(ndc, 1.0, 1.0);
@@ -819,14 +921,21 @@ void main() {
         farbe = nach_linear(textureLod(himmel_karte, st, 0.0).rgb) * himmel_helligkeit;
     } else {
         farbe = mix(himmel_horizont, himmel_zenit, pow(max(d.z, 0.0), 0.6));
+        if (tz_himmel.x > 0.5) farbe *= tz_himmel_ton(d);
     }
+    if (tz_himmel.w > 0.0) farbe += vec3(0.85, 0.92, 1.0) * tz_sterne(d) * tz_himmel.w
+                                    * smoothstep(0.03, 0.3, d.z);
     // Zum Horizont hin in den Dunst der Welt uebergehen.
     float dunst = 1.0 - smoothstep(0.0, 0.12, d.z);
     farbe = mix(farbe, nebel_farbe, dunst * 0.8);
     if (d.z < 0.0) farbe = mix(nebel_farbe, boden_farbe, clamp(-d.z * 2.0, 0.0, 1.0));
     // Die Sonne selbst: im LDR-Bild abgeschnitten, hier zurueckgegeben.
     float s = max(dot(d, normalize(sonne_richtung)), 0.0);
-    farbe += vec3(1.0, 0.95, 0.85) * (pow(s, 2000.0) * 40.0 + pow(s, 60.0) * 0.4);
+    if (tz_himmel.x > 0.5) {
+        farbe += tz_scheibe.rgb * tz_scheibe.w * (pow(s, 2500.0) * 40.0 + pow(s, 60.0) * 0.4 + pow(s, 7.0) * 0.12);
+    } else {
+        farbe += vec3(1.0, 0.95, 0.85) * (pow(s, 2000.0) * 40.0 + pow(s, 60.0) * 0.4);
+    }
     ausgabe = vec4(farbe, 1.0);
 }
 """
@@ -936,6 +1045,21 @@ def matrix_setzen(p, name: str, m: np.ndarray) -> None:
         pass
 
 
+def feld_setzen(p, name: str, werte: np.ndarray) -> None:
+    """Ein Uniform-Feld (``vec4 name[n]``) ganz hochladen; Unverändertes entfällt."""
+    roh = np.ascontiguousarray(werte, dtype="f4").tobytes()
+    stand = getattr(p, "_zuletzt", None)
+    if stand is None:
+        stand = _merkzettel(p)
+    if stand.get(name) == roh:
+        return
+    try:
+        p[name].write(roh)
+    except KeyError:
+        pass
+    stand[name] = roh
+
+
 def _vorgaben(p) -> None:
     for name, wert in (
         ("basisfarbe", 0), ("metallic_rauheit", 1), ("himmel_karte", 2),
@@ -957,6 +1081,10 @@ def _vorgaben(p) -> None:
         ("nebel_dichte", 0.0), ("nebel_faktor", 1.0),
         ("sicht_an", 0.0), ("sicht_fern", 12), ("sicht_nah", 13),   # Strang W2
         ("lack_effekt", (0.0, 0.0, 0.0)),                            # Strang L
+        ("tz_himmel", (0.0, 0.0, 0.0, 0.0)), ("tz_tint_oben", (1.0, 1.0, 1.0)),   # Tageszeit
+        ("tz_tint_horizont", (1.0, 1.0, 1.0)), ("tz_glut", (1.0, 1.0)),
+        ("tz_scheibe", (1.0, 0.95, 0.85, 1.0)),
+        ("schatten_bias", (0.0006, 0.0025)), ("lichter_anzahl", 0),
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

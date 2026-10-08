@@ -4,6 +4,7 @@ import pygame
 
 from src.states.menu.page import Page
 from src.core import race_setup
+from src.render3d import tageszeit as tz
 from src.ui import theme
 from src.ui.widgets import Stepper, Button
 from src.ui.focus import FocusGroup
@@ -60,6 +61,11 @@ class LobbyPage(Page):
         self.diff = Stepper(pygame.Rect(x, y + 4 * (h + gap), w, h), tr("KI-Schwierigkeit"),
                             [tr(race_setup.DIFFICULTY_LABELS[k]) for k in race_setup.DIFFICULTY_KEYS],
                             race_setup.DIFFICULTY_KEYS.index(s.ai_difficulty))
+        # Tageszeit des Rennens; der letzte Wert kommt aus dem Profil.
+        from src.core import profile
+        s.time_of_day = profile.current().tageszeit
+        self.tageszeit = Stepper(pygame.Rect(x, y + 4 * (h + gap), w, h), tr("Tageszeit"),
+                                 [tr(n) for n in tz.NAMEN], tz.NAMEN.index(tz.normiere(s.time_of_day)))
         self.next = Button(pygame.Rect(x + w - 300, y + 5 * (h + gap) + 20, 300, 68),
                            tr("WEITER  ›"), "next")
 
@@ -98,12 +104,13 @@ class LobbyPage(Page):
 
         if self.mode.value == "Zeitfahren":
             col.add(self.klass)
+            col.add(self.tageszeit)
             col.skip(40)
             col.add(self.next)
             self.next.rect.x = 80 + 800 - 300
             s.vehicle_count = 1
             s.laps = 1
-            self.group.set_widgets([self.mode, self.klass, self.next], keep_focus=True)
+            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.next], keep_focus=True)
             return
 
         col.add(self.count)
@@ -114,6 +121,7 @@ class LobbyPage(Page):
             col.add(self.gp_laps)
         else:
             col.add(self.laps)
+        col.add(self.tageszeit)
 
         col.skip(20)
         col.add(self.next)
@@ -179,9 +187,10 @@ class LobbyPage(Page):
                 self.ai_widgets.extend([v_stepper, d_stepper])
 
         if is_gp_mode:
-            left_side_widgets = [self.mode, self.count, self.klass, self.gp_races, self.gp_laps]
+            left_side_widgets = [self.mode, self.count, self.klass, self.gp_races, self.gp_laps,
+                                 self.tageszeit]
         else:
-            left_side_widgets = [self.mode, self.count, self.klass, self.laps]
+            left_side_widgets = [self.mode, self.count, self.klass, self.laps, self.tageszeit]
 
         self.group.set_widgets(left_side_widgets + self.ai_widgets + [self.next], keep_focus=True)
 
@@ -223,6 +232,7 @@ class LobbyPage(Page):
             s.vehicle_count = int(self.count.value)
             s.laps = int(self.laps.value)
         s.vehicle_class = race_setup.CLASS_NAMES[self.klass.index]
+        self._tageszeit_uebernehmen()
 
         if s.mode != old_mode or s.vehicle_count != old_count or s.vehicle_class != old_class:
             s.sync_ai_roster()
@@ -230,6 +240,13 @@ class LobbyPage(Page):
 
         if action == "next":
             self._commit_and_advance()
+
+    def _tageszeit_uebernehmen(self) -> None:
+        """Die Wahl in den Rennaufbau und ins Profil (dort bleibt sie bis zum nächsten Mal)."""
+        from src.core import profile
+        s = race_setup.current()
+        s.time_of_day = tz.NAMEN[max(0, min(len(tz.NAMEN) - 1, self.tageszeit.index))]
+        profile.current().set_tageszeit(s.time_of_day)
 
     def _commit_and_advance(self) -> None:
         s = race_setup.current()
@@ -255,6 +272,7 @@ class LobbyPage(Page):
 
         s.vehicle_class = race_setup.CLASS_NAMES[self.klass.index]
         s.ai_difficulty = race_setup.DIFFICULTY_KEYS[self.diff.index]
+        self._tageszeit_uebernehmen()
 
         if s.mode == "Team-Zeitfahren":
             # Validate team balance

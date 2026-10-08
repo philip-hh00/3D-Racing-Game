@@ -56,10 +56,17 @@ def main() -> int:
                     help="Kamera um das Auto drehen, Grad")
     ap.add_argument("--stufe", default="hoch",
                     help="Grafikstufe: niedrig, mittel, hoch, ultra")
+    ap.add_argument("--tageszeit", default="Tag", help="Tag, Abend oder Nacht")
+    ap.add_argument("--lichter", type=int, default=None,
+                    help="grafik.lichter_max erzwingen (0: keine lokalen Lichter)")
+    ap.add_argument("--bremse", type=float, default=0.0,
+                    help="Bremspedal 0..1 des ersten Autos (Bremslicht)")
     args = ap.parse_args()
 
     from src.render3d import grafik
     grafik.stufe_setzen(args.stufe)
+    if args.lichter is not None:
+        grafik.setzen(lichter_max=args.lichter)
 
     import moderngl
     ctx = moderngl.create_standalone_context()
@@ -77,7 +84,8 @@ def main() -> int:
     szene = rennszene.Rennszene(
         ctx, netz, args.modelle, thema=th,
         texturordner=WURZEL / "assets" / "texturen", himmelordner=WURZEL / "assets" / "himmel",
-        umgebungsordner=WURZEL / "assets" / "umgebung", platzierungen=orte, fahrzeuge=fahrzeuge)
+        umgebungsordner=WURZEL / "assets" / "umgebung", platzierungen=orte, fahrzeuge=fahrzeuge,
+        tageszeit=args.tageszeit)
     ladezeit = time.perf_counter() - t0
 
     # Wie das Spiel: die Plaetze des Netzes (bis FELD_MAX, aus der Mittellinie
@@ -93,7 +101,7 @@ def main() -> int:
         gier = math.radians(float(s.get("angle", 0.0)))
         pos += np.array([math.cos(gier), math.sin(gier), 0.0]) * args.vorlauf
         staende.append(rennszene.Fahrzeugstand(kennung=i + 1, schluessel=key, pos_m=pos,
-                                               gierwinkel_rad=gier))
+                                               gierwinkel_rad=gier, bremse=args.bremse if i == 0 else 0.0))
     szene.fortschreiben(staende)
     erster = staende[0]
     kam = camera.Verfolgerkamera(abstand_m=args.abstand, hoehe_m=args.kamerahoehe, zielhoehe_m=1.0)
@@ -115,7 +123,7 @@ def main() -> int:
     from PIL import Image
     roh = fbo.read(components=3)
     Image.frombytes("RGB", (args.breite, args.hoehe), roh).transpose(Image.FLIP_TOP_BOTTOM).save(args.ziel)
-    print(f"{pfad.stem} ({args.stufe}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
+    print(f"{pfad.stem} ({args.stufe}, {args.tageszeit}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
           f"Bild {np.median(zeiten[1:]) * 1000:.1f} ms (Median)")
     szene.freigeben()
     return 0

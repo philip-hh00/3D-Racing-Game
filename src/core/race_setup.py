@@ -90,6 +90,9 @@ class RaceSetup:
     vehicle_count: int = 4          # total incl. player (FELD_MIN..FELD_MAX)
     vehicle_class: str = "Alle"
     laps: int = 3                   # 1–10
+    #: Tageszeit des Rennens: "Tag", "Abend" oder "Nacht" (render3d.tageszeit).
+    #: Die Lobbys setzen es; der letzte Wert steht im Profil (``tageszeit``).
+    time_of_day: str = "Tag"
     ai_difficulty: str = "medium"
     player_vehicle: str = "rookie"
     track_path: str = "data/tracks/oval.json"
