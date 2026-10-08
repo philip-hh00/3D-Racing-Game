@@ -209,10 +209,12 @@ class Fahrzeugmodell:
         anbauteile = {t.name: t.versatz for t in self.modell.teile
                       if t.name != vehicle_node.KAROSSERIE
                       and not t.name.startswith(("rad_", "sattel_"))}
+        achsen = {t.name: t.drehung for t in self.modell.teile
+                  if t.name in anbauteile and getattr(t, "drehung", None) is not None}
         return vehicle_node.Fahrzeugknoten(self.teile.plaetze,
                                            self.teile.raddurchmesser_m,
                                            cockpit=self.teile.cockpit,
-                                           anbauteile=anbauteile)
+                                           anbauteile=anbauteile, achsen=achsen)
 
 
 def modell_nach_abstand(fm: Fahrzeugmodell, abstand_m: float,

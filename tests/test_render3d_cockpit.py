@@ -291,3 +291,25 @@ def test_der_knotenspeicher_gibt_tempo_und_drehzahl_an_die_nadeln():
     speicher.fortschreiben([stand])
     k = speicher.knoten(1)
     assert (k.tempo_kmh, k.drehzahl, k.lenkwinkel_rad) == (210.0, 6500.0, 0.1)
+
+
+def test_lenkrad_dreht_um_die_geneigte_lenksaeule_nicht_um_die_laengsachse():
+    """Der Lader rechnet die Knotendrehung in die Punkte; gedreht werden muss
+    trotzdem um die lokale X-Achse des Knotens (die um 22° geneigte Saeule)."""
+    import numpy as np
+    from src.render3d import vehicle_node as vn
+    neigung = np.radians(22.0)
+    # Lokale X-Achse zeigt nach hinten-oben (zum Fahrer), wie im Blender-Bau.
+    c, s = np.cos(neigung), np.sin(neigung)
+    r = np.array([[-c, 0.0, -s], [0.0, 1.0, 0.0], [s, 0.0, -c]])   # Spalten: lokale Achsen
+    assert abs(np.linalg.det(r) - 1.0) < 1e-9
+    cockpit = vn.Cockpitmasse(augpunkt=np.array([0.0, 0.4, 1.1]), haube=np.array([1.0, 0.0, 1.2]),
+                              lenkrad_uebersetzung=12.0)
+    knoten = vn.Fahrzeugknoten([], 0.6, cockpit=cockpit,
+                               anbauteile={"lenkrad": np.zeros(3)},
+                               achsen={"lenkrad": r})
+    knoten.lenkwinkel_rad = np.radians(10.0)
+    m = knoten.anbauteil_matrix("lenkrad", np.zeros(3))[:3, :3]
+    saeule = r[:, 0]
+    assert np.allclose(m @ saeule, saeule, atol=1e-9)        # Achse bleibt stehen
+    assert not np.allclose(m @ np.array([1.0, 0.0, 0.0]), [1.0, 0.0, 0.0])

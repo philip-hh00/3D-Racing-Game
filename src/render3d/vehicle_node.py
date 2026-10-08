@@ -225,7 +225,8 @@ class Fahrzeugknoten:
 
     def __init__(self, raedern: list[Radplatz], raddurchmesser_m: float,
                  cockpit: Cockpitmasse | None = None,
-                 anbauteile: dict[str, np.ndarray] | None = None) -> None:
+                 anbauteile: dict[str, np.ndarray] | None = None,
+                 achsen: dict[str, np.ndarray] | None = None) -> None:
         if raddurchmesser_m <= 0:
             raise ValueError("Raddurchmesser muss positiv sein")
         self.raeder = list(raedern)
@@ -238,6 +239,15 @@ class Fahrzeugknoten:
         self.anbauteile: dict[str, np.ndarray] = {
             str(n): np.asarray(v, dtype=np.float64) for n, v in (anbauteile or {}).items()
             if n != KAROSSERIE and not str(n).startswith(("rad_", "sattel_"))}
+        #: Ausrichtung der Knoten (Name -> 3×3-Drehung) aus dem GLB. Der Lader
+        #: rechnet sie in die Punkte; gedreht werden muss trotzdem um die
+        #: **lokale** X-Achse — beim Lenkrad die um 22° geneigte Lenksäule,
+        #: nicht die Fahrzeuglängsachse. Ohne Eintrag gilt die Fahrzeugachse.
+        self.achsen: dict[str, np.ndarray] = {}
+        for n, r in (achsen or {}).items():
+            m4 = np.eye(4)
+            m4[:3, :3] = np.asarray(r, dtype=np.float64)
+            self.achsen[str(n)] = m4
         self.tempo_kmh = 0.0
         self.drehzahl = 0.0
         self.radradius_m = raddurchmesser_m / 2.0
@@ -367,22 +377,29 @@ class Fahrzeugknoten:
     def anbauteil_matrix(self, name: str, ursprung) -> np.ndarray:
         """Lage eines Knotens am Aufbau: sein Ursprung, dazu die Drehung für Lenkrad und Nadeln.
 
-        Gedreht wird um die X-Achse durch den Knotenursprung; die Drehung des
-        Knotens selbst steckt schon in den Punkten (siehe
-        :func:`src.render3d.mesh.laden`). Alle anderen Teile sitzen starr.
+        Gedreht wird um die **lokale** X-Achse des Knotens durch seinen
+        Ursprung. Die Drehung des Knotens steckt schon in den Punkten (siehe
+        :func:`src.render3d.mesh.laden`); deshalb ``R · Rx · Rᵀ`` mit der
+        Knotenausrichtung ``R`` aus :attr:`achsen`. Alle anderen Teile sitzen starr.
         """
         m = matrix.verschiebung(ursprung)
         c = self.cockpit
         if c is None:
             return m
         if name == LENKRAD:
-            if self.lenkwinkel_rad:
-                m = m @ matrix.drehung_x(lenkradwinkel(self.lenkwinkel_rad, c.lenkrad_uebersetzung))
+            if not self.lenkwinkel_rad:
+                return m
+            dreh = matrix.drehung_x(lenkradwinkel(self.lenkwinkel_rad, c.lenkrad_uebersetzung))
         elif name == NADEL_TACHO:
-            m = m @ matrix.drehung_x(nadelwinkel(self.tempo_kmh, c.tacho_max_kmh, c.tacho_winkel_grad))
+            dreh = matrix.drehung_x(nadelwinkel(self.tempo_kmh, c.tacho_max_kmh, c.tacho_winkel_grad))
         elif name == NADEL_DREHZAHL:
-            m = m @ matrix.drehung_x(nadelwinkel(self.drehzahl, c.drehzahl_max, c.drehzahl_winkel_grad))
-        return m
+            dreh = matrix.drehung_x(nadelwinkel(self.drehzahl, c.drehzahl_max, c.drehzahl_winkel_grad))
+        else:
+            return m
+        achse = self.achsen.get(name)
+        if achse is not None:
+            dreh = achse @ dreh @ achse.T
+        return m @ dreh
 
     def matrizen(self, pos_m, gierwinkel_rad: float,
                  karosserie: np.ndarray | None = None) -> dict[str, np.ndarray]:

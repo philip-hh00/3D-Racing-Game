@@ -98,6 +98,10 @@ class Teilnetz:
     name: str
     stuecke: list[Stueck]
     versatz: np.ndarray       # (3,) float32 — Position des Knotens in der Szene
+    #: Ausrichtung des Knotens (3×3, reine Drehung). Sie steckt schon in den
+    #: Punkten; gebraucht wird sie nur, um ein Teil um **seine** Achse zu
+    #: drehen (Lenkrad um die Lenksäule, Nadel um ihre Welle).
+    drehung: np.ndarray | None = None
 
     @property
     def dreiecke(self) -> int:
@@ -318,6 +322,16 @@ def _normalen_berechnen(pos: np.ndarray, idx: np.ndarray) -> np.ndarray:
     return (n / laenge).astype(np.float32)
 
 
+def _reine_drehung(m: np.ndarray) -> np.ndarray:
+    """Der Drehanteil einer 3×3-Matrix ohne Skalierung (polare Zerlegung)."""
+    u, _s, vt = np.linalg.svd(m)
+    r = u @ vt
+    if np.linalg.det(r) < 0:
+        u[:, -1] *= -1
+        r = u @ vt
+    return r.astype(np.float32)
+
+
 def laden(pfad: str | Path) -> Modelldaten:
     """GLB-Szene einlesen.
 
@@ -383,7 +397,8 @@ def laden(pfad: str | Path) -> Modelldaten:
                 normalen=nor.astype(np.float32),
                 uv=uv, indizes=np.ascontiguousarray(idx, dtype=np.uint32)))
         teile.append(Teilnetz(name=kn.get("name", f"knoten_{i}"), stuecke=stuecke,
-                              versatz=m[:3, 3].astype(np.float32)))
+                              versatz=m[:3, 3].astype(np.float32),
+                              drehung=_reine_drehung(dreh)))
     return Modelldaten(teile=teile, materialien=materialien)
 
 
@@ -404,6 +419,7 @@ class HochgeladenesTeil:
     name: str
     stuecke: list[HochgeladenesStueck]
     versatz: np.ndarray
+    drehung: np.ndarray | None = None
 
 
 @dataclass
@@ -567,6 +583,7 @@ def hochladen(ctx: "moderngl.Context", programm: "moderngl.Program",
         name=t.name,
         stuecke=[HochgeladenesStueck(vao=stueck_hochladen(ctx, programm, s, puffer),
                                      material=s.material) for s in t.stuecke],
-        versatz=t.versatz.copy()) for t in daten.teile]
+        versatz=t.versatz.copy(),
+        drehung=None if t.drehung is None else t.drehung.copy()) for t in daten.teile]
     return Modell(teile=teile, materialien=materialien_hochladen(ctx, daten.materialien),
                   puffer=puffer)
