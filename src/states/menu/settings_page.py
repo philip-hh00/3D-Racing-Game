@@ -19,7 +19,7 @@ from src.ui.widgets import Button, TextInput, Stepper, OnScreenKeyboard, Dialog
 from src.ui.focus import FocusGroup
 from src.ui import zeichnen, leinwand
 
-_CATEGORIES = ["Allgemein", "Steuerung", "Video", "Audio", "Dev-Mode", "Info"]
+_CATEGORIES = ["Allgemein", "Steuerung", "Video", "Audio", "Fahrhilfen", "Dev-Mode", "Info"]
 _SOON_ROWS = {
     "Audio": ["Gesamtlautstärke", "Effekte"],
 }
@@ -200,9 +200,9 @@ class SettingsPage(Page):
     def categories(self) -> list[str]:
         from src.core.version import IS_RELEASE
         if self.is_pause_context:
-            return ["Allgemein", "Steuerung", "Video", "Audio"]
+            return ["Allgemein", "Steuerung", "Video", "Audio", "Fahrhilfen"]
         if IS_RELEASE:
-            return ["Allgemein", "Steuerung", "Video", "Audio", "Info"]
+            return ["Allgemein", "Steuerung", "Video", "Audio", "Fahrhilfen", "Info"]
         return _CATEGORIES
 
     def enter(self, shell, **kwargs) -> None:
@@ -284,6 +284,9 @@ class SettingsPage(Page):
             quit_btn = Button(pygame.Rect(0, 0, 500, 60), tr("Spiel beenden"), "quit_game")
             col.add(quit_btn)
             self._content_group = FocusGroup([lang_step, quit_btn])
+        elif name == "Fahrhilfen":
+            from src.states.menu import fahrhilfen_seite
+            self._content_group = fahrhilfen_seite.bauen(self)
         elif name == "Dev-Mode":
             col = theme.Column(560, 240, gap=20)
             b1 = Button(pygame.Rect(0, 0, 420, 66), "Fahrzeug-Labor", "vehicle_lab")
@@ -1037,6 +1040,9 @@ class SettingsPage(Page):
             self.msg = ""
         elif isinstance(action, str) and action.startswith("grafik_"):
             self._grafik_aendern(action)
+        elif isinstance(action, str) and action.startswith("fh_"):
+            from src.states.menu import fahrhilfen_seite
+            fahrhilfen_seite.aendern(self, action)
 
     def _apply_pending(self) -> bool:
         """Persist and apply all buffered changes. Returns True on success."""
@@ -1064,6 +1070,11 @@ class SettingsPage(Page):
         if "resolution" in p: cur.resolution = p["resolution"]
         if "fullscreen" in p: cur.fullscreen = p["fullscreen"]
         if "vsync" in p: cur.vsync = p["vsync"]
+        if "fahrhilfen" in p:
+            # ABS, Traktionskontrolle, Ideallinie, Vibration: gelten im Rennen
+            # sofort (RennHilfen liest das Profil jedes Bild).
+            from src.states.menu import fahrhilfen_seite
+            fahrhilfen_seite.uebernehmen(cur, p["fahrhilfen"])
         if "grafik" in p:
             # Wirkt sofort: Schatten, Nachbearbeitung und Reifenspuren lesen
             # die Werte in jedem Bild; was beim Laden einer Strecke entsteht
@@ -1165,6 +1176,9 @@ class SettingsPage(Page):
                     theme.text(screen, zeile, theme.HINT, theme.TEXT_FAINT, (560, y))
                     y += 28
                 y += 8
+        elif name == "Fahrhilfen":
+            from src.states.menu import fahrhilfen_seite
+            fahrhilfen_seite.zeichnen(self, screen)
         elif name == "Audio":
             theme.text(screen, tr("Audio-Einstellungen"), theme.BODY, theme.TEXT_DIM, (560, 190))
             self._content_group.draw(screen, focused=self._focus_content)

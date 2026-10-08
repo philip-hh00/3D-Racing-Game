@@ -66,13 +66,13 @@ def _glatt(a: float, b: float, x: float) -> float:
 
 def reifenschlupf(geschwindigkeit_m_s, gier_rad: float, laengs_m_s2: float = 0.0,
                   gas: float = 0.0, bremse: float = 0.0, handbremse: bool = False,
-                  antrieb: str = "rwd") -> tuple[float, float]:
+                  antrieb: str = "rwd", abs_an: bool = False) -> tuple[float, float]:
     """Wie stark die Reifen vorn und hinten rutschen, je 0..1.
 
     * **Querschlupf** (Drift): der Wagen bewegt sich seitwärts zur
       Blickrichtung. Ab 1,5 m/s quer beginnt es, bei 5 m/s ist es voll.
     * **Blockieren**: Handbremse (hinten) oder eine Bremsung mit mehr als
-      rund 0,8 g.
+      rund 0,8 g — mit ABS (``abs_an``) blockiert nichts, nur die Handbremse.
     * **Durchdrehen**: Vollgas aus dem Stand, an der angetriebenen Achse,
       bis etwa 35 km/h auslaufend.
     """
@@ -87,7 +87,7 @@ def reifenschlupf(geschwindigkeit_m_s, gier_rad: float, laengs_m_s2: float = 0.0
     if tempo > 3.0:
         if handbremse:
             hinten = max(hinten, 0.9)
-        if bremse > 0.5:
+        if bremse > 0.5 and not abs_an:
             voll = _glatt(7.5, 11.0, -float(laengs_m_s2))
             vorn = max(vorn, voll)
             hinten = max(hinten, voll * 0.8)

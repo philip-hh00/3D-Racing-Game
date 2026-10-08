@@ -32,6 +32,14 @@ NAME_ALLOWED = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
 _NAME_RE = re.compile(r"^[A-Za-z0-9_]{%d,%d}$" % (NAME_MIN, NAME_MAX))
 
 
+#: Fahrhilfen (Plan 1.1.0): alle aus, damit sich fuer bestehende Spieler nichts
+#: aendert. ``vibration`` ist eine Stufe 0..3 (Aus, Schwach, Mittel, Stark);
+#: Mittel, weil der Controller bisher im Rennen gar nicht vibrierte und die
+#: meisten das von einem Rennspiel erwarten.
+FAHRHILFEN_STANDARD: dict = {"abs": False, "tc": False, "linie": False, "vibration": 2}
+VIBRATION_STUFEN = 4
+
+
 class Profile:
     """In-memory profile, loaded once and saved on change."""
 
@@ -46,7 +54,8 @@ class Profile:
                  statistik: dict | None = None,
                  announcements_seeded: bool = False,
                  grafik: dict | None = None,
-                 kamera_ansichten: dict | None = None) -> None:
+                 kamera_ansichten: dict | None = None,
+                 fahrhilfen: dict | None = None) -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -95,6 +104,27 @@ class Profile:
         self.kamera_ansichten: dict[str, str] = (
             {str(k): str(v) for k, v in kamera_ansichten.items()}
             if isinstance(kamera_ansichten, dict) else {})
+        #: Fahrhilfen und Controller-Vibration (Plan 1.1.0): ``abs``, ``tc``,
+        #: ``linie`` (Ideallinie) als Wahrheitswerte, ``vibration`` 0..3. Fehlende
+        #: Schluessel gelten als Standard (alle Hilfen aus), siehe ``FAHRHILFEN_STANDARD``.
+        self.fahrhilfen: dict = dict(fahrhilfen) if isinstance(fahrhilfen, dict) else {}
+
+    # -- Fahrhilfen und Vibration -----------------------------------------
+    def fahrhilfe(self, name: str):
+        """Wert einer Fahrhilfe; unbekannte oder verbogene Eintraege ergeben den Standard."""
+        standard = FAHRHILFEN_STANDARD[name]
+        wert = self.fahrhilfen.get(name, standard)
+        if isinstance(standard, bool):
+            return wert if isinstance(wert, bool) else standard
+        if isinstance(wert, bool) or not isinstance(wert, int):
+            return standard
+        return max(0, min(VIBRATION_STUFEN - 1, wert))
+
+    def set_fahrhilfe(self, name: str, wert) -> None:
+        if name not in FAHRHILFEN_STANDARD:
+            return
+        self.fahrhilfen[name] = wert
+        self.save()
 
     # -- persistence -----------------------------------------------------
     @classmethod
@@ -132,6 +162,7 @@ class Profile:
                 data.get("announcements_seeded", True),
                 data.get("grafik"),
                 kamera_ansichten=data.get("kamera_ansichten"),
+                fahrhilfen=data.get("fahrhilfen"),
             )
         except Exception:
             return cls()
@@ -164,6 +195,7 @@ class Profile:
                 "announcements_seeded": self.announcements_seeded,
                 "grafik": self.grafik,
                 "kamera_ansichten": self.kamera_ansichten,
+                "fahrhilfen": self.fahrhilfen,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass

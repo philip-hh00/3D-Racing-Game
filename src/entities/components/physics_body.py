@@ -83,6 +83,17 @@ class PhysicsBody:
         #: er nur, wenn ein Reifen wirklich rutscht. Daran haengt das Quietschen.
         self.reifen_schlupf_deg: float = 0.0
         self.hinten_schlupf_deg: float = 0.0
+        #: Schraeglauf der Vorderachse allein (Grad), Messwert fuer die Fahrhilfen.
+        self.vorn_schlupf_deg: float = 0.0
+        #: Ausgelastete Seitenhaftung (vorn, hinten) des letzten Bildes, 0..1+:
+        #: gewuenschter gegen moeglichen Seitenimpuls. Nur Messwert (ABS, TC).
+        self.quer_auslastung: tuple[float, float] = (0.0, 0.0)
+        #: Anteil der Motorkraft, den die Traktion der angetriebenen Achse im
+        #: letzten Bild nicht uebertragen hat (0 = alles kommt an, 0,4 = ein
+        #: Drittel der Kraft verpufft als Durchdrehen). Nur Messwert.
+        self.antriebs_ueberschuss: float = 0.0
+        #: Dasselbe nur für die Achse, die am meisten überträgt (Allrad), sonst gleich.
+        self.antriebs_ueberschuss_min: float = 0.0
         self.achs_griff: tuple[float, float] = (1.0, 1.0)
         self.steer_angle: float = 0.0
 
@@ -224,6 +235,8 @@ class PhysicsBody:
             # 100% on front axle
             f_front = max(-max_traction_front, min(max_traction_front, force))
             body.apply_force_at_local_point(front_dir_local * (f_front / 0.08), front_local)
+            angewandt = abs(f_front)
+            schwaechste = angewandt
         elif d_type == "awd":
             # 50/50 split
             force_half = force * 0.5
@@ -231,10 +244,23 @@ class PhysicsBody:
             f_rear = max(-max_traction_rear, min(max_traction_rear, force_half))
             body.apply_force_at_local_point(front_dir_local * (f_front / 0.08), front_local)
             body.apply_force_at_local_point(rear_dir_local * (f_rear / 0.08), rear_local)
+            angewandt = abs(f_front) + abs(f_rear)
+            schwaechste = max(abs(f_front), abs(f_rear))     # die Achse, die noch mehr nimmt
         else:  # rwd default
             # 100% on rear axle
             f_rear = max(-max_traction_rear, min(max_traction_rear, force))
             body.apply_force_at_local_point(rear_dir_local * (f_rear / 0.08), rear_local)
+            angewandt = abs(f_rear)
+            schwaechste = angewandt
+        # Messwert fuer die Traktionskontrolle: was die Achse nicht bringt.
+        if abs(force) > 1.0:
+            self.antriebs_ueberschuss = max(0.0, 1.0 - angewandt / abs(force))
+            # Allradler: nur wenn auch die starke Achse kappt, bringt weniger Gas
+            # etwas; sonst verlöre das Auto Vortrieb der Achse, die noch kann.
+            geteilt = abs(force) * (0.5 if d_type == "awd" else 1.0)
+            self.antriebs_ueberschuss_min = max(0.0, 1.0 - schwaechste / geteilt)
+        else:
+            self.antriebs_ueberschuss = self.antriebs_ueberschuss_min = 0.0
 
     def apply_brake_force(self, force: float, dt: float) -> None:
         """Apply a braking force opposing the current velocity.
@@ -313,6 +339,7 @@ class PhysicsBody:
         self.reifen_schlupf_deg = max(je_achse)
         #: Schlupf der Hinterachse allein: Übersteuern/Driften (Gegenlenken).
         self.hinten_schlupf_deg = je_achse[1]
+        self.vorn_schlupf_deg = je_achse[0]
 
         # Calculate vehicle slip angle at center of mass
         vel_center = body.velocity
@@ -380,6 +407,11 @@ class PhysicsBody:
         applied_impulse_rear = min(max_impulse_rear, max(-max_impulse_rear, desired_impulse_rear))
         impulse_rear_local = rear_right_local * applied_impulse_rear
         body.apply_impulse_at_local_point(impulse_rear_local, rear_local)
+
+        # Seitenhaftung ausgelastet (Messwert fuer ABS und Traktionskontrolle)
+        self.quer_auslastung = (
+            abs(desired_impulse_front) / max_impulse_front if max_impulse_front > 1e-9 else 0.0,
+            abs(desired_impulse_rear) / max_impulse_rear if max_impulse_rear > 1e-9 else 0.0)
 
         # Determine if drifting
         self.is_drifting = (
