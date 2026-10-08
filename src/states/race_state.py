@@ -521,6 +521,7 @@ class RaceState(BaseState):
         # Ab hier bis zum Countdown ein einziger Ladebildschirm (ladeanzeige.py).
         self._ladeanzeige_starten()
         self._szene_aufbauen()
+        self._movie.vorbereiten()
 
         # Erst hier: der Klang braucht _humans, und das steht ein paar Zeilen
         # weiter oben erst seit dem Kameraaufbau.

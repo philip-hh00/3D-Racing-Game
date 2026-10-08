@@ -224,24 +224,71 @@ def _strahl_frei(hoehe_fn, hindernisse: np.ndarray, cx: float, cy: float, cz: fl
     return True
 
 
+#: Die Strecke, die eine Kamera abdecken soll, relativ zu ihrer Stelle (Meter
+#: entlang der Fahrbahn): das Auto kommt von hinten heran und faehrt vorbei.
+_ABDECKUNG_M = tuple(np.linspace(-80.0, 40.0, 9))
+#: So viel der abgedeckten Strecke darf verdeckt sein.
+VERDECKT_MAX = 0.15
+#: Weniger als so viele strenge Standorte: der Rest wird gelockert gesucht.
+MIN_KAMERAS = 8
+#: Oder eine Strecke ist laenger als das ohne Kamera.
+MAX_LUECKE_M = 150.0
+
+#: Innerhalb dieser Entfernung vor dem Objektiv darf nichts Hohes stehen.
+LINSE_FREI_M = 8.0
+#: Auch Niedriges (Banden, Reifenstapel) nicht naeher als das.
+LINSE_NAH_M = 5.0
+
+
+def _linse_frei(hindernisse: np.ndarray, cx: float, cy: float, cz: float,
+                zx: float, zy: float, streng: bool = True) -> bool:
+    """Steht vor dem Objektiv (vorn, innerhalb :data:`LINSE_FREI_M`) ein Objekt,
+    das groesser im Bild waere als ein Auto? Posten, Masten, Schilder, Baeume."""
+    if not len(hindernisse):
+        return True
+    vx, vy = zx - cx, zy - cy
+    n = math.hypot(vx, vy)
+    if n < 1e-6:
+        return True
+    vx, vy = vx / n, vy / n
+    dx, dy = hindernisse[:, 0] - cx, hindernisse[:, 1] - cy
+    dist = np.hypot(dx, dy)
+    vorn = (dx * vx + dy * vy) > -hindernisse[:, 2]
+    rand = dist - hindernisse[:, 2]
+    # Etwas Hohes (Posten, Mast, Schild, Baum) innerhalb von LINSE_FREI_M, oder
+    # auch Niedriges (Bande, Reifenstapel) ganz dicht vor der Linse.
+    if streng:
+        stoert = (((hindernisse[:, 3] > NIEDRIG_M) & (rand < LINSE_FREI_M))
+                  | ((hindernisse[:, 3] > 0.7) & (rand < LINSE_NAH_M)))
+    else:       # Notnagel auf zugebauten Strecken: nur Hohes, nur dicht davor
+        stoert = (hindernisse[:, 3] > NIEDRIG_M) & (rand < LINSE_NAH_M)
+    return not np.any(vorn & stoert)
+
+
 def _sicht_frei(kurs: Rundkurs, halbe_breite_m: float, hoehe_fn, hindernisse: np.ndarray,
-                cx: float, cy: float, cz: float, s_m: float) -> bool:
-    """Sieht die Kamera die Strecke bei *s_m*? Gelaende, Zaeune und Objekte
-    duerfen den Strahl zur Fahrbahn nicht kappen (zwei von drei Punkten quer
-    ueber die Fahrbahn muessen frei sein, die Mitte immer)."""
-    (px, py), t = kurs.punkt_bei(s_m)
-    links = np.array([-t[1], t[0]])
-    frei = []
-    for quer in (0.0, 0.6 * halbe_breite_m, -0.6 * halbe_breite_m):
-        ziel = np.array([px, py]) + links * quer
-        frei.append(_strahl_frei(hoehe_fn, hindernisse, cx, cy, cz,
-                                 float(ziel[0]), float(ziel[1]), 0.8))
-    return frei[0] and sum(frei) >= 2
+                cx: float, cy: float, cz: float, s_m: float, streng: bool = True) -> bool:
+    """Sieht die Kamera die Strecke rund um *s_m*?
+
+    Mehrere Strahlen zu Punkten der abzudeckenden Strecke (nicht nur einer):
+    Gelaende, Zaeune und Objekte mit ihrem Grundriss und ihrer Hoehe duerfen
+    hoechstens :data:`VERDECKT_MAX` davon verdecken, und vor dem Objektiv
+    (:data:`LINSE_FREI_M`) darf nichts Hohes stehen.
+    """
+    (mx, my), _t = kurs.punkt_bei(s_m)
+    if not _linse_frei(hindernisse, cx, cy, cz, float(mx), float(my), streng):
+        return False
+    verdeckt = 0
+    for ds in _ABDECKUNG_M:
+        (px, py), _t = kurs.punkt_bei(s_m + ds)
+        if not _strahl_frei(hoehe_fn, hindernisse, cx, cy, cz, float(px), float(py), 0.8):
+            verdeckt += 1
+    grenze = VERDECKT_MAX if streng else 0.35
+    return verdeckt <= grenze * len(_ABDECKUNG_M)
 
 
 def standort_gueltig(kurs: Rundkurs, halbe_breite_m: float, hoehe_fn,
                      hindernisse: np.ndarray, x: float, y: float, h: float,
-                     s_m: float) -> bool:
+                     s_m: float, streng: bool = True) -> bool:
     """Alle Regeln fuer einen Standort an ``(x, y)`` in *h* Metern Hoehe."""
     if kurs.abstand(x, y) - halbe_breite_m < KANTE_MIN_M:
         return False
@@ -255,12 +302,13 @@ def standort_gueltig(kurs: Rundkurs, halbe_breite_m: float, hoehe_fn,
     cz = boden + h
     if h < BODEN_FREI_M:
         return False
-    return _sicht_frei(kurs, halbe_breite_m, hoehe_fn, hindernisse, x, y, cz, s_m)
+    return _sicht_frei(kurs, halbe_breite_m, hoehe_fn, hindernisse, x, y, cz,
+                       kurs.bogen_bei(x, y), streng)
 
 
 def kameras_platzieren(mittellinie, halbe_breite_m: float, *, name: str = "",
                        hoehe_fn=None, hindernisse=None,
-                       abstand_m: float = 70.0,
+                       abstand_m: float = 40.0,
                        reichweite_m: float = 90.0) -> list[Standort]:
     """TV-Kameras entlang der Strecke aufstellen.
 
@@ -280,9 +328,9 @@ def kameras_platzieren(mittellinie, halbe_breite_m: float, *, name: str = "",
     anzahl = max(4, int(round(kurs.laenge / max(10.0, abstand_m))))
     schritt = kurs.laenge / anzahl
     standorte: list[Standort] = []
+    plaetze = []
     for i in range(anzahl):
         s0 = i * schritt + float(rng.uniform(-0.15, 0.15)) * schritt
-        (_p, t0) = kurs.punkt_bei(s0)
         (_p, t1) = kurs.punkt_bei(s0 + 20.0)
         (_p, t2) = kurs.punkt_bei(s0 - 20.0)
         kreuz = float(t2[0] * t1[1] - t2[1] * t1[0])   # >0: Linkskurve
@@ -293,7 +341,9 @@ def kameras_platzieren(mittellinie, halbe_breite_m: float, *, name: str = "",
                 bevorzugt = -bevorzugt
         else:
             bevorzugt = 1 if i % 2 == 0 else -1
-        gefunden = None
+        plaetze.append((s0, bevorzugt))
+
+    def suche(s0: float, bevorzugt: int, streng: bool):
         for versuch in range(40):
             seite = bevorzugt if versuch < 16 else -bevorzugt
             d = float(rng.choice(_KANTEN_ABSTAENDE_M))
@@ -301,23 +351,40 @@ def kameras_platzieren(mittellinie, halbe_breite_m: float, *, name: str = "",
             # Spaeter im Lauf: naeher und niedriger probieren, falls es eng ist.
             if versuch >= 24:
                 d = float(rng.choice(_KANTEN_ABSTAENDE_M[:3]))
-            versatz = float(rng.uniform(-15.0, 15.0))
-            s = s0 + versatz
+            s = s0 + float(rng.uniform(-15.0, 15.0))
             (pos, t) = kurs.punkt_bei(s)
             links = np.array([-t[1], t[0]])
             xy = pos + seite * links * (halbe_breite_m + d)
             if standort_gueltig(kurs, halbe_breite_m, hoehe_fn, hind,
-                                float(xy[0]), float(xy[1]), h, s0):
+                                float(xy[0]), float(xy[1]), h, s0, streng):
                 boden = 0.0
                 if hoehe_fn is not None:
                     boden = float(np.atleast_1d(hoehe_fn(np.array([xy[0]]), np.array([xy[1]])))[0])
-                gefunden = Standort(nr=len(standorte),
-                                    pos=np.array([xy[0], xy[1], boden + h]),
-                                    bogen_m=kurs.bogen_bei(float(xy[0]), float(xy[1])),
-                                    reichweite_m=reichweite_m, seite=int(seite))
-                break
-        if gefunden is not None:
-            standorte.append(gefunden)
+                return Standort(nr=0, pos=np.array([xy[0], xy[1], boden + h]),
+                                bogen_m=kurs.bogen_bei(float(xy[0]), float(xy[1])),
+                                reichweite_m=reichweite_m, seite=int(seite))
+        return None
+
+    fehlend = []
+    for s0, bevorzugt in plaetze:
+        st = suche(s0, bevorzugt, True)
+        if st is not None:
+            standorte.append(st)
+        else:
+            fehlend.append((s0, bevorzugt))
+    # Zugebaute Strecken (Zaun ringsum, dichte Haeuser): lieber ein paar
+    # Kameras mit etwas Verdeckung als zu wenige.
+    def groesste_luecke() -> float:
+        b = sorted(st.bogen_m for st in standorte)
+        if not b:
+            return kurs.laenge
+        return float(max(np.diff(b + [b[0] + kurs.laenge])))
+
+    if len(standorte) < MIN_KAMERAS or groesste_luecke() > MAX_LUECKE_M:
+        for s0, bevorzugt in fehlend:
+            st = suche(s0, bevorzugt, False)
+            if st is not None:
+                standorte.append(st)
     standorte.sort(key=lambda st: st.bogen_m)
     for nr, st in enumerate(standorte):
         st.nr = nr
@@ -359,12 +426,19 @@ class Regie:
     SPERRE_S = 14.0
     #: Wer zwischen zwei Autos kaempft, ist spannender; so nah gilt als Kampf.
     KAMPF_M = 40.0
+    #: So lange darf ein Objekt das Ziel verdecken, bevor geschnitten wird.
+    VERDECKT_SCHNITT_S = 1.2
     #: Bonus fuer das bisherige Ziel — haelt die Wahl ruhig.
     BEIBEHALTEN_BONUS = 0.25
 
     def __init__(self, kurs: Rundkurs, standorte: list[Standort],
-                 runden_gesamt: int = 3) -> None:
+                 runden_gesamt: int = 3, hindernisse=None, hoehe_fn=None) -> None:
         self.kurs = kurs
+        #: Objekte (``x, y, Radius, Hoehe``) und Boden: damit prueft die Regie
+        #: beim Waehlen, ob eine Kamera das Ziel wirklich sieht.
+        self.hindernisse = hindernisse_normalisieren(hindernisse)
+        self.hoehe_fn = hoehe_fn
+        self._verdeckt_s = 0.0
         self.standorte = list(standorte)
         self.runden_gesamt = max(1, int(runden_gesamt))
         self.kamera = FilmKamera()
@@ -405,6 +479,11 @@ class Regie:
             return (self._gezeigt.get(a.kennung, -1e9), not a.eigen, a.kennung)
         return min(autos, key=zuletzt)
 
+    def sieht(self, st: Standort, auto: Auto) -> bool:
+        """Ist der Strahl von der Kamera zum Auto frei (Gelaende, Objekte)?"""
+        return _strahl_frei(self.hoehe_fn, self.hindernisse, float(st.pos[0]), float(st.pos[1]),
+                            float(st.pos[2]), auto.x, auto.y, 0.8)
+
     def waehle_standort(self, auto: Auto) -> tuple[Standort | None, float]:
         """Die Kamera, die das Auto als naechste erwartet: der naechste Standort
         voraus, der sichtbar nah genug ist und nicht gerade benutzt wurde.
@@ -420,11 +499,12 @@ class Regie:
             dist = math.hypot(st.pos[0] - auto.x, st.pos[1] - auto.y)
             zeilen.append((st, vor, dist))
 
-        def wahl(ohne_sperre: bool, max_dist: float, vorlauf: bool):
+        def wahl(ohne_sperre: bool, max_dist: float, vorlauf: bool, sichtbar: bool):
             kand = [(vor, dist, st) for (st, vor, dist) in zeilen
                     if (ohne_sperre or st.nr not in gesperrt)
                     and dist <= max_dist
-                    and (not vorlauf or vor >= self.VORLAUF_MIN_M)]
+                    and (not vorlauf or vor >= self.VORLAUF_MIN_M)
+                    and (not sichtbar or self.sieht(st, auto))]
             if not kand:
                 return None
             if vorlauf:
@@ -433,13 +513,16 @@ class Regie:
                 vor, dist, st = min(kand, key=lambda k: k[1])
             return st, dist
 
-        for ohne_sperre in (False, True):
-            for faktor, vorlauf in ((1.0, True), (2.0, True), (2.0, False), (1e9, False)):
-                gefunden = wahl(ohne_sperre, self.standorte[0].reichweite_m * faktor, vorlauf)
-                if gefunden is not None:
-                    st, dist = gefunden
-                    reichweite = max(st.reichweite_m * 1.25, dist * 1.15)
-                    return st, reichweite
+        # Erst nur Kameras, die das Auto sehen; sonst (alles verdeckt) wie bisher.
+        for sichtbar in (True, False):
+            for ohne_sperre in (False, True):
+                for faktor, vorlauf in ((1.0, True), (2.0, True), (2.0, False), (1e9, False)):
+                    gefunden = wahl(ohne_sperre, self.standorte[0].reichweite_m * faktor,
+                                    vorlauf, sichtbar)
+                    if gefunden is not None:
+                        st, dist = gefunden
+                        reichweite = max(st.reichweite_m * 1.25, dist * 1.15)
+                        return st, reichweite
         return None, 0.0
 
     def _schuss_zu_ende(self, auto: Auto) -> bool:
@@ -467,6 +550,7 @@ class Regie:
                   and ziel.kennung == self.ziel_kennung)
         self.ziel_kennung = ziel.kennung
         self.schuss_alter = 0.0
+        self._verdeckt_s = 0.0
         self._schuss_reichweite = reichweite
         if gleich:
             return                                  # derselbe Blick laeuft weiter
@@ -509,8 +593,11 @@ class Regie:
                 return
         else:
             self.schuss_alter += dt
+            # Verdeckt ein Objekt das Ziel laenger als einen Moment, wird geschnitten.
+            self._verdeckt_s = 0.0 if self.sieht(self.standort, ziel) else self._verdeckt_s + dt
             if self.schuss_alter >= self.MIN_SCHUSS_S and (
-                    self._schuss_zu_ende(ziel) or self.schuss_alter >= self.MAX_SCHUSS_S):
+                    self._schuss_zu_ende(ziel) or self.schuss_alter >= self.MAX_SCHUSS_S
+                    or self._verdeckt_s >= self.VERDECKT_SCHNITT_S):
                 self._neuer_schuss(autos)
                 ziel = next((a for a in autos if a.kennung == self.ziel_kennung), ziel)
         # Folgen: weich, aber nah am Auto schneller, sonst fliegt es aus dem Bild.

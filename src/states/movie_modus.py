@@ -3,7 +3,8 @@
 Wer ins Ziel kommt, sieht nicht mehr die Verfolgerkamera, sondern erst ein
 Auszoomen und dann TV-Kameras an der Strecke, die dem Feld folgen — solange
 andere noch fahren. 30 Sekunden nach dem Ende des Feldes (alle im Ziel oder
-DNF) kommen die Ergebnisse, ``Enter``/``A`` springt sofort dorthin.
+DNF) kommen die Ergebnisse; waehrend dieser 30 s springt ``Enter``/``A`` sofort
+dorthin. Vorher tut die Taste nichts: niemand wird vorzeitig gewertet.
 
 Die Rechnung steht in ``src/render3d/tv_regie.py`` (rein, ohne Fenster). Dieses
 Modul klebt sie an den Rennzustand: es liest Fahrzeuge, haelt die Uhr, ersetzt
@@ -70,10 +71,11 @@ class MovieModus:
         self.wartet = False                    # _starte_ausblenden ist zurueckgehalten
         self.freigegeben = False               # die Uhr ist durch (oder uebersprungen)
         self.zeilen = None                     # die zurueckgehaltenen Ergebniszeilen
-        self.skip_gewuenscht = False           # Enter gedrueckt, Ergebnisse fehlen noch
+        self.skip_gewuenscht = False           # Enter/A im Nachlauf gedrueckt
         self._kurs = None
         self._standorte = None
         self._hoehe_fn = None
+        self._hindernisse_arr = None
         self._vorbereitet = False
 
     @property
@@ -108,12 +110,13 @@ class MovieModus:
                 halb = float(track.track_width) * M_PER_PX / 2.0
                 name = str(getattr(r, "_track_path", "strecke"))
             hindernisse = self._hindernisse(szene)
+            self._hindernisse_arr = hindernisse
             gel = getattr(szene, "gelaende", None)
             self._hoehe_fn = gel.hoehe if gel is not None else None
             self._kurs = tv_regie.Rundkurs(linie)
             self._standorte = tv_regie.kameras_platzieren(
                 linie, halb, name=name, hoehe_fn=self._hoehe_fn,
-                hindernisse=hindernisse, abstand_m=55.0)
+                hindernisse=hindernisse, abstand_m=40.0)
         except Exception as fehler:     # ein Fehler im Film darf kein Rennen kosten
             import traceback
             traceback.print_exc()
@@ -147,6 +150,13 @@ class MovieModus:
             a[fehlt, 3] = tv_regie.hindernisse_normalisieren(a[fehlt, :3])[:, 3]
         return a
 
+    def vorbereiten(self) -> None:
+        """Die Kameras beim Laden aufstellen (kostet einen Moment, der hinter dem
+        Ladebildschirm nicht auffaellt, aber im Ziel ruckeln wuerde)."""
+        from src.core import race_setup
+        if race_setup.current().mode in MOVIE_MODI:
+            self._vorbereiten()
+
     # -- Haken: Beginn ---------------------------------------------------------
     @_ohne_absturz
     def beginnen(self, fahrzeug) -> None:
@@ -164,7 +174,8 @@ class MovieModus:
         from src.render3d import tv_regie
         rm = r.race_manager
         regie = tv_regie.Regie(self._kurs, self._standorte,
-                               runden_gesamt=getattr(rm, "total_laps", 3))
+                               runden_gesamt=getattr(rm, "total_laps", 3),
+                               hindernisse=self._hindernisse_arr, hoehe_fn=self._hoehe_fn)
         platz = r._online_position(fahrzeug.id) if r._online else rm.get_position(fahrzeug.id)
         from src.states.race_state import SICHTFELD_GRAD
         film = tv_regie.Film(regie, fov_basis=SICHTFELD_GRAD, hoehe_fn=self._hoehe_fn,
@@ -250,24 +261,23 @@ class MovieModus:
             self.freigegeben = True
             self.r._starte_ausblenden(self.zeilen)
 
+    def ueberspringen_erlaubt(self) -> bool:
+        """Enter/A gilt erst, wenn das Feld fertig ist (alle im Ziel oder nach
+        der bisherigen DNF-Frist DNF) — also waehrend der 30 s Nachlauf. Vorher
+        tut es nichts: niemand wird vorzeitig gewertet."""
+        return self.wartet and self.alle_menschen_im_film() and not self.skip_gewuenscht
+
     def ueberspringen(self) -> None:
-        """Enter/A: sofort zu den Ergebnissen."""
-        if not self.alle_menschen_im_film() or self.skip_gewuenscht:
+        """Enter/A: die Restzeit des Nachlaufs ueberspringen, sofort zu den Ergebnissen."""
+        if not self.ueberspringen_erlaubt():
             return
-        r = self.r
         self.skip_gewuenscht = True
         self.nachspiel.ueberspringen()
-        if self.wartet:
-            self.tick(0.0)                      # Ergebnisse stehen schon bereit
-            return
-        rm = r.race_manager
-        if rm is not None and not r._online and rm.state != "finished":
-            # Offline fahren noch KI-Autos: sie werden gewertet, wo sie stehen.
-            rm.force_finish_remaining()
+        self.tick(0.0)
 
     def taste(self, ereignis) -> bool:
         """Enter / A im Film. Gibt ``True`` zurueck, wenn die Taste verbraucht ist."""
-        if not self.alle_menschen_im_film():
+        if not self.ueberspringen_erlaubt():
             return False
         from src.core import gamepad
         if ereignis.type == pygame.KEYDOWN and ereignis.key in (
@@ -323,15 +333,13 @@ class MovieModus:
             self._zeile(flaeche, film.ziel_name, theme.LABEL, theme.TEXT,
                         (mitte, int(116 * scale)), scale)
 
-        # Hinweis unten: Enter, und was noch aussteht.
-        from src.core import gamepad
-        taste = tr("A: Ergebnisse") if gamepad.using_pad() else tr("ENTER: Ergebnisse")
-        if self.skip_gewuenscht and not self.nachspiel.bereit:
-            taste = tr("Warte auf die Ergebnisse...")
-        elif self.nachspiel.laeuft and self.nachspiel.rest is not None:
+        # Hinweis unten: nur, solange Enter/A etwas tut (Nachlauf).
+        if self.wartet and self.nachspiel.rest is not None:
+            from src.core import gamepad
+            taste = tr("A: Ergebnisse") if gamepad.using_pad() else tr("ENTER: Ergebnisse")
             taste += "   -   " + tr("Ergebnisse in {n} s").format(
                 n=int(math.ceil(self.nachspiel.rest)))
-        self._zeile(flaeche, taste, theme.HINT, theme.TEXT, (mitte, h - int(44 * scale)), scale)
+            self._zeile(flaeche, taste, theme.HINT, theme.TEXT, (mitte, h - int(44 * scale)), scale)
 
     def hud_zeichnen(self, screen: pygame.Surface, index: int, scale: float = 1.0) -> bool:
         """Das Banner statt des Renn-HUDs. ``True``, wenn gezeichnet wurde.

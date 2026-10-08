@@ -69,7 +69,7 @@ def _welt(name: str):
 def test_kameras_stehen_neben_der_strecke_ueber_dem_boden(name):
     netz, hind, boden, schluessel = _welt(name)
     st = kameras_platzieren(netz.mittellinie, netz.halbe_breite_m, name=schluessel,
-                            hoehe_fn=boden, hindernisse=hind, abstand_m=55.0)
+                            hoehe_fn=boden, hindernisse=hind, abstand_m=40.0)
     kurs = Rundkurs(netz.mittellinie)
     assert len(st) >= 6, f"{name}: nur {len(st)} Kameras"
     for s in st:
@@ -91,7 +91,7 @@ def test_es_gibt_tiefe_und_hohe_kameras():
     for name in STRECKEN:
         netz, hind, boden, schluessel = _welt(name)
         for s in kameras_platzieren(netz.mittellinie, netz.halbe_breite_m, name=schluessel,
-                                    hoehe_fn=boden, hindernisse=hind, abstand_m=55.0):
+                                    hoehe_fn=boden, hindernisse=hind, abstand_m=40.0):
             g = float(boden(np.array([s.pos[0]]), np.array([s.pos[1]]))[0]) if boden is not None else 0.0
             hoehen.append(float(s.pos[2]) - g)
     assert min(hoehen) <= 3.5 and max(hoehen) >= 6.0, f"Hoehen {sorted(set(round(h, 1) for h in hoehen))}"
@@ -102,9 +102,9 @@ def test_es_gibt_tiefe_und_hohe_kameras():
 def test_aufstellung_ist_abwechslungsreich_und_fest(name):
     netz, hind, boden, schluessel = _welt(name)
     a = kameras_platzieren(netz.mittellinie, netz.halbe_breite_m, name=schluessel,
-                           hoehe_fn=boden, hindernisse=hind, abstand_m=55.0)
+                           hoehe_fn=boden, hindernisse=hind, abstand_m=40.0)
     b = kameras_platzieren(netz.mittellinie, netz.halbe_breite_m, name=schluessel,
-                           hoehe_fn=boden, hindernisse=hind, abstand_m=55.0)
+                           hoehe_fn=boden, hindernisse=hind, abstand_m=40.0)
     assert [tuple(s.pos) for s in a] == [tuple(s.pos) for s in b], "Aufstellung nicht fest je Strecke"
     assert {s.seite for s in a} == {1, -1}, "alle Kameras auf einer Seite"
     hoehen = {round(float(s.pos[2]) - (float(boden(np.array([s.pos[0]]), np.array([s.pos[1]]))[0])
@@ -141,6 +141,73 @@ def test_kamera_meidet_objekte_und_huegel():
         r = math.hypot(s.pos[0], s.pos[1])
         assert not (r > 300 + halb + 4.0 and s.pos[2] - 14.0 < 2.0 - 1e-6), "Kamera im Hang"
     assert len(frei) >= len(mit_hang) - 1
+
+
+def _kreis(radius=300.0, n=240):
+    return np.array([[radius * math.cos(w), radius * math.sin(w)]
+                     for w in np.linspace(0, 2 * math.pi, n, endpoint=False)])
+
+
+def test_posten_zwischen_kamera_und_strecke_verdeckt():
+    """Ein Posten (Radius 2,5, Hoehe 3 m) auf dem Sichtstrahl: Standort ungueltig."""
+    kreis = _kreis()
+    kurs = Rundkurs(kreis)
+    halb = 6.0
+    # Kamera 14 m hinter der Fahrbahnkante, 2,5 m hoch, bei Winkel 0 (x = 314 + ...).
+    cx, cy, h = 300.0 + halb + 14.0, 0.0, 2.5
+    assert tv_regie.standort_gueltig(kurs, halb, None, np.zeros((0, 4)), cx, cy, h, 0.0)
+    posten = np.array([[300.0 + halb + 8.0, 0.0, 2.5, 3.0]])   # mitten auf dem Strahl
+    assert not tv_regie.standort_gueltig(kurs, halb, None, posten, cx, cy, h, 0.0),         "ein Posten auf dem Sichtstrahl muss den Standort ausschliessen"
+    # Weit weg vom Strahl und vom Objektiv stoert er nicht.
+    fern = np.array([[300.0 + halb + 8.0, 60.0, 2.5, 3.0]])
+    assert tv_regie.standort_gueltig(kurs, halb, None, fern, cx, cy, h, 0.0)
+
+
+def test_hohes_objekt_vor_dem_objektiv_schliesst_aus():
+    kreis = _kreis()
+    kurs = Rundkurs(kreis)
+    halb = 6.0
+    cx, cy, h = 300.0 + halb + 14.0, 0.0, 2.5
+    # Seitlich vor der Linse, 5 m entfernt, nicht auf der Mittelachse: sonst frei.
+    schild = np.array([[cx - 4.0, 4.0, 1.0, 3.5]])
+    assert not tv_regie.standort_gueltig(kurs, halb, None, schild, cx, cy, h, 0.0)
+    # Dasselbe niedrig (Reifenstapel) ist kein Problem.
+    stapel = np.array([[cx - 7.0, 7.0, 1.0, 0.8]])
+    assert tv_regie.standort_gueltig(kurs, halb, None, stapel, cx, cy, h, 0.0)
+
+
+def test_verdeckte_kameras_werden_beim_schnitt_uebergangen():
+    kreis = _kreis()
+    st = kameras_platzieren(kreis, 6.0, name="regie", abstand_m=2 * math.pi * 300 / 12)
+    kurs = Rundkurs(kreis)
+    auto = _auf_kreis(1, 0.3)
+    ohne = Regie(kurs, st, runden_gesamt=3)
+    erster, _ = ohne.waehle_standort(auto)
+    # Posten genau zwischen diesem Standort und dem Auto.
+    mitte = (erster.pos[:2] + np.array([auto.x, auto.y])) / 2.0
+    posten = np.array([[mitte[0], mitte[1], 2.5, 12.0]])
+    mit = Regie(kurs, st, runden_gesamt=3, hindernisse=posten)
+    assert not mit.sieht(erster, auto) and ohne.sieht(erster, auto)
+    gewaehlt, _ = mit.waehle_standort(auto)
+    assert gewaehlt.nr != erster.nr, "die verdeckte Kamera wurde trotzdem gewaehlt"
+    assert mit.sieht(gewaehlt, auto)
+
+
+def test_verdeckung_im_schuss_loest_schnitt_aus():
+    kreis = _kreis()
+    st = kameras_platzieren(kreis, 6.0, name="regie", abstand_m=2 * math.pi * 300 / 12)
+    kurs = Rundkurs(kreis)
+    regie = Regie(kurs, st, runden_gesamt=3)
+    auto = _auf_kreis(1, 0.3)
+    regie.aktualisieren(0.1, [auto, _auf_kreis(2, 3.0)])
+    erster = regie.standort
+    ziel = next(a for a in [auto, _auf_kreis(2, 3.0)] if a.kennung == regie.ziel_kennung)
+    mitte = (erster.pos[:2] + np.array([ziel.x, ziel.y])) / 2.0
+    regie.hindernisse = tv_regie.hindernisse_normalisieren(np.array([[mitte[0], mitte[1], 2.5, 12.0]]))
+    n = regie.schnitte
+    for _ in range(int((Regie.MIN_SCHUSS_S + Regie.VERDECKT_SCHNITT_S + 0.5) * 30)):
+        regie.aktualisieren(1 / 30, [ziel, _auf_kreis(2, 3.0)])
+    assert regie.schnitte > n, "ein dauerhaft verdecktes Ziel haelt die Kamera fest"
 
 
 def test_rundkurs_bogen_und_vorsprung():
@@ -425,31 +492,75 @@ def test_offline_film_beginnt_im_ziel_und_ergebnisse_kommen_30s_nach_dem_feld():
     assert film.regie.schnitte >= 1
 
 
-def test_offline_enter_springt_zu_den_ergebnissen():
-    rennen, sm = spielhilfe.rennen_bauen("oval", runden=1, feld=3)
-    _ki_spielt(rennen)
-    _bis(rennen, _spieler_im_ziel, 200.0)
-    assert rennen._movie.aktiv and rennen.race_manager.state != "finished"
-    # Eine andere Taste tut nichts ...
-    rennen.handle_events([pygame.event.Event(pygame.KEYDOWN, key=pygame.K_a)])
-    assert not rennen._movie.skip_gewuenscht
-    # ... Enter beendet das Rennen fuer die uebrigen und geht weiter.
-    rennen.handle_events([pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)])
-    assert rennen._movie.skip_gewuenscht
-    _bis(rennen, lambda r: bool(sm.wechsel), 10.0)
-    args, kwargs = sm.wechsel[-1]
-    assert args[0] == "menu" and kwargs.get("results"), "Ergebnisse fehlen"
-    assert len(kwargs["results"]) == 3, "nicht jedes Auto steht in der Wertung"
+def _enter():
+    return pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)
 
 
-def test_offline_pad_a_springt_ebenfalls():
+def test_offline_enter_tut_nichts_solange_ein_auto_noch_faehrt():
+    """Enter/A beendet das Rennen nie vorzeitig: kein Auto wird zum DNF gemacht."""
     from src.core import gamepad
     rennen, sm = spielhilfe.rennen_bauen("oval", runden=1, feld=3)
     _ki_spielt(rennen)
     _bis(rennen, _spieler_im_ziel, 200.0)
+    rm = rennen.race_manager
+    assert rennen._movie.aktiv and rm.state != "finished"
+    ergebnisse_vorher = [dict(r) for r in rm.results]
+    for _ in range(3):
+        rennen.handle_events([_enter()])
+        rennen.handle_events([pygame.event.Event(pygame.JOYBUTTONDOWN, button=gamepad.BTN_A, instance_id=0)])
+        rennen.update(DT)
+    assert not rennen._movie.skip_gewuenscht and not rennen._movie.ueberspringen_erlaubt()
+    assert rm.state != "finished" and not sm.wechsel
+    assert [r for r in rm.results if r.get("dnf")] == [], "ein Auto wurde durch Enter zum DNF"
+    assert rm.results[:len(ergebnisse_vorher)] == ergebnisse_vorher
+    # Das Banner zeigt den Enter-Hinweis jetzt noch nicht.
+    assert not rennen._movie.wartet
+
+
+def test_offline_enter_nach_dem_ende_des_feldes_springt_zu_den_ergebnissen():
+    rennen, sm = spielhilfe.rennen_bauen("oval", runden=1, feld=3)
+    _ki_spielt(rennen)
+    _bis(rennen, _spieler_im_ziel, 200.0)
+    _bis(rennen, lambda r: r._movie.wartet, 300.0)
+    assert rennen._movie.ueberspringen_erlaubt() and not sm.wechsel
+    vor = [dict(r) for r in rennen.race_manager.results]
+    rennen.handle_events([pygame.event.Event(pygame.KEYDOWN, key=pygame.K_a)])
+    assert not rennen._movie.skip_gewuenscht            # andere Tasten: nichts
+    rennen.handle_events([_enter()])
+    _bis(rennen, lambda r: bool(sm.wechsel), 10.0)
+    args, kwargs = sm.wechsel[-1]
+    assert args[0] == "menu" and len(kwargs["results"]) == 3
+    assert rennen.race_manager.results == vor, "die Wertung hat sich durch Enter veraendert"
+
+
+def test_offline_pad_a_nach_dem_ende_des_feldes():
+    from src.core import gamepad
+    rennen, sm = spielhilfe.rennen_bauen("oval", runden=1, feld=3)
+    _ki_spielt(rennen)
+    _bis(rennen, _spieler_im_ziel, 200.0)
+    _bis(rennen, lambda r: r._movie.wartet, 300.0)
     rennen.handle_events([pygame.event.Event(pygame.JOYBUTTONDOWN, button=gamepad.BTN_A, instance_id=0)])
     assert rennen._movie.skip_gewuenscht
     _bis(rennen, lambda r: bool(sm.wechsel), 10.0)
+
+
+def test_enter_waehrend_des_rennens_aendert_die_wertung_nicht():
+    """Dieselben Wertungszeilen (und damit dieselben Grand-Prix-Punkte) mit
+    und ohne Tastendruck waehrend des Rennens."""
+    def lauf(mit_enter: bool):
+        rennen, sm = spielhilfe.rennen_bauen("oval", runden=1, feld=3, ki_fahrzeug="rookie")
+        _ki_spielt(rennen)
+        _bis(rennen, _spieler_im_ziel, 200.0)
+        if mit_enter:
+            for _ in range(10):
+                rennen.handle_events([_enter()])
+                rennen.update(DT)
+        _bis(rennen, lambda r: bool(sm.wechsel), 400.0)
+        rows = sm.wechsel[-1][1]["results"]
+        spielhilfe.schliessen(rennen)
+        return [(r["position"], r["dnf"]) for r in rows]
+
+    assert lauf(True) == lauf(False)
 
 
 def test_zeitfahren_hat_keinen_film():
@@ -542,15 +653,17 @@ def test_online_ergebnisse_kommen_30s_nach_der_gesamtwertung(monkeypatch):
     assert [z["name"] for z in kwargs["results"]] == ["Host", "Gast"], "Gesamtwertung ging verloren"
 
 
-def test_online_enter_vor_der_wertung_wartet_auf_die_wertung(monkeypatch):
+def test_online_enter_vor_der_wertung_tut_nichts(monkeypatch):
     rennen, sm, relay = _online_gast(monkeypatch)
     for _ in range(int(3.0 / DT)):
         rennen.update(DT)
-    rennen.handle_events([pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)])
-    for _ in range(int(2.0 / DT)):
-        rennen.update(DT)
-    assert not sm.wechsel, "ohne Wertung darf es nicht in die Ergebnisse gehen"
+    rennen.handle_events([_enter()])
+    assert not rennen._movie.skip_gewuenscht, "Enter zaehlt, obwohl noch gefahren wird"
     relay.ergebnisse_schicken()
+    for _ in range(int(3.0 / DT)):
+        rennen.update(DT)
+    assert rennen._movie.wartet and not sm.wechsel, "ohne Enter gilt die 30-s-Uhr"
+    rennen.handle_events([_enter()])               # jetzt ist das Feld fertig
     n = 0
     while not sm.wechsel and n < int(10.0 / DT):
         rennen.update(DT)
@@ -608,7 +721,7 @@ def test_splitscreen_ein_film_bis_beide_durch_sind():
     assert set(rennen._movie.filme) == {0}
     assert not rennen._movie.alle_menschen_im_film()
     assert not rennen._movie.geteilt_gesamt()
-    # Enter darf nicht zu den Ergebnissen springen, solange Spieler 2 noch faehrt.
+    # Enter darf nichts tun, solange Spieler 2 noch faehrt.
     rennen.handle_events([pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN)])
     assert not rennen._movie.skip_gewuenscht
     # Die Ansicht: Haelfte 0 filmt, Haelfte 1 bleibt die Verfolgerkamera.
