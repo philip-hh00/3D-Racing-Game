@@ -279,6 +279,15 @@ class GamepadManager:
                 pass
         return False
 
+    def stop_rumble(self, index: int) -> None:
+        """Vibration eines Controllers sofort beenden (Pause, Ziel, Rennende)."""
+        joy = self.device(index)
+        if joy:
+            try:
+                joy.stop_rumble()
+            except Exception:
+                pass
+
     def add_notification(self, text: str, is_connect: bool = True) -> None:
         """Add connection notification to the display queue."""
         self._notifications.append({
@@ -697,6 +706,12 @@ def rumble(index: int, low: float, high: float, duration_ms: int) -> bool:
     if _gamepad_manager:
         return _gamepad_manager.rumble(index, low, high, duration_ms)
     return False
+
+
+def stop_rumble(index: int) -> None:
+    """Vibration auf diesem Controller beenden."""
+    if _gamepad_manager:
+        _gamepad_manager.stop_rumble(index)
 
 
 def draw_notifications(screen: pygame.Surface, dt: float) -> None:

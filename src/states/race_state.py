@@ -205,6 +205,8 @@ class RaceState(BaseState):
         self._load_failed_handled: bool = False
         #: (Text, Restzeit) der Rueckmeldung des Klangmitschnitts (F9).
         self._mitschnitt_hinweis: tuple[str, float] | None = None
+        #: Fahrhilfen, Ideallinie und Controller-Vibration (``rennhilfen.py``).
+        self._hilfen = None
 
         # Rolling average for FPS calculation
         self._fps_filtered: float = 60.0
@@ -522,6 +524,11 @@ class RaceState(BaseState):
         # Erst hier: der Klang braucht _humans, und das steht ein paar Zeilen
         # weiter oben erst seit dem Kameraaufbau.
         self._klang_aufbauen()
+
+        # Fahrhilfen, Ideallinie, Vibration: nach der Szene (Randsteine) und den Menschen.
+        from src.states.rennhilfen import RennHilfen
+        self._hilfen = RennHilfen(self)
+        self._hilfen.aufbauen()
 
         self.hud = None
         self.hud1 = None
@@ -1326,6 +1333,9 @@ class RaceState(BaseState):
 
     def _on_vehicle_contact(self, data: dict[str, Any]) -> None:
         """Car-to-car touch: sound always, denser streaming and bump relay online."""
+        if self._hilfen is not None:
+            for beteiligt in (data.get("vehicle_a"), data.get("vehicle_b")):
+                self._hilfen.stoss(beteiligt, data.get("impulse", 0.0))
         if self._klang is not None:
             self._klang.aufprall(data.get("impulse", 0.0),
                                  self._aufprall_fahrzeug(data),
@@ -1416,6 +1426,8 @@ class RaceState(BaseState):
     def _on_wall_collision(self, data: dict[str, Any]) -> None:
         """Handle vehicle hitting a wall."""
         impulse = data.get("impulse", 0.0)
+        if self._hilfen is not None:
+            self._hilfen.stoss(self._fahrzeug_mit_koerper(data.get("vehicle_body_id")), impulse)
         if self._klang is not None:
             fahrzeug = (self._fahrzeug_mit_koerper(data.get("vehicle_body_id"))
                         or self._fahrzeug_mit_id(data.get("vehicle_id")))
@@ -1473,6 +1485,9 @@ class RaceState(BaseState):
 
     def exit(self) -> None:
         """Clean up physics world and event subscriptions."""
+        if self._hilfen is not None:
+            self._hilfen.beenden()          # Controller still, Ideallinie freigeben
+            self._hilfen = None
         if self._klang is not None:
             self._klang.beenden()
             self._klang = None
@@ -2075,6 +2090,8 @@ class RaceState(BaseState):
 
         if getattr(self, "_resume_countdown_timer", 0.0) > 0.0:
             self._resume_countdown_timer = max(0.0, self._resume_countdown_timer - dt)
+            if self._hilfen is not None:
+                self._hilfen.stoppen()
             if self._resume_countdown_timer <= 0.0:
                 self.paused = False
                 self._pause_view = "main"
@@ -2085,6 +2102,8 @@ class RaceState(BaseState):
             return
 
         if self.paused:
+            if self._hilfen is not None:
+                self._hilfen.stoppen()      # Controller still, solange pausiert ist
             if getattr(self, "_pause_view", None) == "settings" and getattr(self, "_pause_settings", None):
                 self._pause_settings.update(dt)
             if self._online:
@@ -2180,6 +2199,8 @@ class RaceState(BaseState):
 
         countdown = self.race_manager and self.race_manager.state == "countdown"
         coasting = self._dnf_coast_timer > 0.0
+        if self._hilfen is not None:
+            self._hilfen.abgleichen()       # ABS / Traktionskontrolle nach Profil
         for hp, cam in zip(self._humans, self._kameras):
             if coasting:
                 # Forced-DNF roll-out: no input, let friction bring it to rest.
@@ -2194,6 +2215,8 @@ class RaceState(BaseState):
                 hp.handle_input()   # read this human's input source
             hp.update(dt)
             cam.folgen(welt3d(hp.position), hp.angle, dt)
+        if self._hilfen is not None:
+            self._hilfen.fortschreiben(dt)  # Vibration aus dem neuen Zustand
 
         # Was in diesem Bild zu sehen ist, einmal je Bild einsammeln - nicht
         # beim Zeichnen. Im Splitscreen wird zweimal gezeichnet, aber es
@@ -2458,12 +2481,17 @@ class RaceState(BaseState):
             return 0.0, 0.0
         laengs = (getattr(self, "_laengs_beschleunigung", None) or {}).get(kennung, 0.0)
         cfg = getattr(fahrzeug, "config", None)
+        # Mit Fahrhilfen zaehlt, was die Physik wirklich sah (Gas nach der
+        # Traktionskontrolle), und mit ABS blockiert beim Bremsen nichts.
+        hilfen = getattr(fahrzeug, "fahrhilfen", None)
+        gas = getattr(fahrzeug, "gas_wirksam" if hilfen is not None else "throttle", 0.0)
         return reifenspuren.reifenschlupf(
             v_m, float(fahrzeug.angle), laengs,
-            gas=float(getattr(fahrzeug, "throttle", 0.0) or 0.0),
+            gas=float(gas or 0.0),
             bremse=float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
             handbremse=bool(getattr(fahrzeug, "handbrake", False)),
-            antrieb=str(getattr(cfg, "drive_type", "rwd") or "rwd"))
+            antrieb=str(getattr(cfg, "drive_type", "rwd") or "rwd"),
+            abs_an=bool(hilfen is not None and hilfen.abs_an))
 
     def _neigung(self, kennung: int, fahrzeug, dt: float) -> tuple[float, float]:
         """Nicken und Wanken aus der Beschleunigung, die die Physik ohnehin rechnet.
@@ -2589,6 +2617,8 @@ class RaceState(BaseState):
             projektion = kamera3d.perspektive(
                 SICHTFELD_GRAD, vb / max(1, vh), NAHE_EBENE_M, FERNE_EBENE_M)
             mvp = projektion @ kam.blickmatrix()
+            if self._hilfen is not None:
+                self._hilfen.linie_setzen(kam)      # Ideallinie dieses Spielers
             self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=kam.ziel)
             self._letzte_sicht = (mvp, ausschnitt, briefkasten)
 

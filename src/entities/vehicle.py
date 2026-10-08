@@ -230,6 +230,7 @@ class Vehicle:
     """
 
     is_takeover: bool = False   # online: AI inherited this car from a player that left
+    fahrhilfen = None           # ABS / Traktionskontrolle, siehe __init__
 
     def __init__(
         self,
@@ -294,6 +295,13 @@ class Vehicle:
         self.steer_input: float = 0.0
         self.handbrake: bool = False
         self.is_touching_wall: bool = False
+        #: ABS und Traktionskontrolle (``components/fahrhilfen.py``). None = keine,
+        #: die Physik laeuft dann wie immer; die KI hat nie welche.
+        self.fahrhilfen = None
+        #: Was die Physik im letzten Bild wirklich als Gas / Bremse sah (nach den
+        #: Fahrhilfen); ohne Hilfe gleich der Eingabe.
+        self.gas_wirksam: float = 0.0
+        self.bremse_wirksam: float = 0.0
 
         # Subscribe to wall collision events
         from src.core.event_bus import EventBus
@@ -416,8 +424,17 @@ class Vehicle:
                     drag_coeff = self.config.drag_coefficient * drag_reduction
 
         # --- 3. Apply Forces ---
+        # Fahrhilfen (ABS, Traktionskontrolle): nur ein menschlicher Spieler hat
+        # welche, und nur wenn er sie eingeschaltet hat. Sie aendern, was die
+        # Physik dieses Autos als Gas und Bremse sieht; self.throttle und
+        # self.brake_input bleiben die Eingabe des Fahrers.
+        gas, bremse = self.throttle, self.brake_input
+        if self.fahrhilfen is not None:
+            gas, bremse = self.fahrhilfen.anwenden(self, gas, bremse, dt)
+        self.gas_wirksam, self.bremse_wirksam = gas, bremse
+
         # Engine force (pass dt and braking flag for shifting logic)
-        drive_force = self.engine.compute_force(self.throttle, self.speed, dt, self.brake_input > 0.0)
+        drive_force = self.engine.compute_force(gas, self.speed, dt, self.brake_input > 0.0)
 
         # Apply drive force using axle-based torque distribution and limits
         self.physics.apply_drive_force(
@@ -429,7 +446,7 @@ class Vehicle:
         )
 
         # Braking
-        brake_force = self.brakes.compute_force(self.brake_input)
+        brake_force = self.brakes.compute_force(bremse)
         if brake_force > 0.0:
             self.physics.apply_brake_force(brake_force, dt)
 

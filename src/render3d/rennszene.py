@@ -613,6 +613,11 @@ class Rennszene:
         self.schattenkarte = None
         self.nachbearbeitung: Nachbearbeitung | None = None
         self.reifenspuren: Reifenspuren | None = None
+        #: Die Ideallinie, die in diesem Bild auf dem Asphalt liegt (Fahrhilfe,
+        #: ``ideallinie.Ideallinie3D``) oder None. Der Rennzustand setzt sie vor
+        #: jedem Zeichnen, im Splitscreen je Bildhälfte die des Spielers.
+        self.ideallinie_aktiv = None
+        self._linienzeit = 0.0
         # Gelände und Gras (Strang W); ohne Thema bleibt der flache Boden.
         self.gelaende = None
         self.gelaendezeichner = None
@@ -951,6 +956,7 @@ class Rennszene:
         der Reifenrauch; ohne wird die Uhr gelesen.
         """
         self.knotenspeicher.fortschreiben(staende)
+        self._linienzeit += min(max(dt or 0.0, 0.0), 0.1)
         if self.reifenspuren is not None:
             if grafik.aktuell().reifenspuren:
                 self.reifenspuren.fortschreiben(staende, self._raeder_von, dt)
@@ -1038,6 +1044,8 @@ class Rennszene:
         spuren = self.reifenspuren is not None and einstellung.reifenspuren
         if spuren:
             self.reifenspuren.spuren_zeichnen(mvp)
+        if self.ideallinie_aktiv is not None:
+            self.ideallinie_aktiv.zeichnen(mvp, kamera_position, self._linienzeit)
         self._schatten_zeichnen(mvp, staende)
         # Durchscheinendes zuletzt, von hinten nach vorn.
         reihe = list(reversed(nach_abstand))

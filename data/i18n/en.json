@@ -794,5 +794,16 @@
   "Eigen": "Custom",
   "Grafikstufe": "Graphics preset",
   "Grafik": "Graphics",
-  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race."
+  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race.",
+  "Schwach": "Light",
+  "Stark": "Strong",
+  "ABS": "ABS",
+  "Traktionskontrolle": "Traction control",
+  "Ideallinie": "Racing line",
+  "Controller-Vibration": "Controller vibration",
+  "Fahrhilfen": "Driving aids",
+  "Die Hilfen gelten nur für dich. Die KI fährt ohne, und online ändert sich für niemand anders etwas.": "The aids apply to you only. The AI drives without them, and online nothing changes for anyone else.",
+  "ABS nimmt Bremsdruck weg, wenn ein Reifen rutscht. Die Traktionskontrolle nimmt Gas weg, bis die Räder greifen.": "ABS eases off the brakes when a tyre slides. Traction control eases off the throttle until the wheels grip.",
+  "Die Ideallinie zeigt die Linie der KI: grün Gas, gelb Gas weg, rot Bremsen.": "The racing line shows the AI's line: green throttle, yellow lift, red brake.",
+  "Vibration: Treffer, Wand, Rutschen und Randsteine; je Controller, auch im Splitscreen.": "Vibration: hits, walls, sliding and kerbs; per controller, also in split screen."
 }
