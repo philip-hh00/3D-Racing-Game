@@ -69,5 +69,28 @@
     94,
     98
   ],
-  "dreiecke_karosserie": 84208
+  "dreiecke_karosserie": 87566,
+  "cockpit": {
+    "augpunkt": [
+      -0.4071,
+      0.391,
+      1.2695
+    ],
+    "haube": [
+      1.2227,
+      0.0,
+      1.0765
+    ],
+    "lenkrad_uebersetzung": 14.0,
+    "tacho_max_kmh": 280,
+    "tacho_winkel_grad": [
+      -135.0,
+      135.0
+    ],
+    "drehzahl_max": 7000,
+    "drehzahl_winkel_grad": [
+      -135.0,
+      135.0
+    ]
+  }
 }

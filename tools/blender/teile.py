@@ -1343,6 +1343,11 @@ def auspuffblende(name, r, laenge, mats, art="rund"):
 # Spiegel, Türgriffe, Wischer
 # ---------------------------------------------------------------------------
 
+#: Gläser der Außenspiegel für den Cockpit-Knoten (``teile_cockpit``); ``spiegel`` hängt
+#: sie an, wenn ``td["_knoten"]`` gesetzt ist.
+SPIEGELGLAS: list = []
+
+
 def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
     """Außenspiegel: schlankes, nach hinten gepfeiltes Tropfengehäuse,
     eingefasstes Glas, Blinkerleiste und ein Stiel (``stiel``) oder ein Fuß am
@@ -1393,13 +1398,30 @@ def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
     x_glas = x - lang * 0.18 - pfeil * 0.5 - 0.004
     rahmen = platte("spiegelrahmen", tief * 0.8, hoch * 0.78, 0.006,
                     (mats["kunststoff"], mats["kunststoff"]), rundung=3.0)
-    glas = platte("spiegelglas", tief * 0.72, hoch * 0.66, 0.003, (mats["chrom"], mats["kunststoff"]),
-                  rundung=3.0)
-    glas.location = (-0.003, 0, 0)
-    g.transform_anwenden(glas)
-    einheit = g.verbinden([rahmen, glas], "spiegelglas")
-    einheit.rotation_euler = (0, 0, math.radians(180 - 9 * seite))
-    einheit.location = (x_glas, seite * (yc + 0.01), z + 0.004)
+    ort = Vector((x_glas, seite * (yc + 0.01), z + 0.004))
+    yaw = math.radians(180 - 9 * seite)
+    if td.get("_knoten"):
+        # Cockpit: das Glas ist ein eigener Knoten (``spiegel_l``/``spiegel_r``, Material
+        # ``spiegel``) und sitzt 1,5 mm vor dem schwarzen Rahmen. Es blickt zum Fahrer,
+        # höchstens 16° gegen die Rückwand des Gehäuses verdreht.
+        auge = td.get("_auge")
+        if auge is not None:
+            zum_auge = Vector((auge[0] - ort.x, auge[1] - ort.y, 0.0)).normalized()
+            wunsch = (zum_auge + Vector((-1.0, seite * 0.10, 0.0)).normalized()).normalized()
+            d = (math.atan2(wunsch.y, wunsch.x) - yaw + math.pi) % (2 * math.pi) - math.pi
+            yaw += max(-math.radians(16), min(math.radians(16), d))
+        einheit = rahmen
+        n = Vector((math.cos(yaw), math.sin(yaw), 0.0))
+        SPIEGELGLAS.append({"seite": seite, "mitte": ort + n * 0.0045, "normale": n,
+                            "breite": tief * 0.72, "hoehe": hoch * 0.66})
+    else:
+        glas = platte("spiegelglas", tief * 0.72, hoch * 0.66, 0.003, (mats["chrom"], mats["kunststoff"]),
+                      rundung=3.0)
+        glas.location = (-0.003, 0, 0)
+        g.transform_anwenden(glas)
+        einheit = g.verbinden([rahmen, glas], "spiegelglas")
+    einheit.rotation_euler = (0, 0, yaw)
+    einheit.location = ort
     g.transform_anwenden(einheit)
     teile.append(einheit)
     # Blinker: schmale Leiste an der Vorderkante außen unten

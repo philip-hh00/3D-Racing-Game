@@ -28,7 +28,7 @@
         0.84047,
         0.365
       ],
-      "dreiecke": 8456
+      "dreiecke": 11006
     },
     {
       "name": "rad_vr",
@@ -37,7 +37,7 @@
         -0.84047,
         0.365
       ],
-      "dreiecke": 8456
+      "dreiecke": 11006
     },
     {
       "name": "rad_hl",
@@ -46,7 +46,7 @@
         0.84019,
         0.365
       ],
-      "dreiecke": 8456
+      "dreiecke": 11006
     },
     {
       "name": "rad_hr",
@@ -55,7 +55,7 @@
         -0.84019,
         0.365
       ],
-      "dreiecke": 8456
+      "dreiecke": 11006
     }
   ],
   "saettel": [
@@ -69,5 +69,28 @@
     110,
     12
   ],
-  "dreiecke_karosserie": 56056
+  "dreiecke_karosserie": 76476,
+  "cockpit": {
+    "augpunkt": [
+      -0.0359,
+      0.3988,
+      1.2064
+    ],
+    "haube": [
+      1.4495,
+      0.0,
+      0.8959
+    ],
+    "lenkrad_uebersetzung": 13.5,
+    "tacho_max_kmh": 200,
+    "tacho_winkel_grad": [
+      -135.0,
+      135.0
+    ],
+    "drehzahl_max": 18000,
+    "drehzahl_winkel_grad": [
+      -135.0,
+      135.0
+    ]
+  }
 }

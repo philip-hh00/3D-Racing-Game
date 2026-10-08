@@ -67,6 +67,7 @@ from mathutils.bvhtree import BVHTree
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gemeinsam as g  # noqa: E402
 import teile as tb  # noqa: E402
+import teile_cockpit as tc  # noqa: E402
 import teile_innen as ti  # noqa: E402
 import teile_oberflaeche as to  # noqa: E402
 import teile_leuchte as tl  # noqa: E402
@@ -1539,6 +1540,10 @@ def spiegel_neu(karosserie, fo: Form, d, td, mats):
     groesse = d.get("groesse", [0.12, 0.22, 0.13])
     z = d.get("z_m", fo.T(u, fo.wg(u)) + 0.1)
     teile = []
+    plan = getattr(fo, "cockpit", None)
+    if plan is not None:
+        # Cockpit: Glas als eigener Knoten, ausgerichtet zum Auge des Fahrers.
+        td = dict(td, _knoten=True, _auge=tuple(plan.auge))
     for seite in (1, -1):
         hit = strahl(karosserie, (x, seite * (ms.breite_gesamt + 1), z - 0.07), (0, -seite, 0))
         y_wand = abs(hit[0].y) if hit else fo.ws(u)
@@ -2288,6 +2293,16 @@ def modell_bauen(key: str, p: dict):
     fo = Form(p, ms)
     mats = materialien(p)
 
+    # Cockpit (nur volle Stufe): Fahrerposition vorab, die Außenspiegel richten sich nach dem Auge.
+    tp = p.get("teile")
+    tb.SPIEGELGLAS.clear()
+    fo.cockpit = None
+    if tp is not None and tp.get("innenraum", {}) is not False and not p.get("_lod"):
+        innen_layout = ti.Layout(fo, p, tp.get("innenraum") or {})
+        if innen_layout.ok:
+            fo.innen = innen_layout
+            fo.cockpit = tc.planen(fo, p, innen_layout)
+
     karosserie, zonen, radhaeuser, leuchtdaten = karosserie_bauen(fo, p, mats)
     lamellen = lamellen_bauen(karosserie, fo, zonen, mats) + linsen_bauen(karosserie, fo, zonen, mats)
     if any(z.get("leuchte") or z.get("gitter") for z in zonen):
@@ -2297,7 +2312,8 @@ def modell_bauen(key: str, p: dict):
     for pol in karosserie.data.polygons:
         pol.use_smooth = True
     g.glatt(karosserie, p.get("glatt_grad", 40))
-    if p["kabine"].get("verkleidung") and not p.get("_lod"):
+    # Mit Cockpit schaut man von innen an Dach und Säulen: dann immer mit Dachhimmel.
+    if (p["kabine"].get("verkleidung") or fo.cockpit is not None) and not p.get("_lod"):
         erlaubt = {KAROSSERIE_MATS.index(n) for n in
                    ("lack", "lack2", "zierteil", "carbon", "kunststoff", "chrom")}
         ob = ti.verkleidung(karosserie, fo, erlaubt, KAROSSERIE_MATS.index("innenraum"))
@@ -2305,11 +2321,14 @@ def modell_bauen(key: str, p: dict):
             lamellen.append(ob)
     anbau = anbauteile(karosserie, fo, p, mats) + radlauf_lippen(karosserie, fo, p, mats)
     anbau += to.kleinteile(karosserie, fo, p, mats)
-    tp = p.get("teile")
     if tp is not None and tp.get("innenraum", {}) is not False:
-        innen = ti.innenraum(fo, p, tp.get("innenraum") or {}, mats)
+        innen = ti.innenraum(fo, p, tp.get("innenraum") or {}, mats, cockpit=fo.cockpit is not None)
     else:
         innen = innenraum(fo, p, mats)
+    if fo.cockpit is not None:
+        cp = tc.bauen(karosserie, fo, p, mats, fo.cockpit)
+        innen = innen + cp["statisch"]
+        ms.cockpit = cp["daten"]
     karo_teile = [karosserie] + lamellen + radhaeuser + anbau + innen
     tl.atlas_anwenden(karo_teile, p)  # Leuchten: UV, Hochpoly backen, Atlas an die Materialien
     karo = g.verbinden(karo_teile, "karosserie")
@@ -2351,6 +2370,8 @@ def fahrzeug_bauen(key: str, p: dict, ausgabe: Path, vorschau_ordner: Path | Non
         "werkslack": p["lack"],
         "dreiecke_karosserie": dreiecke["karosserie"],
     }
+    if getattr(ms, "cockpit", None):
+        teile["cockpit"] = ms.cockpit
     g.json_schreiben(ausgabe / f"{key}_teile.json", teile)
     print(f"[fahrzeug] {key}: {sum(dreiecke.values())} Dreiecke "
           f"(Karosserie {dreiecke['karosserie']}), "

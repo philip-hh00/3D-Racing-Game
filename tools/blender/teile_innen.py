@@ -235,35 +235,89 @@ def lenkrad(mats):
     return ob
 
 
-def innenraum(fo, p, ti: dict, mats):
+class Layout:
+    """Maße des Innenraums, wie ``innenraum`` sie bestimmt: Boden, Armaturenbrett,
+    Fahrersitz. Reine Rechnung ohne Geometrie — der Cockpit-Teil
+    (``teile_cockpit``) und die Außenspiegel brauchen sie schon, bevor der
+    Innenraum gebaut wird."""
+
+    def __init__(self, fo, p, ti: dict) -> None:
+        ms = fo.ms
+        self.fo, self.ti = fo, ti
+        k = p["kabine"]
+        self.art = ti.get("sitz", "schale" if k.get("sitzreihen", 2) == 1 else "komfort")
+        self.ok = False
+        us = [fo.dach_u0 + (fo.dach_u1 - fo.dach_u0) * i / 200 for i in range(201)]
+        frei = [u for u in us if fo.G(u, 0) > fo.T(u, 0) + 0.05]
+        if not frei:
+            return
+        self.u_hinten, self.u_vorn = min(frei), max(frei)
+        motor = (p.get("teile") or {}).get("motor")
+        if motor:
+            # Der Innenraum beginnt vor dem Motorraum (Mittelmotor unter Glas).
+            self.u_hinten = max(self.u_hinten, motor["u"][1] + 0.005)
+        u_hinten, u_vorn = self.u_hinten, self.u_vorn
+        # Der Boden liegt unter der Gürtellinie, so tief, dass Sitze mit echter
+        # Lehne unters Dach passen: durchs Glas sieht man in einen Raum, nicht
+        # auf eine Platte in Fensterhöhe. ``tiefe_m`` überschreibt die Schätzung.
+        u_m = (u_hinten + u_vorn) / 2
+        tiefe = ti.get("tiefe_m")
+        if tiefe is None:
+            tiefe = min(0.42, max(0.2, 0.92 - (fo.oben(u_m, 0) - fo.zd(u_m))))
+        self.tiefe = tiefe
+
+        def armaturbreite(u):
+            return min(fo.ws(u) - 0.06, fo.wg(u) - 0.1)
+
+        self.armaturbreite = armaturbreite
+        u_armatur = u_vorn
+        while u_armatur > u_hinten:
+            w_a = armaturbreite(u_armatur)
+            luft = min(fo.oben(u_armatur, 0), fo.oben(u_armatur, 0.7 * w_a)) - fo.zd(u_armatur)
+            if luft > 0.16:
+                break
+            u_armatur -= 0.002
+        if u_armatur <= u_hinten + 0.5 / ms.laenge:
+            u_armatur = u_vorn - 0.3 / ms.laenge
+        self.u_armatur = u_armatur
+        self.x_a = ms.x(u_armatur)
+        self.z_a = fo.zd(u_armatur)
+        self.w_a = armaturbreite(u_armatur)
+        self.z_b = self.boden(u_armatur)
+        # Fahrersitz (links, +Y) der ersten Reihe — dieselbe Rechnung wie in der Sitzschleife.
+        self.sitz = None
+        xs = self.x_a - 0.56
+        u_s = ms.u(xs - 0.24)
+        if u_s - 0.35 / ms.laenge >= u_hinten + 0.02:
+            z_s = self.boden(u_s) + 0.14
+            w_s = min(fo.ws(u_s) - 0.08, fo.wg(u_s) - 0.05)
+            dach = min(fo.oben(u_s - 0.35 / ms.laenge, w_s * 0.75), fo.oben(u_s, w_s * 0.75))
+            platz = dach - z_s - 0.1
+            lehne_h = min(0.6, platz - 0.24 if self.art == "schale" else platz - 0.2)
+            if lehne_h >= 0.22:
+                self.sitz = {"x": xs, "y": w_s * 0.5, "z": z_s, "lehne_h": lehne_h, "w_s": w_s}
+        self.ok = True
+
+    def boden(self, u):
+        return max(self.fo.zd(u) - self.tiefe, self.fo.zu(u) + 0.12)
+
+
+def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
     """Wanne, Sitze mit Wangen, Armaturenbrett mit Hutze und Bildschirm,
-    Mittelkonsole, Lenkrad — so viel, wie hinter getöntem Glas wirkt."""
+    Mittelkonsole, Lenkrad — so viel, wie hinter getöntem Glas wirkt.
+
+    ``cockpit``: Lenkrad und Kombiinstrument fehlen — sie kommen als eigene
+    Knoten und Zifferblätter aus ``teile_cockpit``."""
     ms = fo.ms
     k = p["kabine"]
-    art = ti.get("sitz", "schale" if k.get("sitzreihen", 2) == 1 else "komfort")
+    L = getattr(fo, "innen", None) or Layout(fo, p, ti)
+    art = L.art
     akzent = mats[ti.get("akzent_mat", "carbon" if art == "schale" else "innenraum")]
     im = mats["innenraum"]
     teile = []
-    us = [fo.dach_u0 + (fo.dach_u1 - fo.dach_u0) * i / 200 for i in range(201)]
-    frei = [u for u in us if fo.G(u, 0) > fo.T(u, 0) + 0.05]
-    if not frei:
+    if not L.ok:
         return teile
-    u_hinten, u_vorn = min(frei), max(frei)
-    motor = (p.get("teile") or {}).get("motor")
-    if motor:
-        # Der Innenraum beginnt vor dem Motorraum (Mittelmotor unter Glas).
-        u_hinten = max(u_hinten, motor["u"][1] + 0.005)
-    # Der Boden liegt unter der Gürtellinie, so tief, dass Sitze mit echter
-    # Lehne unters Dach passen: durchs Glas sieht man in einen Raum, nicht
-    # auf eine Platte in Fensterhöhe. ``tiefe_m`` überschreibt die Schätzung.
-    u_m = (u_hinten + u_vorn) / 2
-    tiefe = ti.get("tiefe_m")
-    if tiefe is None:
-        tiefe = min(0.42, max(0.2, 0.92 - (fo.oben(u_m, 0) - fo.zd(u_m))))
-
-    def boden(u):
-        return max(fo.zd(u) - tiefe, fo.zu(u) + 0.12)
-
+    u_hinten, u_vorn, boden = L.u_hinten, L.u_vorn, L.boden
     n = 30
     punkte, flaechen = [], []
     for i in range(n + 1):
@@ -295,33 +349,19 @@ def innenraum(fo, p, ti: dict, mats):
         tv = g.objekt_aus_daten("tuerverkleidung", punkte, flaechen, [im])
         teile.append(tv)
 
-    def armaturbreite(u):
-        return min(fo.ws(u) - 0.06, fo.wg(u) - 0.1)
-
-    u_armatur = u_vorn
-    while u_armatur > u_hinten:
-        w_a = armaturbreite(u_armatur)
-        luft = min(fo.oben(u_armatur, 0), fo.oben(u_armatur, 0.7 * w_a)) - fo.zd(u_armatur)
-        if luft > 0.16:
-            break
-        u_armatur -= 0.002
-    if u_armatur <= u_hinten + 0.5 / ms.laenge:
-        u_armatur = u_vorn - 0.3 / ms.laenge
-    x_a = ms.x(u_armatur)
-    z_a = fo.zd(u_armatur)
-    w_a = armaturbreite(u_armatur)
+    x_a, z_a, w_a, z_b = L.x_a, L.z_a, L.w_a, L.z_b
     # Armaturenbrett: Körper, gepolsterte Oberkante, Instrumentenhutze, Bildschirm, Düsen
-    z_b = boden(u_armatur)
     teile.append(t.kasten("armatur", (x_a - 0.2, 0, (z_a + 0.09 + z_b) / 2), (0.4, w_a * 2, z_a + 0.09 - z_b),
                           im, fase=0.04))
     teile.append(t.kasten("armaturleiste", (x_a - 0.4, 0, z_a + 0.03), (0.03, w_a * 2 - 0.08, 0.035),
                           akzent, fase=0.01))
-    teile.append(t.kasten("hutze", (x_a - 0.34, w_a * 0.45, z_a + 0.12), (0.16, 0.3, 0.07), im, fase=0.03))
-    # Kombiinstrument und Bildschirm leuchten aus dem Atlas anzeige.png.
-    instr = t.kasten("instrumente", (x_a - 0.415, w_a * 0.45, z_a + 0.1), (0.006, 0.24, 0.06),
-                     mats.get("anzeige", mats["zierteil"]), fase=0.002)
-    to.anzeige_uv(instr, 0.5, 1.0)
-    teile.append(instr)
+    if not cockpit:
+        teile.append(t.kasten("hutze", (x_a - 0.34, w_a * 0.45, z_a + 0.12), (0.16, 0.3, 0.07), im, fase=0.03))
+        # Kombiinstrument und Bildschirm leuchten aus dem Atlas anzeige.png.
+        instr = t.kasten("instrumente", (x_a - 0.415, w_a * 0.45, z_a + 0.1), (0.006, 0.24, 0.06),
+                         mats.get("anzeige", mats["zierteil"]), fase=0.002)
+        to.anzeige_uv(instr, 0.5, 1.0)
+        teile.append(instr)
     schirm = t.kasten("bildschirm", (x_a - 0.4, 0, z_a + 0.13), (0.012, 0.24, 0.13),
                       mats.get("anzeige", mats["zierteil"]), fase=0.004, drehung=(0, math.radians(-12), 0))
     to.anzeige_uv(schirm, 0.0, 0.5)
@@ -378,9 +418,10 @@ def innenraum(fo, p, ti: dict, mats):
                 a = 2 * (i - 1)
                 flaechen.append((a, a + 1, a + 3, a + 2))
         teile.append(g.objekt_aus_daten("hutablage", punkte, flaechen, [im]))
-    lr = lenkrad(mats)
-    lr.data.transform(Matrix.Translation((x_a - 0.46, w_a * 0.45, z_a + 0.06)))
-    teile.append(lr)
+    if not cockpit:
+        lr = lenkrad(mats)
+        lr.data.transform(Matrix.Translation((x_a - 0.46, w_a * 0.45, z_a + 0.06)))
+        teile.append(lr)
     return teile
 
 
