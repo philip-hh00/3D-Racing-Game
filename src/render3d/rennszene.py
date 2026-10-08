@@ -130,6 +130,10 @@ class Fahrzeugstand:
     schlupf_hinten: float = 0.0
     #: Bremspedal 0..1 — das Material ``bremslicht`` leuchtet danach auf.
     bremse: float = 0.0
+    #: Tempo (km/h) und Drehzahl (1/min) für die Nadeln im Armaturenbrett
+    #: (Knoten ``nadel_tacho`` / ``nadel_drehzahl``, siehe VEREINBARUNGEN.md).
+    tempo_kmh: float = 0.0
+    drehzahl: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +166,8 @@ class Teiledaten:
     raddurchmesser_m: float
     laenge_m: float
     breite_m: float
+    #: Augpunkt, Hauben-Kamerapunkt, Übersetzungen — aus ``teile.json`` oder geschätzt.
+    cockpit: vehicle_node.Cockpitmasse | None = None
 
 
 def teile_laden(ordner: str | Path, schluessel: str) -> Teiledaten | None:
@@ -177,6 +183,7 @@ def teile_laden(ordner: str | Path, schluessel: str) -> Teiledaten | None:
         raddurchmesser_m=durchmesser,
         laenge_m=float(daten.get("laenge_m", ERSATZMASSE_M[0])),
         breite_m=float(daten.get("breite_m", ERSATZMASSE_M[1])),
+        cockpit=vehicle_node.cockpit_lesen(daten),
     )
 
 
@@ -197,8 +204,15 @@ class Fahrzeugmodell:
         """Ein frischer Knoten für **ein** Fahrzeug dieses Typs."""
         if self.teile is None or not self.teile.plaetze:
             return None
+        # Alles, was neben Karosserie, Rädern und Sätteln im Modell hängt
+        # (Lenkrad, Nadeln, Spiegel, Innenraum), folgt dem Aufbau.
+        anbauteile = {t.name: t.versatz for t in self.modell.teile
+                      if t.name != vehicle_node.KAROSSERIE
+                      and not t.name.startswith(("rad_", "sattel_"))}
         return vehicle_node.Fahrzeugknoten(self.teile.plaetze,
-                                           self.teile.raddurchmesser_m)
+                                           self.teile.raddurchmesser_m,
+                                           cockpit=self.teile.cockpit,
+                                           anbauteile=anbauteile)
 
 
 def modell_nach_abstand(fm: Fahrzeugmodell, abstand_m: float,
@@ -329,6 +343,7 @@ class Knotenspeicher:
             knoten.weg_zuruecklegen(stand.weg_m)
             knoten.lenken(stand.lenkwinkel_rad)
             knoten.neigen(stand.nick_rad, stand.wank_rad)
+            knoten.instrumente(stand.tempo_kmh, stand.drehzahl)
         for kennung in list(self._knoten):
             if kennung not in gesehen:
                 del self._knoten[kennung]

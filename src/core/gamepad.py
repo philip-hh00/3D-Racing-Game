@@ -36,6 +36,10 @@ BTN_DPAD_RIGHT = 14
 _MODERN_TO_CLASSIC = {4: BTN_BACK, 5: 15, 6: BTN_START, 7: BTN_LS, 8: BTN_RS, 9: BTN_LB, 10: BTN_RB}
 
 
+#: Die Umkehrung: klassische Kennung -> rohe Kennung im modernen Layout.
+_CLASSIC_TO_MODERN = {v: k for k, v in _MODERN_TO_CLASSIC.items()}
+
+
 def _is_modern_layout(joy) -> bool:
     try:
         import sys
@@ -44,6 +48,21 @@ def _is_modern_layout(joy) -> bool:
         return joy.get_numbuttons() >= 15
     except Exception:
         return False
+
+def knopf_gedrueckt(joy, klassisch: int) -> bool:
+    """Ob der Knopf mit der klassischen Kennung (``BTN_*``) an ``joy`` gerade gedrückt ist.
+
+    Rechnet für Pads im modernen 16-Knopf-Layout die rohe Kennung um; wer
+    ``joy.get_button(BTN_Y)`` direkt aufruft, liest dort einen falschen Knopf.
+    """
+    try:
+        roh = klassisch
+        if _is_modern_layout(joy):
+            roh = _CLASSIC_TO_MODERN.get(klassisch, klassisch)
+        return bool(joy.get_button(roh))
+    except Exception:
+        return False
+
 
 # Axis mapping
 AXIS_LX = 0        # Left Stick X

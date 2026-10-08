@@ -45,7 +45,8 @@ class Profile:
                  paints: dict | None = None,
                  statistik: dict | None = None,
                  announcements_seeded: bool = False,
-                 grafik: dict | None = None) -> None:
+                 grafik: dict | None = None,
+                 kamera_ansichten: dict | None = None) -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -88,6 +89,12 @@ class Profile:
         #: ``als_dict``). ``None`` heißt: noch nie gewählt — beim ersten Start
         #: sucht ``display`` eine Stufe nach der Grafikkarte aus und legt sie hier ab.
         self.grafik: dict | None = dict(grafik) if isinstance(grafik, dict) else None
+        #: Gewählte Kameraansicht je Spielerplatz ("1", "2"), 1.1.0. Die Namen
+        #: stehen in ``src/render3d/ansichten.py``; ein fehlender oder
+        #: unbekannter Eintrag ist die Standardansicht (siehe :meth:`ansicht`).
+        self.kamera_ansichten: dict[str, str] = (
+            {str(k): str(v) for k, v in kamera_ansichten.items()}
+            if isinstance(kamera_ansichten, dict) else {})
 
     # -- persistence -----------------------------------------------------
     @classmethod
@@ -124,6 +131,7 @@ class Profile:
                 # die ganze Sammlung nachtraeglich verschluckt (08.08.2026).
                 data.get("announcements_seeded", True),
                 data.get("grafik"),
+                kamera_ansichten=data.get("kamera_ansichten"),
             )
         except Exception:
             return cls()
@@ -155,6 +163,7 @@ class Profile:
                 "statistik": self.statistik,
                 "announcements_seeded": self.announcements_seeded,
                 "grafik": self.grafik,
+                "kamera_ansichten": self.kamera_ansichten,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass
@@ -205,6 +214,21 @@ class Profile:
 
     def best_lap(self, track_key: str) -> float | None:
         return self.best_laps.get(track_key)
+
+    # -- Kameraansicht -----------------------------------------------------
+    def ansicht(self, slot: int = 1) -> str:
+        """Gewählte Kameraansicht eines Spielerplatzes; unbekannt heißt Standard."""
+        from src.render3d import ansichten
+        return ansichten.normalisiere(self.kamera_ansichten.get(str(slot)))
+
+    def set_ansicht(self, slot: int, ansicht: str) -> None:
+        """Ansicht merken und das Profil schreiben — nur, wenn sie sich ändert."""
+        from src.render3d import ansichten
+        ansicht = ansichten.normalisiere(ansicht)
+        if self.ansicht(slot) == ansicht and str(slot) in self.kamera_ansichten:
+            return
+        self.kamera_ansichten[str(slot)] = ansicht
+        self.save()
 
     # -- Lackierungen ----------------------------------------------------
     def paint(self, vehicle_key: str) -> str:
