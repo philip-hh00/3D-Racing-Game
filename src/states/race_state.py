@@ -2349,7 +2349,8 @@ class RaceState(BaseState):
                 texturordner=wurzel / "assets" / "texturen",
                 himmelordner=wurzel / "assets" / "himmel",
                 umgebungsordner=wurzel / "assets" / "umgebung",
-                platzierungen=orte, fahrzeuge=fahrzeuge, sofort=False)
+                platzierungen=orte, fahrzeuge=fahrzeuge, sofort=False,
+                tageszeit=self._tageszeit_waehlen())
             # Laden in Schritten, dazwischen der Ladebildschirm: alles liegt
             # lokal, aber bei tausend Bäumen und acht Autos dauert es doch
             # ein, zwei Sekunden, und ein stehendes Fenster wirkt abgestürzt.
@@ -2365,6 +2366,18 @@ class RaceState(BaseState):
             traceback.print_exc()
             print(f"[RaceState] 3D-Szene nicht aufgebaut: {fehler}")
             self.szene = None
+
+    def _tageszeit_waehlen(self) -> str:
+        """Tag, Abend oder Nacht dieses Rennens.
+
+        Der Aufrufer von ``enter`` kann sie festlegen (``tageszeit="Tag"``,
+        etwa die Probefahrt im Streckeneditor); sonst gilt die Wahl aus der
+        Lobby. Unbekannt oder fehlend ist Tag.
+        """
+        from src.core import race_setup
+        from src.render3d import tageszeit
+        kwargs = getattr(self, "_enter_kwargs", None) or {}
+        return tageszeit.normiere(kwargs.get("tageszeit", getattr(race_setup.current(), "time_of_day", "Tag")))
 
     def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
         """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.

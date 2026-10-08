@@ -182,3 +182,31 @@ Kachelstrecken.
 Strecke wählt ihr Thema über `background_texture`. Platziert wird zufällig,
 aber mit einem Keim aus dem Streckennamen — jede Strecke sieht bei jedem
 Rennen gleich aus.
+
+## Tageszeit (ab 1.1.0)
+
+`Rennszene(…, tageszeit="Tag"|"Abend"|"Nacht")`; fehlt der Wert oder ist er
+unbekannt, ist es **Tag**, und Tag ist die Welt von 1.0.x unverändert (kein
+Wert, kein Pixel anders). Alles dazu steht in `tageszeit.py` (nur Zahlen) und
+in den `tz_*`-/`lichter_*`-Uniforms von `shader.py`.
+
+* Sonne und Mond: die Himmelsrichtung kommt aus `assets/himmel/<Thema>.json`,
+  die Höhe aus der Tageszeit. Schattenkarte und Geländeschatten lesen
+  `Himmel.sonne` und folgen damit automatisch.
+* Himmelsbild: wird für Abend/Nacht im Shader verbogen und getönt
+  (`tz_himmel`, `tz_tint_*`); die Nacht fügt Sterne und Mond hinzu. Kein neues
+  Bild nötig.
+* **Lichter** (nachts): bis zu `shader.MAX_LICHTER` Punkt- und Kegellichter je
+  Bild als Uniform-Felder, gewählt nach Nähe zum Blickpunkt
+  (`tageszeit.lichter_waehlen`), begrenzt durch `grafik.lichter_max`. Es gibt
+  keine Lichtschatten. Quellen: Scheinwerfer und Rücklicht je Auto,
+  Laternen des Themas, sonst Flutlichtmasten (`masten.py`).
+* **Materialnamen als Vertrag:** `licht_vorn` und `licht_hinten`/`bremslicht`
+  glühen nachts stärker (Faktor auf die Emission des Modells); in
+  Umgebungsmodellen leuchten Materialien, deren Name auf `_bulb` endet, nachts.
+  Die Lichtpunkte eines Autos stammen aus den Netzen dieser Materialien
+  (links/rechts nach dem Vorzeichen von Y, vorn/hinten nach dem von X).
+* Eigene Shader: wer ein weiteres Programm schreibt, das Welt zeichnet, lässt
+  `lichter_*` weg und gibt lineares HDR aus — dann bleibt es nachts dunkler als
+  der Rest, aber nicht falsch. Wer die Lichter mitrechnen will, nimmt die
+  Schleife aus `FRAGMENT` (Block „Lokale Lichter“).

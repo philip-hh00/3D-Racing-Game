@@ -11,6 +11,7 @@ import pygame
 
 from src.states.menu.page import Page
 from src.core import race_setup, profile, gamepad
+from src.render3d import tageszeit as tz
 from src.ui import theme
 from src.ui.widgets import Stepper, Button
 from src.ui.focus import FocusGroup
@@ -65,6 +66,10 @@ class MPLobbyPage(Page):
         self.diff = Stepper(row(4), tr("KI-Schwierigkeit"),
                             [tr(race_setup.DIFFICULTY_LABELS[k]) for k in race_setup.DIFFICULTY_KEYS],
                             race_setup.DIFFICULTY_KEYS.index(s.ai_difficulty))
+        # Tageszeit des Rennens; der letzte Wert kommt aus dem Profil.
+        s.time_of_day = profile.current().tageszeit
+        self.tageszeit = Stepper(row(4), tr("Tageszeit"), [tr(n) for n in tz.NAMEN],
+                                 tz.NAMEN.index(tz.normiere(s.time_of_day)))
         self._p1_row = row(5)
         self._p2_row = row(6)
         self._build_input_steppers(self._p1_row, self._p2_row)
@@ -121,7 +126,8 @@ class MPLobbyPage(Page):
                 self.count.index = max(0, min(len(alle) - 1,
                                               s.vehicle_count - race_setup.FELD_MIN))
 
-        for widget in (self.mode, self.count, self.klass, self.laps, self.gp_races, self.gp_laps, self.diff, self.p1in, self.p2in):
+        for widget in (self.mode, self.count, self.klass, self.laps, self.gp_races, self.gp_laps, self.diff,
+                       self.tageszeit, self.p1in, self.p2in):
             widget.rect.height = h
 
         col = theme.Column(x, 170, gap=gap)
@@ -129,6 +135,7 @@ class MPLobbyPage(Page):
 
         if is_zf_mode:
             col.add(self.klass)
+            col.add(self.tageszeit)
             col.add(self.p1in)
             col.add(self.p2in)
             col.skip(8)
@@ -137,7 +144,8 @@ class MPLobbyPage(Page):
             self.next.rect.x = x + w - 300
             s.vehicle_count = 2
             s.laps = 1
-            self.group.set_widgets([self.mode, self.klass, self.p1in, self.p2in, self.next], keep_focus=True)
+            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.p1in, self.p2in, self.next],
+                                   keep_focus=True)
             return
 
         col.add(self.count)
@@ -149,6 +157,7 @@ class MPLobbyPage(Page):
         else:
             col.add(self.klass)
             col.add(self.laps)
+        col.add(self.tageszeit)
 
         col.add(self.p1in)
         col.add(self.p2in)
@@ -223,12 +232,12 @@ class MPLobbyPage(Page):
         if is_gp_mode:
             left_side_widgets = [
                 self.mode, self.count, self.klass, self.gp_races, self.gp_laps,
-                self.p1in, self.p2in
+                self.tageszeit, self.p1in, self.p2in
             ]
         else:
             left_side_widgets = [
                 self.mode, self.count, self.klass, self.laps,
-                self.p1in, self.p2in
+                self.tageszeit, self.p1in, self.p2in
             ]
 
         self.group.set_widgets(left_side_widgets + self.ai_widgets + [self.next], keep_focus=True)
@@ -288,6 +297,7 @@ class MPLobbyPage(Page):
             s.vehicle_count = int(self.count.value)
             s.laps = int(self.laps.value)
         s.vehicle_class = race_setup.CLASS_NAMES[self.klass.index]
+        self._tageszeit_uebernehmen()
 
         if s.mode != old_mode or s.vehicle_count != old_count or s.vehicle_class != old_class:
             s.sync_ai_roster()
@@ -295,6 +305,12 @@ class MPLobbyPage(Page):
 
         if action == "next":
             self._advance()
+
+    def _tageszeit_uebernehmen(self) -> None:
+        """Die Wahl in den Rennaufbau und ins Profil (dort bleibt sie bis zum nächsten Mal)."""
+        s = race_setup.current()
+        s.time_of_day = tz.NAMEN[max(0, min(len(tz.NAMEN) - 1, self.tageszeit.index))]
+        profile.current().set_tageszeit(s.time_of_day)
 
     def _advance(self) -> None:
         s = race_setup.current()
@@ -335,6 +351,7 @@ class MPLobbyPage(Page):
             grand_prix.cancel()
 
         s.vehicle_class = race_setup.CLASS_NAMES[self.klass.index]
+        self._tageszeit_uebernehmen()
         s.p1_input = p1
         s.p2_input = p2
 

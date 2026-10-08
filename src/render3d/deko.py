@@ -34,6 +34,8 @@ except ImportError:                              # pragma: no cover
 #: Ab hier wird gar nicht mehr gezeichnet (außer Kulisse), wenn die
 #: Grafikstufe nichts sagt; sonst gilt ``grafik.aktuell().sichtweite_m``.
 SICHTWEITE_M = 700.0
+#: Farbe der Lampenköpfe nachts (linear); die Stärke setzt die Tageszeit.
+LAMPEN_EMISSION = (1.0, 0.82, 0.52)
 #: Schatten werfen nur Objekte in diesem Umkreis um den Blickpunkt.
 SCHATTEN_RADIUS_M = 110.0
 
@@ -207,6 +209,8 @@ class Dekozeichner:
         #: Anzahl leuchtender Lampenpaare der Startampel, 0..5 — das Rennen
         #: zündet sie im Countdown nacheinander und schaltet bei GO alle aus.
         self.ampel = 0
+        #: Nachts: Emission der Lampenköpfe (Materialien ``*_bulb``), 0 = aus.
+        self.lampen_leuchten = 0.0
         self._kulisse = set(kulisse_namen)
         self._gruppen: dict[str, list] = {}
         for pl in platzierungen:
@@ -385,6 +389,9 @@ class Dekozeichner:
                                 an = int(hm.daten.name[6:]) <= self.ampel
                                 shader.setzen(self.programm, "emission",
                                               tuple(c if an else 0.0 for c in hm.daten.emission))
+                            elif self.lampen_leuchten > 0.0 and hm.daten.name.endswith("_bulb"):
+                                shader.setzen(self.programm, "emission",
+                                              tuple(c * self.lampen_leuchten for c in LAMPEN_EMISSION))
                         vao.render(instances=anzahl)
         if durchgang != "schatten":
             shader.setzen(self.programm, "lod_band", (0.0, 0.0, 0.0))

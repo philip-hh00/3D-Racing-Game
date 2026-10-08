@@ -45,7 +45,8 @@ class Profile:
                  paints: dict | None = None,
                  statistik: dict | None = None,
                  announcements_seeded: bool = False,
-                 grafik: dict | None = None) -> None:
+                 grafik: dict | None = None,
+                 tageszeit: str = "Tag") -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -88,6 +89,11 @@ class Profile:
         #: ``als_dict``). ``None`` heißt: noch nie gewählt — beim ersten Start
         #: sucht ``display`` eine Stufe nach der Grafikkarte aus und legt sie hier ab.
         self.grafik: dict | None = dict(grafik) if isinstance(grafik, dict) else None
+        #: Zuletzt gewählte Tageszeit des Rennens ("Tag", "Abend", "Nacht").
+        #: Ein Profil von vor 1.1.0 kennt das Feld nicht: dann Tag. Unbekanntes
+        #: (von Hand verbogen) wird ebenfalls zu Tag.
+        from src.render3d import tageszeit as _tz
+        self.tageszeit: str = _tz.normiere(tageszeit)
 
     # -- persistence -----------------------------------------------------
     @classmethod
@@ -124,6 +130,7 @@ class Profile:
                 # die ganze Sammlung nachtraeglich verschluckt (08.08.2026).
                 data.get("announcements_seeded", True),
                 data.get("grafik"),
+                data.get("tageszeit", "Tag"),
             )
         except Exception:
             return cls()
@@ -155,6 +162,7 @@ class Profile:
                 "statistik": self.statistik,
                 "announcements_seeded": self.announcements_seeded,
                 "grafik": self.grafik,
+                "tageszeit": self.tageszeit,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass
@@ -205,6 +213,14 @@ class Profile:
 
     def best_lap(self, track_key: str) -> float | None:
         return self.best_laps.get(track_key)
+
+    def set_tageszeit(self, name: str) -> None:
+        """Die gewählte Tageszeit merken (Lobby); speichert nur bei Änderung."""
+        from src.render3d import tageszeit as _tz
+        name = _tz.normiere(name)
+        if name != self.tageszeit:
+            self.tageszeit = name
+            self.save()
 
     # -- Lackierungen ----------------------------------------------------
     def paint(self, vehicle_key: str) -> str:

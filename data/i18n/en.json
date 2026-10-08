@@ -794,5 +794,12 @@
   "Eigen": "Custom",
   "Grafikstufe": "Graphics preset",
   "Grafik": "Graphics",
-  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race."
+  "Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.": "Graphics apply at once; terrain, grass and scenery from the next race.",
+  "Tageszeit": "Time of day",
+  "Tageszeit:": "Time of day:",
+  "Tag": "Day",
+  "Abend": "Evening",
+  "Nacht": "Night",
+  "Nachtlichter": "Night lights",
+  "Wenige": "Few"
 }

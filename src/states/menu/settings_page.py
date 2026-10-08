@@ -56,6 +56,8 @@ def _grafik_regler() -> list[tuple[str, str, list[tuple[object, str]]]]:
         ("gelaende_detail", tr("Geländedetail"), [(0, tr("Grob")), (1, tr("Mittel")), (2, tr("Fein"))]),
         ("gelaende_schatten", tr("Geländeschatten"),
          [(0, aus), (1, tr("Grob")), (2, tr("Mittel")), (3, tr("Fein"))]),
+        ("lichter_max", tr("Nachtlichter"),
+         [(0, aus), (6, tr("Wenige")), (12, tr("Einige")), (24, tr("Alle"))]),
         ("strecken_details", tr("Streckendetails"), [(0, aus), (1, tr("Einige")), (2, tr("Alle"))]),
         ("reifenspuren", tr("Reifenspuren"), [(False, aus), (True, an)]),
         ("fahrzeug_lod_m", tr("Autos vereinfacht ab"),
