@@ -800,5 +800,9 @@
   "Verfolger fern": "Chase, far",
   "Verfolger nah": "Chase, close",
   "Motorhaube": "Hood",
-  "Cockpit": "Cockpit"
+  "Cockpit": "Cockpit",
+  "ZIEL - Position {pos}": "FINISH - Position {pos}",
+  "ENTER: Ergebnisse": "ENTER: Results",
+  "A: Ergebnisse": "A: Results",
+  "Ergebnisse in {n} s": "Results in {n} s"
 }
