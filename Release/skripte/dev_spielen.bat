@@ -42,30 +42,11 @@ if not errorlevel 1 (
 )
 
 :installiert
-set "SPIEL=%LOCALAPPDATA%\ProgramsD-Racing-GameD-Racing-Game.exe"
-if exist "%SPIEL%" goto :starten
-set "SPIEL=%ProgramFiles%D-Racing-GameD-Racing-Game.exe"
-if exist "%SPIEL%" goto :starten
-echo [FEHLER] Weder Quelltext mit Python noch ein installiertes Spiel gefunden.
-echo          Pfad zur .exe als Argument angeben: dev_spielen.bat C:\...D-Racing-Game.exe
-pause
-goto :eof
-
-:starten
-)
 set "SPIEL=%LOCALAPPDATA%\Programs\3D-Racing-Game\3D-Racing-Game.exe"
 if exist "%SPIEL%" goto :starten
 set "SPIEL=%ProgramFiles%\3D-Racing-Game\3D-Racing-Game.exe"
 if exist "%SPIEL%" goto :starten
-
-REM Kein installiertes Spiel: aus dem Quelltext starten.
-cd /d "%~dp0..\.."
-if exist ".venv\Scripts\python.exe" (
-    echo Starte aus dem Quelltext gegen den Dev-Server ...
-    ".venv\Scripts\python.exe" main.py
-    goto :eof
-)
-echo [FEHLER] Weder ein installiertes Spiel noch .venv gefunden.
+echo [FEHLER] Weder Quelltext mit Python noch ein installiertes Spiel gefunden.
 echo          Pfad zur .exe als Argument angeben: dev_spielen.bat C:\...\3D-Racing-Game.exe
 pause
 goto :eof
