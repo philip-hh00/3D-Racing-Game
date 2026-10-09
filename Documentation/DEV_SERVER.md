@@ -217,6 +217,8 @@ $env:RACE_SERVER_PORT="7878"; $env:RACE_SERVER_UDP_PORT="7877"
 python main.py
 ```
 
+Fertig verpackt: `Release/skripte/dev_spielen.bat` (Windows) und `Release/skripte/dev_spielen.sh` (macOS) setzen die Variablen und starten das installierte Spiel, eine angegebene `.exe` oder `main.py`.
+
 Die Serverliste im Online-Menü zeigt dann **nur** „Dev". Das ist Absicht: solange
 die Variablen gesetzt sind, kann kein Klick versehentlich auf dem Live-Server
 landen. Zum Zurückschalten die Variablen leeren.
