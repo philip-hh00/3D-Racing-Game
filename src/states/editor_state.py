@@ -632,6 +632,8 @@ class EditorState(BaseState):
                 self._browse_ensure_visible()
             elif e.key == pygame.K_RETURN:
                 self._open_project(self._projects[self._browse_idx])
+            elif e.key == pygame.K_o or (e.key == pygame.K_y and getattr(e, "synthetic", False)):
+                self._online_strecken()
         elif e.type == pygame.MOUSEWHEEL:
             max_scroll = max(0, len(self._projects) - self._BROWSE_VISIBLE)
             self._browse_scroll = max(0, min(max_scroll, self._browse_scroll - e.y))
@@ -650,6 +652,11 @@ class EditorState(BaseState):
                         self.state_machine.transition("menu", tab_idx=i)
                     _sfx.klick_quittieren(e, vorher)
                     return
+            if self._online_rect().collidepoint(e.pos):
+                vorher = _sfx.klang_zaehler()
+                self._online_strecken()
+                _sfx.klick_quittieren(e, vorher)
+                return
             for i, rect in self._browse_layout():
                 if rect.collidepoint(e.pos):
                     self._browse_idx = i
@@ -1567,6 +1574,13 @@ class EditorState(BaseState):
         from src.states.menu_shell_state import TAB_EDITOR, tab_leiste_zeichnen
         tab_leiste_zeichnen(screen, TAB_EDITOR)
 
+    def _online_rect(self) -> pygame.Rect:
+        """Online-Strecken: rechts neben der Projektliste."""
+        return pygame.Rect(SCREEN_WIDTH // 2 + 450, 250, 440, 72)
+
+    def _online_strecken(self) -> None:
+        self.state_machine.transition("online_strecken")
+
     def _browse_zurueck(self) -> None:
         """Die Projektliste ist die oberste Ebene des Editors — von hier zurueck
         dorthin, wo er geoeffnet wurde. Taste und Knopf nehmen denselben Weg
@@ -1633,6 +1647,17 @@ class EditorState(BaseState):
             handle_y = sb_y + int(scroll_pct * (sb_h - handle_h))
 
             zeichnen.rect(screen, COLOR_UI_ACCENT, (sb_x - 3, handle_y, 6, handle_h), border_radius=3)
+
+        # Online-Strecken: tauschen mit anderen Spielern.
+        orect = self._online_rect()
+        from src.core import display as _display, input_mode as _im
+        ohover = orect.collidepoint(_display.mouse_pos())
+        zeichnen.rect(screen, (30, 44, 58) if ohover else (22, 32, 44), orect, border_radius=8)
+        zeichnen.rect(screen, (120, 200, 255) if ohover else (70, 130, 175), orect, 2,
+                      border_radius=8)
+        theme.text_fit(screen, f"{tr('Online-Strecken')}  [{'Y' if _im.is_pad() else 'O'}]",
+                       theme.BODY, (180, 225, 255) if ohover else (140, 195, 235),
+                       orect.inflate(-24, 0), center=True)
 
         hint_text = hints.bar(("confirm", tr("Öffnen")), ("back", tr("Zurück")))
         hint = self.f_small.render(hint_text, True, (150, 150, 165))

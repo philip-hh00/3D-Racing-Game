@@ -776,6 +776,11 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             })
             return
 
+        # Streckenaustausch (Plan 1.1.0 §5): eigene kurze Verbindung wie INFO.
+        if t in STRECKEN_TYPEN:
+            await _strecken_anfrage(writer, msg, ip)
+            return
+
         if t == "HOST":
             cfg = _load_live_config()
             required = str(cfg.get("required_version", ""))
@@ -1597,6 +1602,642 @@ async def _watchdog():
                         conn.writer.close()
                     except Exception:
                         pass
+
+
+# ── Strecken online (Plan 1.1.0, Abschnitt 5) ─────────────────────────────────
+#
+# Spieler laden eigene Strecken hoch, andere durchsuchen die Liste und holen sie
+# sich. Der Relay bleibt dabei dumm: er speichert, prueft das Format und zaehlt.
+#
+# **Was hochgeladen wird.** Nicht die fertige Spielstrecke (Mittellinie, Waende,
+# Wegpunkte: 100 bis 200 KB), sondern der *Entwurf* des Editors — die Liste der
+# Bauteile (``editor_tiles``). Der ist unter 20 KB, laesst sich auf dem Server
+# vollstaendig pruefen (Raster, Ports, geschlossene Runde) und gibt dem Absender
+# keine Zahlen in die Hand, die der Client ungeprueft in eine Physik fuettert.
+# Der Empfaenger baut die Spielstrecke selbst daraus (TileTrackDraft).
+#
+# **Wie gesprochen wird.** Jede Anfrage ist eine eigene kurze Verbindung wie
+# ``INFO``: eine Nachricht hin, eine zurueck, fertig. Lobbys sind davon
+# unberuehrt, und ein alter Client schickt diese Nachrichten nie. Ein alter
+# *Server* kennt sie nicht und schliesst still — der Client liest das als
+# „dieser Server kann das noch nicht".
+#
+# Alles steht in diesem Abschnitt; in ``_handle_tcp`` ist nur ein Aufruf
+# eingehaengt (siehe ``STRECKEN_TYPEN``).
+
+import hashlib
+import math
+import re
+from collections import deque
+
+#: Nachrichtentypen, die als eigene Verbindung beantwortet werden.
+STRECKEN_TYPEN = frozenset({"TRACK_UPLOAD", "TRACK_LIST", "TRACK_GET", "TRACK_REPORT"})
+
+STRECKEN_DIR = os.environ.get(
+    "RACE_STRECKEN_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "strecken_online"),
+)
+#: Schalter: ``RACE_STRECKEN_AUS=1`` lehnt jede Streckenanfrage ab (Notbremse).
+STRECKEN_AUS         = os.environ.get("RACE_STRECKEN_AUS", "") not in ("", "0")
+#: Obergrenze fuer den hochgeladenen Entwurf als JSON, in Bytes.
+STRECKE_MAX_B        = int(os.environ.get("RACE_STRECKE_MAX_B", str(64 * 1024)))
+#: Gesamtspeicher: Anzahl der Strecken (versteckte zaehlen mit) und Megabyte.
+STRECKEN_MAX         = int(os.environ.get("RACE_STRECKEN_MAX", "500"))
+STRECKEN_MAX_MB      = float(os.environ.get("RACE_STRECKEN_MAX_MB", "50"))
+#: Uploads je Absender und UTC-Tag. Hinter einem Tunnel ohne Kennung (siehe
+#: ``TRUSTED_PROXIES``) teilen sich alle diese Zahl x ``STRECKEN_PROXY_FAKTOR``.
+STRECKEN_PRO_TAG     = int(os.environ.get("RACE_STRECKEN_PRO_TAG", "5"))
+STRECKEN_PROXY_FAKTOR = 10
+#: Ab so vielen **verschiedenen** Meldern wird eine Strecke versteckt.
+STRECKEN_MELDUNGEN   = int(os.environ.get("RACE_STRECKEN_MELDUNGEN", "3"))
+#: Anfragen je Minute und Absender (Liste, Abruf, Meldung, Upload zusammen).
+STRECKEN_ANFRAGEN    = int(os.environ.get("RACE_STRECKEN_ANFRAGEN", "40"))
+STRECKEN_SEITE_MAX   = 20
+
+#: Gueltige Werte im Entwurf.
+STRECKE_SCHWIERIGKEITEN = ("Einfach", "Mittel", "Schwer")
+STRECKE_BREITE          = (250.0, 300.0)   # track_builder.WIDTH_MIN / WIDTH_MAX
+STRECKE_TEILE           = (4, 256)         # Bauteile je Strecke: Minimum, Maximum
+STRECKE_RASTER          = 400              # |col|, |row| hoechstens
+STRECKE_MIN_LAENGE      = 3000.0           # track_builder.MIN_LENGTH, in px
+_ZELLE                  = 400.0            # tile_track.CELL
+_ID_MUSTER              = re.compile(r"^[0-9a-f]{8}$")
+_TEXTUR_MUSTER          = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,23}$")
+_ENTWURF_SCHLUESSEL     = frozenset({"version", "name", "width", "background_texture",
+                                     "difficulty", "description", "start_piece_idx",
+                                     "pieces"})
+_TEIL_SCHLUESSEL        = frozenset({"kind", "col", "row", "rotation", "radius_cells"})
+
+#: Was der Spieler zu einer Absage liest — ein Satz, der sagt, was zu tun ist.
+_STRECKEN_TEXT = {
+    "DISABLED":    "Online-Strecken sind auf diesem Server gerade abgeschaltet.",
+    "BAD_REQUEST": "Anfrage unverständlich.",
+    "TOO_LARGE":   "Die Strecke ist zu groß für den Server.",
+    "BAD_FORMAT":  "Die Strecke hat ein ungültiges Format.",
+    "BAD_TRACK":   "Die Strecke ist nicht fahrbar (nicht geschlossen, zu kurz oder überlappend).",
+    "DUPLICATE":   "Diese Strecke gibt es auf dem Server schon.",
+    "LIMIT_DAY":   "Du hast heute schon so viele Strecken hochgeladen, wie erlaubt sind. Morgen geht es weiter.",
+    "STORE_FULL":  "Der Streckenspeicher dieses Servers ist voll. Bitte später noch einmal versuchen.",
+    "NOT_FOUND":   "Diese Strecke gibt es nicht (mehr).",
+    "RATE":        "Zu viele Anfragen. Bitte einen Moment warten.",
+    "SERVER_BUSY": "Server ist gerade ausgelastet — versuch es in ein paar Minuten noch einmal.",
+    "ERROR":       "Der Server konnte die Anfrage nicht bearbeiten.",
+}
+
+
+class _StreckenFehler(Exception):
+    """Eine Absage mit Kennung; ``reason`` bekommt der Spieler zu lesen."""
+
+    def __init__(self, code: str, text: str = "") -> None:
+        super().__init__(code)
+        self.code = code
+        self.reason = text or _STRECKEN_TEXT.get(code, _STRECKEN_TEXT["ERROR"])
+
+
+def saeubere_text(roh, laenge: int, vorgabe: str, extra: str = NAME_EXTRA) -> str:
+    """Wie :func:`saeubere_name`, aber mit eigener Laenge und Vorgabe.
+
+    Buchstaben und Ziffern jeder Sprache bleiben, dazu *extra*; Steuerzeichen,
+    Zeilenumbrueche und alles andere fliegen raus. Eine Wortliste gibt es hier
+    nicht — das bleibt Sache des Clients, der Anzeigen mit gesperrten Woertern
+    ausblendet.
+    """
+    text = str(roh)[:laenge * 2]
+    sauber = "".join(z for z in text if z.isalnum() or z in extra)
+    sauber = " ".join(sauber.split())[:laenge].strip()
+    return sauber or vorgabe
+
+
+def _ganze_zahl(wert, lo: int, hi: int, was: str) -> int:
+    """``int``, aber streng: kein bool, kein float, im Bereich."""
+    if isinstance(wert, bool) or not isinstance(wert, int) or not lo <= wert <= hi:
+        raise _StreckenFehler("BAD_FORMAT", f"Ungültiger Wert für {was}.")
+    return wert
+
+
+def _teil_ports(art: str, col: int, row: int, rot: int, r: int) -> tuple:
+    """Die zwei Ports eines Bauteils als ``((x, y, Richtung), (x, y, Richtung))``.
+
+    Spiegel von ``tile_track.Piece.ports`` — muss mit dem Client uebereinstimmen
+    (tests/test_strecken_online.py vergleicht beide).
+    """
+    ox, oy = col * _ZELLE, row * _ZELLE
+    c = _ZELLE
+    s = r if art == "curve" else 1
+    h = (s - 0.5) * c
+    if art == "straight":
+        if rot % 2 == 0:
+            return ((ox, oy + c / 2, 180), (ox + c, oy + c / 2, 0))
+        return ((ox + c / 2, oy, 270), (ox + c / 2, oy + c, 90))
+    if rot == 0:
+        return ((ox + h, oy, 270), (ox, oy + h, 180))
+    if rot == 1:
+        return ((ox, oy + s * c - h, 180), (ox + h, oy + s * c, 90))
+    if rot == 2:
+        return ((ox + s * c - h, oy + s * c, 90), (ox + s * c, oy + s * c - h, 0))
+    return ((ox + s * c, oy + h, 0), (ox + s * c - h, oy, 270))
+
+
+def _teil_mitte(col: int, row: int, rot: int, s: int) -> tuple:
+    ox, oy = col * _ZELLE, row * _ZELLE
+    return ((ox, oy), (ox, oy + s * _ZELLE), (ox + s * _ZELLE, oy + s * _ZELLE),
+            (ox + s * _ZELLE, oy))[rot]
+
+
+def _port_schluessel(p: tuple) -> tuple:
+    return (round(p[0]), round(p[1]), p[2])
+
+
+def entwurf_pruefen(roh) -> tuple:
+    """Einen Streckenentwurf streng pruefen. Gibt ``(sauberer Entwurf, Angaben)``.
+
+    Wirft :class:`_StreckenFehler`. Der Rueckgabe-Entwurf wird **neu aufgebaut**
+    — gespeichert wird nie, was der Absender geschickt hat, sondern nur die
+    Felder, die hier geprueft und auf ihre Typen gebracht wurden.
+
+    Geprueft wird: genau die Schluessel des Editors, Bauteile im Raster, keine
+    Ueberlappung, jede Verbindung geschlossen, eine einzige Runde durch alle
+    Bauteile, Start/Ziel auf einer Geraden mit Gerader davor, Mindestlaenge.
+    Das ist dieselbe Auswahl an Regeln wie ``TileTrackDraft.validate_game``,
+    ohne die Kurvenradien — die ergeben sich aus den erlaubten Bauteilen und
+    der erlaubten Breite von selbst.
+
+    ``Angaben``: ``laenge`` (px), ``teile``, ``umriss`` (Punkte 0..255 fuer die
+    Vorschau im Client).
+    """
+    if not isinstance(roh, dict):
+        raise _StreckenFehler("BAD_FORMAT", "Die Strecke fehlt.")
+    if set(roh) - _ENTWURF_SCHLUESSEL:
+        raise _StreckenFehler("BAD_FORMAT", "Unbekannte Felder in der Strecke.")
+    if roh.get("version") != 1 or isinstance(roh.get("version"), bool):
+        raise _StreckenFehler("BAD_FORMAT", "Unbekannte Streckenversion.")
+
+    breite = roh.get("width")
+    if isinstance(breite, bool) or not isinstance(breite, (int, float)) \
+            or not math.isfinite(breite) \
+            or not STRECKE_BREITE[0] <= breite <= STRECKE_BREITE[1]:
+        raise _StreckenFehler("BAD_FORMAT", "Ungültige Streckenbreite.")
+    textur = roh.get("background_texture")
+    if not isinstance(textur, str) or not _TEXTUR_MUSTER.match(textur):
+        raise _StreckenFehler("BAD_FORMAT", "Ungültiger Hintergrund.")
+    schwierigkeit = roh.get("difficulty")
+    if schwierigkeit not in STRECKE_SCHWIERIGKEITEN:
+        raise _StreckenFehler("BAD_FORMAT", "Ungültige Schwierigkeit.")
+    beschreibung = roh.get("description", "")
+    if not isinstance(beschreibung, str):
+        raise _StreckenFehler("BAD_FORMAT", "Ungültige Beschreibung.")
+    name = roh.get("name")
+    if not isinstance(name, str):
+        raise _StreckenFehler("BAD_FORMAT", "Ungültiger Name.")
+
+    teile_roh = roh.get("pieces")
+    if not isinstance(teile_roh, list) \
+            or not STRECKE_TEILE[0] <= len(teile_roh) <= STRECKE_TEILE[1]:
+        raise _StreckenFehler("BAD_FORMAT", "Ungültige Anzahl Bauteile.")
+    teile: list = []
+    belegt: set = set()
+    for t in teile_roh:
+        if not isinstance(t, dict) or set(t) != _TEIL_SCHLUESSEL:
+            raise _StreckenFehler("BAD_FORMAT", "Ungültiges Bauteil.")
+        art = t["kind"]
+        if art not in ("straight", "curve"):
+            raise _StreckenFehler("BAD_FORMAT", "Ungültige Bauteilart.")
+        col = _ganze_zahl(t["col"], -STRECKE_RASTER, STRECKE_RASTER, "Spalte")
+        row = _ganze_zahl(t["row"], -STRECKE_RASTER, STRECKE_RASTER, "Zeile")
+        rot = _ganze_zahl(t["rotation"], 0, 3, "Drehung")
+        r = _ganze_zahl(t["radius_cells"], 1, 3, "Radius")
+        if art == "straight":
+            r = 1          # bei Geraden ohne Bedeutung; so gibt es nur eine Schreibweise
+        s = r if art == "curve" else 1
+        zellen = {(col + dc, row + dr) for dc in range(s) for dr in range(s)}
+        if zellen & belegt:
+            raise _StreckenFehler("BAD_TRACK")
+        belegt |= zellen
+        teile.append((art, col, row, rot, r))
+    start = _ganze_zahl(roh.get("start_piece_idx"), 0, len(teile) - 1, "Startteil")
+
+    # Ports verbinden (wie TileTrackDraft.connections).
+    karte: dict = {}
+    for i, (art, col, row, rot, r) in enumerate(teile):
+        for q, p in enumerate(_teil_ports(art, col, row, rot, r)):
+            karte[_port_schluessel(p)] = (i, q)
+    gegen: dict = {}
+    for i, (art, col, row, rot, r) in enumerate(teile):
+        for q, p in enumerate(_teil_ports(art, col, row, rot, r)):
+            partner = karte.get((round(p[0]), round(p[1]), (p[2] + 180) % 360))
+            if partner is None:
+                raise _StreckenFehler("BAD_TRACK")
+            gegen[(i, q)] = partner
+
+    # Eine Runde durch alle Bauteile, ab Port 0 des Startteils.
+    laenge = 0.0
+    punkte: list = []
+    i, q = start, 0
+    besucht = {i}
+    for _ in range(len(teile) + 1):
+        art, col, row, rot, r = teile[i]
+        p_ein = _teil_ports(art, col, row, rot, r)[q]
+        p_aus = _teil_ports(art, col, row, rot, r)[1 - q]
+        punkte.append((p_ein[0], p_ein[1]))
+        if art == "straight":
+            laenge += _ZELLE
+        else:
+            radius = (r - 0.5) * _ZELLE
+            cx, cy = _teil_mitte(col, row, rot, r)
+            a0 = math.atan2(p_ein[1] - cy, p_ein[0] - cx)
+            a1 = math.atan2(p_aus[1] - cy, p_aus[0] - cx)
+            diff = (a1 - a0) % (2 * math.pi)
+            if diff > math.pi:
+                diff -= 2 * math.pi
+            laenge += abs(radius * diff)
+            for k in range(1, 6):
+                a = a0 + diff * k / 6
+                punkte.append((cx + radius * math.cos(a), cy + radius * math.sin(a)))
+        ni, nq = gegen[(i, 1 - q)]
+        if ni == start:
+            if nq != 0:
+                raise _StreckenFehler("BAD_TRACK")   # Start rueckwaerts betreten
+            break
+        if ni in besucht:
+            raise _StreckenFehler("BAD_TRACK")
+        besucht.add(ni)
+        i, q = ni, nq
+    else:
+        raise _StreckenFehler("BAD_TRACK")
+    if len(besucht) != len(teile):
+        raise _StreckenFehler("BAD_TRACK")    # zwei getrennte Runden
+
+    # Start/Ziel: eine Gerade mit einer Geraden davor (start_straight_ok).
+    if teile[start][0] != "straight" or teile[gegen[(start, 0)][0]][0] != "straight":
+        raise _StreckenFehler("BAD_TRACK")
+    if laenge < STRECKE_MIN_LAENGE:
+        raise _StreckenFehler("BAD_TRACK")
+
+    sauber = {
+        "version": 1,
+        "name": saeubere_text(name, 40, "Strecke"),
+        "width": round(float(breite), 1),
+        "background_texture": textur,
+        "difficulty": schwierigkeit,
+        "description": saeubere_text(beschreibung, 120, "", NAME_EXTRA + ".,!?:;()"),
+        "start_piece_idx": start,
+        "pieces": [{"kind": a, "col": c, "row": z, "rotation": d, "radius_cells": r}
+                   for (a, c, z, d, r) in teile],
+    }
+    return sauber, {"laenge": int(round(laenge)), "teile": len(teile),
+                    "umriss": _umriss(punkte)}
+
+
+def _umriss(punkte: list, hoechstens: int = 48) -> list:
+    """Die Mittellinie auf wenige Punkte 0..255 gebracht — fuer die Vorschau.
+
+    Der Client zeichnet daraus ein Bild; ueber das Netz gehen keine Bilder. Das
+    Seitenverhaeltnis bleibt erhalten, die laengere Seite fuellt 0..255.
+    """
+    if not punkte:
+        return []
+    schritt = max(1, math.ceil(len(punkte) / hoechstens))
+    auswahl = punkte[::schritt]
+    xs = [p[0] for p in punkte]
+    ys = [p[1] for p in punkte]
+    x0, y0 = min(xs), min(ys)
+    mass = max(max(xs) - x0, max(ys) - y0) or 1.0
+    return [[int(round((x - x0) / mass * 255)), int(round((y - y0) / mass * 255))]
+            for x, y in auswahl]
+
+
+def entwurf_hash(entwurf: dict) -> str:
+    """Fingerabdruck der **Form**, ohne Namen, Text und Lage im Raster.
+
+    Wer eine fremde Strecke unter neuem Namen oder um ein paar Felder
+    verschoben noch einmal hochlaedt, bekommt dieselbe Zahl.
+    """
+    teile = entwurf["pieces"]
+    c0 = min(p["col"] for p in teile)
+    r0 = min(p["row"] for p in teile)
+    flach = sorted((p["kind"], p["col"] - c0, p["row"] - r0, p["rotation"], p["radius_cells"])
+                   for p in teile)
+    sp = teile[entwurf["start_piece_idx"]]
+    kern = {"w": entwurf["width"], "p": flach,
+            "s": [sp["col"] - c0, sp["row"] - r0]}
+    return hashlib.sha256(json.dumps(kern, sort_keys=True).encode()).hexdigest()
+
+
+class StreckenSpeicher:
+    """Die abgelegten Strecken: je Strecke eine Datei, dazu ein Verzeichnis.
+
+    ``<verzeichnis>/<id>.json``  unveraenderlich: ``{"meta": ..., "track": Entwurf}``
+    ``<verzeichnis>/index.json`` Kopfdaten aller Strecken **mit** den veraenderlichen
+                                 Feldern (Abrufe, Meldungen, versteckt) und den
+                                 Tageszaehlern.
+
+    Geht der Index verloren oder ist er kaputt, wird er aus den Dateien neu
+    gebaut (Abrufe und Meldungen beginnen dann bei null). Gespeichert wird
+    atomar (Schreiben in eine Nebendatei, dann ``os.replace``), damit ein Absturz
+    mitten im Schreiben nie eine halbe Datei hinterlaesst.
+
+    Der Index wird bei jeder Anfrage auf Aenderung geprueft: das Verwaltungs-
+    werkzeug (``tools/strecken_verwalten.py``) arbeitet auf denselben Dateien,
+    waehrend der Server laeuft.
+    """
+
+    def __init__(self, verzeichnis: str, **grenzen) -> None:
+        self.verzeichnis = verzeichnis
+        self.max_stueck     = grenzen.get("max_stueck", STRECKEN_MAX)
+        self.max_bytes      = int(grenzen.get("max_mb", STRECKEN_MAX_MB) * 1024 * 1024)
+        self.pro_tag        = grenzen.get("pro_tag", STRECKEN_PRO_TAG)
+        self.melde_schwelle = grenzen.get("meldungen", STRECKEN_MELDUNGEN)
+        self.anfragen_min   = grenzen.get("anfragen", STRECKEN_ANFRAGEN)
+        self.tracks: dict = {}
+        self.tag = ""
+        self.zaehler: dict = {}
+        self.salz = ""
+        self._stand = None
+        self._eimer: dict = {}
+        os.makedirs(self.verzeichnis, exist_ok=True)
+        self._laden()
+
+    # -- Pfade und Dateien ---------------------------------------------------
+    def _index_pfad(self) -> str:
+        return os.path.join(self.verzeichnis, "index.json")
+
+    def _datei(self, tid: str) -> str:
+        return os.path.join(self.verzeichnis, f"{tid}.json")
+
+    @staticmethod
+    def _schreiben(pfad: str, daten) -> None:
+        tmp = pfad + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(daten, f, ensure_ascii=False, separators=(",", ":"))
+        os.replace(tmp, pfad)
+
+    def _speichern(self) -> None:
+        self._schreiben(self._index_pfad(), {
+            "version": 1, "salz": self.salz, "tag": self.tag,
+            "zaehler": self.zaehler, "tracks": self.tracks})
+        self._stand = self._index_stand()
+
+    def _index_stand(self):
+        try:
+            return os.stat(self._index_pfad()).st_mtime_ns
+        except OSError:
+            return None
+
+    def _laden(self) -> None:
+        try:
+            with open(self._index_pfad(), encoding="utf-8") as f:
+                d = json.load(f)
+            if not isinstance(d, dict) or not isinstance(d.get("tracks"), dict):
+                raise ValueError("Index ohne tracks")
+            self.tracks = {k: v for k, v in d["tracks"].items()
+                           if _ID_MUSTER.match(str(k)) and isinstance(v, dict)}
+            self.tag = str(d.get("tag", ""))
+            self.zaehler = {str(k): int(v) for k, v in dict(d.get("zaehler", {})).items()}
+            self.salz = str(d.get("salz", "")) or secrets.token_hex(8)
+            self._stand = self._index_stand()
+            return
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            log.warning(f"Streckenindex unlesbar, baue neu auf: {exc}")
+        self._neu_aufbauen()
+
+    def _neu_aufbauen(self) -> None:
+        self.tracks = {}
+        self.salz = secrets.token_hex(8)
+        self.tag, self.zaehler = "", {}
+        try:
+            namen = sorted(os.listdir(self.verzeichnis))
+        except OSError:
+            namen = []
+        for n in namen:
+            tid = n[:-5]
+            if not n.endswith(".json") or not _ID_MUSTER.match(tid):
+                continue
+            try:
+                with open(self._datei(tid), encoding="utf-8") as f:
+                    meta = json.load(f)["meta"]
+                meta = dict(meta, id=tid, downloads=0, reports=[], hidden=False,
+                            bytes=os.path.getsize(self._datei(tid)))
+                self.tracks[tid] = meta
+            except Exception as exc:
+                log.warning(f"Strecke {n} unlesbar, uebersprungen: {exc}")
+        self._speichern()
+
+    def _frisch(self) -> None:
+        """Index neu lesen, wenn ihn jemand anders geaendert hat."""
+        jetzt = self._index_stand()
+        if jetzt != self._stand:
+            self._laden()
+
+    # -- Schluessel und Grenzen ---------------------------------------------
+    def _kurz(self, schluessel: str) -> str:
+        return hashlib.sha256((self.salz + schluessel).encode()).hexdigest()[:12]
+
+    def anfrage_erlaubt(self, schluessel: str) -> bool:
+        """Gleitendes Minutenfenster je Absender."""
+        jetzt = time.monotonic()
+        q = self._eimer.setdefault(schluessel, deque())
+        while q and jetzt - q[0] > 60.0:
+            q.popleft()
+        grenze = self.anfragen_min * (STRECKEN_PROXY_FAKTOR if schluessel == "proxy" else 1)
+        if len(q) >= grenze:
+            return False
+        q.append(jetzt)
+        if len(self._eimer) > 4096:         # alte Absender nicht ewig behalten
+            for k in [k for k, v in self._eimer.items() if not v or jetzt - v[-1] > 60.0]:
+                self._eimer.pop(k, None)
+        return True
+
+    def belegt(self) -> tuple:
+        return len(self.tracks), sum(int(t.get("bytes", 0)) for t in self.tracks.values())
+
+    # -- Schreiben -----------------------------------------------------------
+    def hochladen(self, entwurf: dict, angaben: dict, autor: str,
+                  schluessel: str, faktor: int = 1) -> dict:
+        """Eine bereits gepruefte Strecke ablegen. Wirft :class:`_StreckenFehler`."""
+        self._frisch()
+        heute = time.strftime("%Y-%m-%d", time.gmtime())
+        if self.tag != heute:
+            self.tag, self.zaehler = heute, {}
+        kurz = self._kurz(schluessel)
+        if self.zaehler.get(kurz, 0) >= self.pro_tag * faktor:
+            raise _StreckenFehler("LIMIT_DAY")
+        hsh = entwurf_hash(entwurf)
+        if any(t.get("hash") == hsh for t in self.tracks.values()):
+            raise _StreckenFehler("DUPLICATE")
+        anzahl, groesse = self.belegt()
+        inhalt_b = len(json.dumps(entwurf, ensure_ascii=False).encode()) + 600
+        if anzahl >= self.max_stueck or groesse + inhalt_b > self.max_bytes:
+            raise _StreckenFehler("STORE_FULL")
+        while True:
+            tid = secrets.token_hex(4)
+            if tid not in self.tracks and not os.path.exists(self._datei(tid)):
+                break
+        meta = {
+            "id": tid, "name": entwurf["name"], "author": autor,
+            "theme": entwurf["background_texture"],
+            "difficulty": entwurf["difficulty"],
+            "length": angaben["laenge"], "pieces": angaben["teile"],
+            "outline": angaben["umriss"], "created": int(time.time()),
+            "hash": hsh,
+        }
+        self._schreiben(self._datei(tid), {"meta": meta, "track": entwurf})
+        meta = dict(meta, downloads=0, reports=[], hidden=False,
+                    bytes=os.path.getsize(self._datei(tid)))
+        self.tracks[tid] = meta
+        self.zaehler[kurz] = self.zaehler.get(kurz, 0) + 1
+        self._speichern()
+        return meta
+
+    def melden(self, tid: str, schluessel: str) -> bool:
+        """Eine Meldung eintragen. Gibt zurueck, ob die Strecke jetzt versteckt ist."""
+        self._frisch()
+        t = self.tracks.get(tid)
+        if t is None:
+            raise _StreckenFehler("NOT_FOUND")
+        kurz = self._kurz(schluessel)
+        if kurz not in t["reports"]:
+            t["reports"].append(kurz)
+            if len(t["reports"]) >= self.melde_schwelle and not t["hidden"]:
+                t["hidden"] = True
+                log.warning(f"Strecke {tid} '{t.get('name')}' versteckt "
+                            f"({len(t['reports'])} Meldungen)")
+            self._speichern()
+        return bool(t["hidden"])
+
+    # -- Lesen ---------------------------------------------------------------
+    @staticmethod
+    def _oeffentlich(t: dict) -> dict:
+        return {k: t[k] for k in ("id", "name", "author", "theme", "difficulty",
+                                  "length", "pieces", "outline", "created")
+                if k in t} | {"downloads": int(t.get("downloads", 0))}
+
+    def liste(self, sortierung: str = "new", suche: str = "",
+              seite: int = 0, je_seite: int = 8) -> dict:
+        self._frisch()
+        je_seite = max(1, min(STRECKEN_SEITE_MAX, int(je_seite)))
+        suche = suche.strip().lower()[:30]
+        treffer = [t for t in self.tracks.values() if not t.get("hidden")
+                   and (not suche or suche in str(t.get("name", "")).lower()
+                        or suche in str(t.get("author", "")).lower())]
+        if sortierung == "downloads":
+            treffer.sort(key=lambda t: (-int(t.get("downloads", 0)), -int(t.get("created", 0))))
+        else:
+            treffer.sort(key=lambda t: -int(t.get("created", 0)))
+        seiten = max(1, math.ceil(len(treffer) / je_seite))
+        seite = max(0, min(seiten - 1, int(seite)))
+        teil = treffer[seite * je_seite:(seite + 1) * je_seite]
+        return {"tracks": [self._oeffentlich(t) for t in teil], "page": seite,
+                "pages": seiten, "total": len(treffer), "sort": sortierung,
+                "slots_used": len(self.tracks), "slots_max": self.max_stueck}
+
+    def holen(self, tid: str) -> dict:
+        self._frisch()
+        t = self.tracks.get(tid)
+        if t is None or t.get("hidden"):
+            raise _StreckenFehler("NOT_FOUND")
+        try:
+            with open(self._datei(tid), encoding="utf-8") as f:
+                entwurf = json.load(f)["track"]
+        except Exception:
+            raise _StreckenFehler("NOT_FOUND")
+        t["downloads"] = int(t.get("downloads", 0)) + 1
+        self._speichern()
+        return dict(self._oeffentlich(t), track=entwurf)
+
+
+_strecken_speicher: Optional[StreckenSpeicher] = None
+
+
+def strecken_speicher() -> StreckenSpeicher:
+    """Der Speicher dieses Prozesses; wird beim ersten Gebrauch angelegt."""
+    global _strecken_speicher
+    if _strecken_speicher is None:
+        _strecken_speicher = StreckenSpeicher(STRECKEN_DIR)
+    return _strecken_speicher
+
+
+def _strecken_schluessel(ip: str, msg: dict) -> tuple:
+    """Wer fragt: ``(Schluessel, Faktor fuer die Tagesgrenze)``.
+
+    Eine unterscheidbare Adresse zaehlt selbst. Hinter einem Tunnel (Hamburg)
+    sind alle Spieler dieselbe Adresse — dort zaehlt die Kennung, die der Client
+    mitschickt (``cid``, zufaellig, vom Spieler selbst erzeugt). Das bremst
+    ehrliche Spieler einzeln und ist leicht zu umgehen; wer das tut, trifft aber
+    immer noch Speicher- und Anfragegrenze. Ohne Kennung teilen sich alle hinter
+    dem Tunnel ein grosses gemeinsames Konto.
+    """
+    if _Wache.unterscheidbar(ip):
+        return f"ip:{ip}", 1
+    cid = "".join(z for z in str(msg.get("cid", ""))[:32] if z.isalnum())
+    if len(cid) >= 8:
+        return f"cid:{cid}", 1
+    return "proxy", STRECKEN_PROXY_FAKTOR
+
+
+async def _strecken_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) -> None:
+    """Eine Streckenanfrage beantworten. Die Verbindung schliesst der Aufrufer."""
+    t = msg.get("type")
+    try:
+        if STRECKEN_AUS:
+            raise _StreckenFehler("DISABLED")
+        speicher = strecken_speicher()
+        schluessel, faktor = _strecken_schluessel(ip, msg)
+        if not speicher.anfrage_erlaubt(schluessel):
+            _wache._merken("strecken_rate", ip, f"{t}")
+            raise _StreckenFehler("RATE")
+
+        if t == "TRACK_LIST":
+            antwort = speicher.liste(
+                str(msg.get("sort", "new")) if msg.get("sort") in ("new", "downloads") else "new",
+                str(msg.get("query", ""))[:60],
+                msg.get("page", 0) if isinstance(msg.get("page", 0), int) else 0,
+                msg.get("per_page", 8) if isinstance(msg.get("per_page", 8), int) else 8)
+            await _send(writer, dict(antwort, type="TRACK_LIST"))
+
+        elif t == "TRACK_GET":
+            tid = str(msg.get("id", ""))
+            if not _ID_MUSTER.match(tid):
+                raise _StreckenFehler("NOT_FOUND")
+            await _send(writer, dict(speicher.holen(tid), type="TRACK_DATA"))
+
+        elif t == "TRACK_REPORT":
+            tid = str(msg.get("id", ""))
+            if not _ID_MUSTER.match(tid):
+                raise _StreckenFehler("NOT_FOUND")
+            versteckt = speicher.melden(tid, schluessel)
+            await _send(writer, {"type": "TRACK_REPORT_OK", "id": tid, "hidden": versteckt})
+
+        elif t == "TRACK_UPLOAD":
+            roh = msg.get("track")
+            # Grenze auf dem, was ankommt — nicht auf dem, was der Absender
+            # behauptet. ``separators`` wie beim Speichern, sonst zaehlt der
+            # Leerraum mit.
+            try:
+                groesse = len(json.dumps(roh, ensure_ascii=False,
+                                         separators=(",", ":")).encode())
+            except (TypeError, ValueError):
+                raise _StreckenFehler("BAD_FORMAT")
+            if groesse > STRECKE_MAX_B:
+                raise _StreckenFehler("TOO_LARGE")
+            entwurf, angaben = entwurf_pruefen(roh)
+            if msg.get("name"):
+                entwurf["name"] = saeubere_text(msg["name"], 40, entwurf["name"])
+            autor = saeubere_name(msg.get("author", "Spieler"))
+            meta = speicher.hochladen(entwurf, angaben, autor, schluessel, faktor)
+            log.info(f"Strecke hochgeladen: {meta['id']} '{meta['name']}' von '{autor}'")
+            await _send(writer, {"type": "TRACK_UPLOAD_OK", "id": meta["id"],
+                                 "name": meta["name"]})
+    except _StreckenFehler as f:
+        await _send(writer, {"type": "TRACK_ERROR", "code": f.code, "reason": f.reason})
+    except Exception as exc:
+        log.error(f"Streckenanfrage {t} fehlgeschlagen: {exc}", exc_info=True)
+        try:
+            await _send(writer, {"type": "TRACK_ERROR", "code": "ERROR",
+                                 "reason": _STRECKEN_TEXT["ERROR"]})
+        except Exception:
+            pass
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

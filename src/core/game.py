@@ -66,6 +66,7 @@ class GameManager:
         from src.states.track_select_state import TrackSelectState
         from src.states.vehicle_lab_state import VehicleLabState
         from src.states.editor_state import EditorState
+        from src.states.online_strecken_state import OnlineStreckenState
         from src.states.welcome_state import WelcomeState
 
         self.menu_state          = MenuShellState(self.state_machine)
@@ -74,6 +75,7 @@ class GameManager:
         self.race_state          = RaceState(self.state_machine)
         self.vehicle_lab_state   = VehicleLabState(self.state_machine)
         self.editor_state        = EditorState(self.state_machine)
+        self.online_strecken_state = OnlineStreckenState(self.state_machine)
         self.welcome_state       = WelcomeState(self.state_machine)
 
         self.state_machine.register("menu",         self.menu_state)
@@ -83,6 +85,7 @@ class GameManager:
         self.state_machine.register("race",         self.race_state)
         self.state_machine.register("vehicle_lab",  self.vehicle_lab_state)
         self.state_machine.register("editor",       self.editor_state)
+        self.state_machine.register("online_strecken", self.online_strecken_state)
 
     #: Obergrenze im Menü. Dort bringt eine höhere Bildrate nichts: das
     #: Hintergrundvideo läuft mit 30 Bildern, die Tafeln stehen still, und

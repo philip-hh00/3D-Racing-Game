@@ -171,6 +171,34 @@ class TrackSelectState(BaseState):
         return pygame.Rect(self.left_panel_rect.x + 20,
                            self.left_panel_rect.bottom + 16, 440, 60)
 
+    def _online_rect(self) -> pygame.Rect:
+        """Der Weg zu den Online-Strecken, rechts auf Hoehe des Startknopfs."""
+        return pygame.Rect(self.right_panel_rect.right - 460,
+                           self.left_panel_rect.bottom + 16, 460, 60)
+
+    def _online_taste(self) -> str:
+        """Kurzer Hinweis auf die Taste: O auf der Tastatur, Y am Controller."""
+        from src.core import input_mode
+        return "Y" if input_mode.is_pad() else "O"
+
+    def _draw_online_button(self, screen: pygame.Surface) -> None:
+        from src.core import display
+        r = self._online_rect()
+        hover = r.collidepoint(display.mouse_pos())
+        zeichnen.rect(screen, (30, 44, 58) if hover else (22, 32, 44), r, border_radius=6)
+        zeichnen.rect(screen, (120, 200, 255) if hover else (70, 130, 175), r, 2,
+                      border_radius=6)
+        theme.text_fit(screen, f"{tr('Online-Strecken')}  [{self._online_taste()}]",
+                       theme.BODY, (180, 225, 255) if hover else (140, 195, 235),
+                       r.inflate(-24, 0), center=True)
+
+    def _online_strecken(self) -> None:
+        """Zu den Online-Strecken. Der Rueckweg fuehrt hierher zurueck (Verlauf)."""
+        from src.core import grand_prix
+        if grand_prix.is_active():
+            return                       # mitten in einer Serie bleibt man bei ihr
+        self.state_machine.transition("online_strecken")
+
     def _start_beschriftung(self) -> str:
         """Online waehlt der Gastgeber nur aus — gestartet wird in der Lobby."""
         return tr("Übernehmen") if self._online_host_mode else tr("Rennen starten")
@@ -231,6 +259,11 @@ class TrackSelectState(BaseState):
                     self._confirm()
                     _sfx.klick_quittieren(event, vorher)
                     return
+                if self._online_rect().collidepoint(event.pos):
+                    vorher = _sfx.klang_zaehler()
+                    self._online_strecken()
+                    _sfx.klick_quittieren(event, vorher)
+                    return
                 for i, rect in self._track_card_rects():
                     if rect.collidepoint(event.pos):
                         # Erster Klick waehlt, der zweite auf dieselbe Kachel
@@ -263,6 +296,9 @@ class TrackSelectState(BaseState):
                     self._track_ensure_visible()
                 elif event.key == pygame.K_RETURN:
                     self._confirm()
+                elif event.key == pygame.K_o or (event.key == pygame.K_y
+                                                 and getattr(event, "synthetic", False)):
+                    self._online_strecken()
                 elif event.key == pygame.K_ESCAPE:
                     self._zurueck()
 
@@ -340,6 +376,9 @@ class TrackSelectState(BaseState):
         self._draw_track_list(screen)
         self._draw_track_details(screen)
         self._draw_start_button(screen)
+        from src.core import grand_prix as _gp
+        if not _gp.is_active():
+            self._draw_online_button(screen)
 
         # Footer hints
         if self.hint_font:

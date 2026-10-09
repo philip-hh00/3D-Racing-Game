@@ -165,7 +165,8 @@ class StateMachine:
         from src.core import audio
         if state_name in ("vehicle_lab",):
             audio.play_race_music()
-        elif state_name in ("welcome", "menu", "car_select", "track_select", "editor"):
+        elif state_name in ("welcome", "menu", "car_select", "track_select", "editor",
+                            "online_strecken"):
             audio.play_menu_music()
         else:
             audio.stop_music()

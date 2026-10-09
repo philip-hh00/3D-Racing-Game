@@ -91,6 +91,8 @@ data/ghosts/
 data/settings/instanz.lock
 data/settings/klangmitschnitt/
 data/settings/profile.json
+data/settings/strecken_kennung.txt
+server/strecken_online/
 data/settings/profile.json.tmp
 data/settings/profile.bak
 data/settings/build_stamp.json
