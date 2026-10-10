@@ -51,12 +51,21 @@ def kein_serveranruf():
     ``get_cached`` mit ``monkeypatch``. Das ist ohnehin die einzige Art, sie
     vorhersagbar zu haben.
     """
-    from src.net import server_info
+    from src.net import lobby_liste, server_info, strecken_client
+
+    class _OhneNetz:
+        """Antwortet wie ein nicht erreichbarer Relay — sofort."""
+
+        @staticmethod
+        def anfrage(sd, msg, timeout=0):
+            raise strecken_client.StreckenFehler("OFFLINE")
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(server_info, "fetch_info_async", lambda: None)
         mp.setattr(server_info, "fetch_info", lambda timeout=4.0: None)
         mp.setattr(server_info, "_cached", None, raising=False)
+        # Die Lobbyliste der Online-Seite fragt alle fuenf Sekunden alle Server.
+        mp.setattr(lobby_liste, "standard_api", lambda: _OhneNetz)
         yield
 
 

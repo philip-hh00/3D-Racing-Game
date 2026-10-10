@@ -88,7 +88,7 @@ def test_neue_lobby_auf_alter_seite_beginnt_ohne_serienebene(serie, netz):
     seite, _sh, _olp = _seite_in_der_uebersicht(ist_host=True, netz=netz)
     seite._on_net({"source": "tcp", "data": {
         "type": "LOBBY_CLOSED", "reason": "Host hat die Verbindung getrennt."}})
-    assert seite._view == olp._ROLE
+    assert seite._view == olp._BROWSER
 
     seite._on_net({"source": "tcp", "data": {
         "type": "JOIN_OK", "lobby_id": "HABCDE", "slot": 0, "is_host": True}})

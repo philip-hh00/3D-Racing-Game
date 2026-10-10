@@ -81,7 +81,7 @@ def test_ja_verlaesst_die_lobby(serie, netz):
     seite._ask_leave_lobby()
     seite._confirm_leave_lobby()
 
-    assert seite._view == olp._ROLE
+    assert seite._view == olp._BROWSER
 
 
 def test_host_und_gast_bekommen_verschiedene_warnungen(serie, netz):

@@ -77,6 +77,14 @@ _ZUSTAENDE = {
     "_servertext":
         "Begruendung vom Relay (Rauswurf, geschlossene Lobby). Fremdtext, der "
         "erklaert, warum der Nutzer nicht mehr in der Lobby ist",
+    "Das Passwort stimmt nicht":
+        "Antwort auf ein falsches Passwort in der Passwortabfrage. Sie bleibt "
+        "stehen, bis der Spieler neu tippt (das Feld leert sie)",
+    "= grund":
+        "Grund, warum eine Eingabe (Passwort) nicht abgeschickt wird; wird beim "
+        "naechsten Tippen geleert",
+    "_angaben.meldung":
+        "Dasselbe fuer Lobbyname/Passwort beim Erstellen einer Lobby",
     "ohne Aktivität geschlossen":
         "Der Grund, warum die Lobby weg ist. Er steht auf der Rollenauswahl "
         "und soll dort bleiben, bis der Nutzer etwas tut",

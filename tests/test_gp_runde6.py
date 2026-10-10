@@ -152,7 +152,7 @@ def test_gast_verlaesst_beim_aussteigen_die_lobby(serie, netz, monkeypatch):
     seite._confirm_leave_gp()
 
     assert getrennt, "Gast bleibt verbunden und würde weiter gewertet"
-    assert seite._view == olp._ROLE
+    assert seite._view == olp._BROWSER
 
 
 def test_host_beendet_nur_die_serie(serie, netz, monkeypatch):

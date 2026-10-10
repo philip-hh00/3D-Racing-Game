@@ -2462,7 +2462,7 @@ def lobby_angaben(msg: dict, hostname: str, alt: Optional[Lobby] = None) -> tupl
     Bei einer Aenderung (*alt* gesetzt) bleibt, was nicht in der Nachricht steht.
     Das Passwort ist ``None``, wenn es nicht neu gesetzt wird.
     """
-    vorgabe_name = f"Lobby von {hostname}"
+    vorgabe_name = f"Lobby von {hostname}"[:LOBBYNAME_MAX].strip()
     if alt is None:
         sicht = msg.get("visibility", SICHT_PRIVAT)
         name_roh = msg.get("lobby_name", "")
@@ -2549,7 +2549,7 @@ def lobby_liste() -> list:
             continue
         out.append({
             "code": lobby.lobby_id,
-            "name": lobby.lobby_name or f"Lobby von {host.name}",
+            "name": lobby.lobby_name or f"Lobby von {host.name}"[:LOBBYNAME_MAX].strip(),
             "host": host.name,
             "players": len(lobby.clients),
             "max": min(lobby.roster_size, MAX_SLOTS),

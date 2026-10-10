@@ -473,6 +473,47 @@ def validate_track_name(name: str) -> tuple[bool, str]:
     return True, ""
 
 
+#: Lobbynamen (Online-Lobbyliste): so lang und mit denselben Zeichen, die der
+#: Relay behaelt (``server.py:saeubere_text`` mit ``NAME_EXTRA``).
+LOBBY_NAME_MAX = 24
+LOBBY_NAME_EXTRA = " _-.'"
+#: Passwort einer Lobby: laenge wie auf dem Relay (``PW_MIN``/``PW_MAX``).
+LOBBY_PW_MIN = 4
+LOBBY_PW_MAX = 16
+
+
+def validate_lobby_name(name: str) -> tuple[bool, str]:
+    """Name einer Online-Lobby gegen Zeichenregel und Sperrliste. ``(ok, Grund)``.
+
+    Leer ist erlaubt: dann gilt der Vorgabename („Lobby von <Host>"). Der Name
+    steht in der Lobbyliste vor Fremden, deshalb dieselbe Sperrliste wie bei
+    Spieler- und Streckennamen.
+    """
+    from src.core.i18n import tr
+    name = str(name or "").strip()
+    if not name:
+        return True, ""
+    if len(name) > LOBBY_NAME_MAX:
+        return False, tr("Höchstens {n} Zeichen.").format(n=LOBBY_NAME_MAX)
+    if not all(z.isalnum() or z in LOBBY_NAME_EXTRA for z in name):
+        return False, tr("Nur Buchstaben, Zahlen und Leerzeichen.")
+    if _ist_gesperrt(name):
+        return False, tr("Dieser Name ist nicht erlaubt.")
+    return True, ""
+
+
+def validate_lobby_password(pw: str) -> tuple[bool, str]:
+    """Passwort einer Lobby: 4 bis 16 druckbare Zeichen. ``(ok, Grund)``."""
+    from src.core.i18n import tr
+    pw = str(pw or "")
+    if not (LOBBY_PW_MIN <= len(pw) <= LOBBY_PW_MAX):
+        return False, tr("Das Passwort braucht {a} bis {b} Zeichen.").format(
+            a=LOBBY_PW_MIN, b=LOBBY_PW_MAX)
+    if not pw.isprintable():
+        return False, tr("Das Passwort enthält ungültige Zeichen.")
+    return True, ""
+
+
 # Process-wide current profile (loaded lazily).
 _current: Profile | None = None
 

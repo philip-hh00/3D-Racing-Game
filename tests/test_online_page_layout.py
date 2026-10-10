@@ -66,7 +66,7 @@ def test_zurueck_aus_serverauswahl_geht_eine_stufe_hoch():
     page, olp = _seite()
     page._view = olp._HOST_SERVER
     verbraucht = page.handle_event(_esc())
-    assert page._view == olp._ROLE
+    assert page._view == olp._BROWSER
     assert verbraucht is True          # Shell darf die Seite NICHT wegwerfen
 
 
@@ -74,7 +74,7 @@ def test_zurueck_aus_codeeingabe_geht_eine_stufe_hoch():
     page, olp = _seite()
     page._view = olp._JOIN
     verbraucht = page.handle_event(_esc())
-    assert page._view == olp._ROLE
+    assert page._view == olp._BROWSER
     assert verbraucht is True
 
 
@@ -82,7 +82,7 @@ def test_zurueck_aus_rollenauswahl_verlaesst_die_seite():
     """Hier gibt es keine Ebene mehr — das Ereignis muss durchgereicht werden,
     damit die Shell die Seite schliesst."""
     page, olp = _seite()
-    page._view = olp._ROLE
+    page._view = olp._BROWSER
     assert page.handle_event(_esc()) is not True
 
 
@@ -100,7 +100,7 @@ def test_zurueck_knopf_fuehrt_ebenfalls_eine_stufe_hoch():
     page._host_group.index = page._host_group.widgets.index(page._btn_back_host)
     page.handle_event(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN,
                                          unicode="\r", mod=0))
-    assert page._view == olp._ROLE
+    assert page._view == olp._BROWSER
 
 
 # ── Layout ───────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ def test_alle_views_zeichnen_ohne_fehler():
     page, olp = _seite()
     screen = pygame.display.get_surface()
     bereich = pygame.Rect(0, 90, 1920, 990)
-    for view in (olp._ROLE, olp._HOST_SERVER, olp._JOIN, olp._CONNECTING):
+    for view in (olp._BROWSER, olp._HOST_SERVER, olp._JOIN, olp._CONNECTING):
         page._view = view
         page._msg = "Testmeldung"
         page.update(0.016)

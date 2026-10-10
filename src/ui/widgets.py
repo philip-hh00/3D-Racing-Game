@@ -152,10 +152,17 @@ class Stepper(_Base):
 
     bearbeitbar = True
 
+    #: Breite des Wahlers (Pfeile und Wert) rechts im Element, wenn es eine
+    #: Beschriftung hat. Lange Werte („Oeffentlich mit Passwort") brauchen mehr.
+    WAEHLER_BREITE = 250
+
     def __init__(self, rect, label: str, options: list[str], index: int = 0, *,
-                 action: str = "change", enabled: bool = True) -> None:
+                 action: str = "change", enabled: bool = True,
+                 waehler_breite: int | None = None) -> None:
         super().__init__(rect)
         self.label = label
+        if waehler_breite is not None:
+            self.WAEHLER_BREITE = waehler_breite
         self.options = options
         self.index = max(0, min(index, len(options) - 1)) if options else 0
         self.action = action
@@ -176,7 +183,7 @@ class Stepper(_Base):
         else:
             # If there is a label, the selector occupies the right part of the widget.
             # We allocate up to 250px (or half the width) on the right for it.
-            sel_width = min(250, self.rect.width // 2)
+            sel_width = min(self.WAEHLER_BREITE, self.rect.width // 2)
             left = pygame.Rect(self.rect.right - sel_width, self.rect.y + 6, s, self.rect.height - 12)
             right = pygame.Rect(self.rect.right - s - 6, self.rect.y + 6, s, self.rect.height - 12)
         return left, right
@@ -292,9 +299,12 @@ class TextInput(_Base):
     captures_text = True
 
     def __init__(self, rect, text: str = "", *, max_len: int = 16,
-                 allowed: str | None = None, uppercase: bool = False) -> None:
+                 allowed: str | None = None, uppercase: bool = False,
+                 maskiert: bool = False) -> None:
         super().__init__(rect)
         self.text = text
+        #: Passwortfeld: gezeigt werden Punkte statt der Zeichen.
+        self.maskiert = maskiert
         self.max_len = max_len
         self.allowed = allowed
         self.uppercase = uppercase
@@ -320,7 +330,7 @@ class TextInput(_Base):
         zeichnen.rect(screen, theme.PANEL_LIGHT, self.rect, border_radius=6)
         zeichnen.rect(screen, theme.ACCENT if focused else theme.BORDER,
                          self.rect, 2, border_radius=6)
-        shown = self.text
+        shown = "•" * len(self.text) if self.maskiert else self.text
         if focused and self._cursor_t < 0.5:
             shown += "|"
         text_rect = pygame.Rect(self.rect.x + 14, self.rect.y, self.rect.width - 28, self.rect.height)

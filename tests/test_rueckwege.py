@@ -451,7 +451,7 @@ def test_die_onlinelobby_bietet_in_jeder_ebene_einen_ausweg():
     """Aus der Lobby heraus gab es nur ESC — und beim Gastgeber löst das die
     ganze Lobby auf, also wird gefragt."""
     from src.states.menu import online_lobby_page as olp
-    for ansicht in (olp._ROLE, olp._LOBBY, olp._GP_OVERVIEW):
+    for ansicht in (olp._BROWSER, olp._LOBBY, olp._GP_OVERVIEW):
         seite = olp.OnlineLobbyPage.__new__(olp.OnlineLobbyPage)
         seite._view = ansicht
         seite.shell = _Schale()
@@ -487,7 +487,7 @@ def test_die_uebrigen_ebenen_behalten_ihren_knopf():
     """Die Gegenrichtung: nur die Übersicht verliert ihn, nicht die Lobby."""
     from src.states.menu import online_lobby_page as olp
     assert olp._LOBBY not in olp.OnlineLobbyPage._HAT_EIGENEN_RUECKWEG
-    assert olp._ROLE not in olp.OnlineLobbyPage._HAT_EIGENEN_RUECKWEG
+    assert olp._BROWSER not in olp.OnlineLobbyPage._HAT_EIGENEN_RUECKWEG
 
 
 def test_die_uebersicht_hat_trotzdem_einen_ausweg():

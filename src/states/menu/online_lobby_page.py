@@ -2,11 +2,15 @@
 OnlineLobbyPage — Online multiplayer lobby (Host + Join flow).
 
 Internal views:
-    ROLE        pick a side: host a game or join one
-    HOST_SERVER relay server list (location, quality bars, ping) + create button
+    BROWSER     lobby list of all servers (first view after "Online"), with the
+                buttons Lobby erstellen / Mit Code beitreten / Online-Strecken
+    HOST_SERVER create a lobby: relay server (location, quality bars, ping),
+                visibility, name and password
     JOIN        lobby-code input
+    PASSWORD    password prompt for a lobby that needs one
     CONNECTING  spinner while TCP connects
     LOBBY       waiting room with combined player+AI roster, ready system
+    LOBBY_EDIT  host changes visibility / name / password inside the lobby
 
 The player name is no longer asked for here — it comes from the profile
 (settings). Which relay a joining player lands on is derived from the first
@@ -30,11 +34,15 @@ from src.net import payload
 from src.render3d import tageszeit as tz
 from src.render3d import wetter as wt
 from src.states.menu.gp_overview import GPOverview
+from src.states.menu.lobby_angaben import LobbyAngaben, sichtbarkeit_text
+from src.states.menu.lobby_browser import LobbyBrowser
 from src.ui import zeichnen, leinwand
 
-_ROLE        = "role"
+_BROWSER     = "browser"
 _HOST_SERVER = "host_server"
 _JOIN        = "join"
+_PASSWORD    = "password"
+_LOBBY_EDIT  = "lobby_edit"
 _CONNECTING  = "connecting"
 _LOBBY       = "lobby"
 #: Grand Prix: eigene Ebene zwischen Lobby und Rennen. Die Lobby richtet
@@ -128,7 +136,7 @@ class OnlineLobbyPage(Page):
 
     def enter(self, shell, **kwargs) -> None:
         self.shell      = shell
-        self._view      = _ROLE
+        self._view      = _BROWSER
         self._msg       = ""
         #: Zeitpunkt (Seitenzeit), an dem eine kurze Meldung verfaellt. 0 = bleibt.
         self._msg_until = 0.0
@@ -141,6 +149,17 @@ class OnlineLobbyPage(Page):
         self._lobby_timer = 0.0    # Leerlaufzeit, siehe _LOBBY_IDLE_S
         self._warn_msg    = ""     # Vorwarnung kurz vor dem Schliessen
         self._race_begun = False   # guards against a duplicate "START" broadcast
+        #: Angaben der Lobby, in der wir sitzen (Host und Gaeste, aus
+        #: JOIN_OK/LOBBY_STATE): Name, Sichtbarkeit, ob ein Passwort gilt.
+        self._letzte_ansicht = ""
+        self._lobby_name = ""
+        self._lobby_sicht = "private"
+        self._lobby_hat_pw = False
+        #: Ziel eines Passwort-Beitritts: (ServerDef, Code), und ob schon ein
+        #: Passwort gesendet wurde (dann heisst BAD_PASSWORD "falsch", sonst
+        #: nur "bitte eingeben").
+        self._pw_ziel = None
+        self._pw_gesendet = False
 
         # AI roster widgets (rebuilt as players join/leave; host only).
         # Each tuple is (vehicle stepper, difficulty stepper, team stepper|None) —
@@ -227,19 +246,12 @@ class OnlineLobbyPage(Page):
         self._selected_srv_id: str | None = None
         self._connect_server   = None    # ServerDef the live session belongs to
         # Where ESC / a failed connect returns to (host list vs code input).
-        self._return_view      = _ROLE
+        self._return_view      = _BROWSER
 
         cx = 960
 
-        # ── ROLE widgets ─────────────────────────────────────────────────────
-        self._btn_role_host = Button(
-            pygame.Rect(cx - 300, 300, 600, 76), tr("Spiel hosten") + "  ›", "role_host"
-        )
-        self._btn_role_join = Button(
-            pygame.Rect(cx - 300, 400, 600, 76), tr("Spiel beitreten") + "  ›", "role_join",
-            style="secondary",
-        )
-        self._role_group = FocusGroup([self._btn_role_host, self._btn_role_join])
+        # ── BROWSER: die Lobbyliste ───────────────────────────────────────────
+        self._browser = LobbyBrowser()
 
         # ── HOST_SERVER widgets ──────────────────────────────────────────────
         # list_y liegt unter Titel (176) und Unterschrift (226) plus Platz für
@@ -250,23 +262,49 @@ class OnlineLobbyPage(Page):
                       sd.label, f"pick_{sd.id}")
             for i, sd in enumerate(self._server_defs)
         ]
-        create_y = list_y + len(self._server_rows) * (row_h + row_gap) + 34
+        self._form_y = list_y + len(self._server_rows) * (row_h + row_gap) + 12
         self._btn_back_host = Button(
-            pygame.Rect(cx - 420, create_y, 300, 64), "‹  " + tr("Zurück"), "back_role",
+            pygame.Rect(cx - 420, 0, 300, 64), "‹  " + tr("Zurück"), "back_role",
             style="secondary"
         )
         self._btn_create = Button(
-            pygame.Rect(cx + 120, create_y, 300, 64), tr("Lobby erstellen") + "  ›", "create"
+            pygame.Rect(cx + 120, 0, 300, 64), tr("Lobby erstellen") + "  ›", "create"
         )
         self._btn_create.enabled = False
         self._btn_create.focusable = False
-        self._host_group = FocusGroup(self._server_rows + [self._btn_back_host, self._btn_create])
+        #: Sichtbarkeit, Name, Passwort der neuen Lobby. Name vorbelegt, damit
+        #: der Spieler sieht, was sonst gelten wuerde.
+        self._angaben = LobbyAngaben(name=self._vorgabe_lobbyname())
+        self._host_group = FocusGroup([])
+        self._host_gruppe_bauen()
 
         # ── JOIN widgets ─────────────────────────────────────────────────────
         self._code_input = TextInput(
             pygame.Rect(cx - 300, 320, 600, 64), text="", max_len=6,
             allowed="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", uppercase=True,
         )
+        # ── PASSWORD: Passwortabfrage fuer eine geschuetzte Lobby ────────────
+        self._pw_input = TextInput(
+            pygame.Rect(cx - 300, 360, 600, 64), text="", max_len=16, maskiert=True,
+        )
+        self._btn_back_pw = Button(
+            pygame.Rect(cx - 300, 492, 280, 64), "‹  " + tr("Zurück"), "back_role",
+            style="secondary"
+        )
+        self._btn_pw_join = Button(
+            pygame.Rect(cx + 20, 492, 280, 64), tr("Beitreten") + "  ›", "pw_join"
+        )
+        self._pw_group = FocusGroup([self._pw_input, self._btn_back_pw, self._btn_pw_join])
+        # ── LOBBY_EDIT: Sichtbarkeit/Name/Passwort in der Lobby aendern ──────
+        self._edit_angaben: LobbyAngaben | None = None
+        self._btn_edit_abbruch = Button(
+            pygame.Rect(cx - 420, 0, 300, 64), "‹  " + tr("Abbrechen"), "edit_cancel",
+            style="secondary"
+        )
+        self._btn_edit_ok = Button(
+            pygame.Rect(cx + 120, 0, 300, 64), tr("Übernehmen") + "  ›", "edit_ok"
+        )
+        self._edit_group = FocusGroup([])
         self._btn_back_join = Button(
             pygame.Rect(cx - 300, 452, 280, 64), "‹  " + tr("Zurück"), "back_role",
             style="secondary"
@@ -328,6 +366,8 @@ class OnlineLobbyPage(Page):
                                    tr("Strecke wählen") + "  ›", "pick_track")
         self._btn_vehicle = Button(pygame.Rect(0, 0, w, h),
                                    tr("Fahrzeug wählen") + "  ›", "pick_vehicle")
+        self._btn_lobbyinfo = Button(pygame.Rect(0, 0, w, h),
+                                     tr("Sichtbarkeit & Name") + "  ›", "lobby_info")
         self._btn_ready   = Button(pygame.Rect(0, 0, w, h),
                                    tr("Bereit"), "toggle_ready")
         self._btn_start   = Button(pygame.Rect(0, 0, w, h),
@@ -372,7 +412,7 @@ class OnlineLobbyPage(Page):
         if self._view == _CONNECTING:
             self._cleanup_net()
             return True
-        if self._view != _LOBBY:
+        if self._view not in (_LOBBY, _LOBBY_EDIT):
             return True
         self._dialog_danach = weiter
         self._ask_leave_lobby()
@@ -505,23 +545,33 @@ class OnlineLobbyPage(Page):
     # ── Update ────────────────────────────────────────────────────────────────
 
     def update(self, dt: float) -> None:
+        if self._view == _BROWSER and self._letzte_ansicht != _BROWSER:
+            self._browser.betreten()          # frisch zeigen, gleich neu fragen
+        self._letzte_ansicht = self._view
         self._time += dt
         if self._msg_until and self._time >= self._msg_until:
             self._msg = ""
             self._msg_until = 0.0
         self._code_input.update(dt)
+        self._pw_input.update(dt)
+        for a in (self._angaben, self._edit_angaben):
+            if a is not None:
+                a.name_feld.update(dt)
+                a.pw_feld.update(dt)
         if self.osk:
             self.osk.update(dt)
-        if self._view in (_ROLE, _HOST_SERVER, _JOIN):
+        if self._view in (_BROWSER, _HOST_SERVER, _JOIN, _PASSWORD):
             # Keeps the probe thread alive (it self-terminates once nobody reads
             # the results, since pages are popped without an exit hook).
             from src.net import server_probe
             server_probe.start()
             self._refresh_server_rows()
+        if self._view == _BROWSER:
+            self._browser.update(dt)
         # Die Grand-Prix-Uebersicht gehoert hier dazu: sie ist eine eigene Ebene,
         # aber dieselbe Netzsitzung. Ohne sie holte der Host START nie ab und
         # blieb auf "Uebertrage Strecke ..." stehen, waehrend die Gaeste losfuhren.
-        if self._view in (_LOBBY, _CONNECTING, _GP_OVERVIEW):
+        if self._view in (_LOBBY, _LOBBY_EDIT, _CONNECTING, _GP_OVERVIEW):
             from src.net import session
             net = session.get()
             if net:
@@ -532,8 +582,14 @@ class OnlineLobbyPage(Page):
                 # und genau daran ist ein Gast aus der Lobby geflogen.
                 for evt in net.poll():
                     self._on_net(evt)
+                    if session.get() is not net:
+                        # Die Sitzung wurde beendet (Absage, Lobby zu): was noch
+                        # in ihrer Schlange liegt, gehoert nicht mehr uns. Sonst
+                        # ueberschreibt das „getrennt" des Relays, der nach einer
+                        # Absage die Verbindung schliesst, deren Begruendung.
+                        break
 
-        if self._view in (_LOBBY, _GP_OVERVIEW):
+        if self._view in (_LOBBY, _LOBBY_EDIT, _GP_OVERVIEW):
             # Leerlauf, nicht Gesamtdauer: der Timer zaehlt nur, solange niemand
             # etwas tut, und faengt bei jeder Eingabe und jeder Servernachricht
             # von vorn an (siehe _lobby_aktivitaet). Vorher war es eine harte
@@ -542,7 +598,7 @@ class OnlineLobbyPage(Page):
             self._lobby_timer += dt
             if self._lobby_timer >= _LOBBY_IDLE_S:
                 self._cleanup_net()
-                self._view = _ROLE
+                self._view = _BROWSER
                 self._msg = tr("Lobby nach {m} Minuten ohne Aktivität geschlossen.").format(
                     m=int(_LOBBY_IDLE_S // 60))
                 self._lobby_timer = 0.0
@@ -558,7 +614,7 @@ class OnlineLobbyPage(Page):
                 self._msg = "Mindestens 2 Spieler erforderlich."
             elif self._msg == "Mindestens 2 Spieler erforderlich.":
                 self._msg = ""
-        elif self._view != _GP_OVERVIEW:
+        elif self._view not in (_GP_OVERVIEW, _LOBBY_EDIT):
             self._lobby_timer = 0.0
             self._warn_msg = ""
 
@@ -618,6 +674,8 @@ class OnlineLobbyPage(Page):
             self._msg         = ""
             self._view        = _LOBBY
             self._lobby_ready = False
+            self._pw_ziel     = None
+            self._lobby_info_lesen(data)
             # Neue Lobby, neue Vorschlaege. Die Seite ueberlebt einen
             # Lobbywechsel, also blieb sonst die Liste der letzten stehen —
             # sichtbar nur fuer einen selbst, denn der Server hat sie nie
@@ -649,6 +707,12 @@ class OnlineLobbyPage(Page):
             self._push_pick()
 
         elif t == "JOIN_FAIL":
+            if data.get("code") == "BAD_PASSWORD" and self._pw_ziel is not None:
+                # Kein Abbruch: die Lobby gibt es, sie will nur ein Passwort.
+                # Falsch geraten heisst hoeflich nachfragen, nicht hinauswerfen.
+                self._cleanup_net()
+                self._passwort_abfrage(falsch=self._pw_gesendet)
+                return
             if data.get("code") == "DATA_MISMATCH":
                 self._msg = tr("Deine Spieldateien passen nicht zur Lobby. "
                                "Bitte das Spiel neu installieren.")
@@ -665,6 +729,7 @@ class OnlineLobbyPage(Page):
             self._cleanup_net()
 
         elif t == "LOBBY_STATE":
+            self._lobby_info_lesen(data)
             old_slots = frozenset(p["slot"] for p in self._players)
             # Geprüft statt roh übernommen: sechs Stellen greifen später ohne
             # Absicherung auf p["slot"] zu. Ein Eintrag ohne brauchbaren Slot
@@ -832,7 +897,7 @@ class OnlineLobbyPage(Page):
 
         elif t == "LOBBY_CLOSED":
             self._msg = self._servertext(data.get("reason"), "Lobby geschlossen.")
-            self._view = _ROLE
+            self._view = _BROWSER
             self._cleanup_net()
 
         elif t == "PLAYER_LEFT":
@@ -1104,6 +1169,7 @@ class OnlineLobbyPage(Page):
         if not gp_mode:
             reihe.append(self._btn_track)
         reihe.append(self._btn_vehicle)
+        reihe.append(self._btn_lobbyinfo)
         return reihe
 
     def _layout_host_column(self) -> None:
@@ -2005,7 +2071,8 @@ class OnlineLobbyPage(Page):
         from src.core import profile
         return (profile.current().username or "").strip()[:15] or "Player"
 
-    def _start_connect(self, server, *, is_host: bool, lobby_code: str = "") -> None:
+    def _start_connect(self, server, *, is_host: bool, lobby_code: str = "",
+                       password: str = "", angaben: dict | None = None) -> None:
         from src.core import integritaet
         if not integritaet.stand().ok:
             # Veraenderte Spieldateien (Fahrwerte, Strecken, KI): offline ja,
@@ -2016,6 +2083,9 @@ class OnlineLobbyPage(Page):
         name = self._player_name()
         self._is_host        = is_host
         self._connect_server = server
+        # Fuer eine Passwortabfrage nach BAD_PASSWORD merken, wohin es ging.
+        self._pw_ziel        = None if is_host else (server, lobby_code)
+        self._pw_gesendet    = bool(password)
         self._view           = _CONNECTING
         self._msg            = ""
         self._players        = []
@@ -2032,10 +2102,19 @@ class OnlineLobbyPage(Page):
             if not net.connect(host, tcp_port, udp_host=host, udp_port=udp_port,
                                preamble=server.preamble_bytes(host, tcp_port)):
                 return
+            # ``cid``: hinter dem Tunnel von Hamburg sieht der Relay nur eine
+            # Adresse; mit der Kennung zaehlt er Passwortversuche je Spieler.
+            from src.net import strecken_client
+            cid = strecken_client.kennung()
             if is_host:
-                net.send_tcp({"type": "HOST", "name": name})
+                net.send_tcp({"type": "HOST", "name": name, "cid": cid,
+                              **(angaben or {})})
             else:
-                net.send_tcp({"type": "JOIN", "name": name, "lobby_id": lobby_code})
+                msg = {"type": "JOIN", "name": name, "lobby_id": lobby_code,
+                       "cid": cid}
+                if password:
+                    msg["password"] = password
+                net.send_tcp(msg)
 
         threading.Thread(target=_thread, daemon=True, name="net-connect").start()
 
@@ -2085,12 +2164,16 @@ class OnlineLobbyPage(Page):
                 self._dialog_danach = None
             return True
 
-        if self._view == _ROLE:
-            return self._role_event(event)
+        if self._view == _BROWSER:
+            return self._browser_event(event)
         elif self._view == _HOST_SERVER:
             return self._host_server_event(event)
         elif self._view == _JOIN:
             return self._join_event(event)
+        elif self._view == _PASSWORD:
+            return self._password_event(event)
+        elif self._view == _LOBBY_EDIT:
+            return self._lobby_edit_event(event)
         elif self._view == _LOBBY:
             return self._lobby_event(event)
         elif self._view == _GP_OVERVIEW:
@@ -2103,45 +2186,214 @@ class OnlineLobbyPage(Page):
             return True
         return None
 
-    def _role_event(self, event: pygame.event.Event) -> bool | None:
+    def _browser_event(self, event: pygame.event.Event) -> bool | None:
+        """Die Lobbyliste: Wahl einer Lobby oder eine der drei Schaltflaechen."""
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             return False
-        action = self._role_group.handle_event(event)
-        if action == "role_host":
-            self._msg = ""
-            self._return_view = _HOST_SERVER
-            self._view = _HOST_SERVER
-            if self._server_defs:
-                if not self._selected_srv_id:
-                    self._selected_srv_id = self._server_defs[0].id
-                for row, sd in zip(self._server_rows, self._server_defs):
-                    row.selected = (sd.id == self._selected_srv_id)
-                self._btn_create.enabled = True
-                self._btn_create.focusable = True
+        aktion = self._browser.handle_event(event)
+        if aktion is None:
             return True
-        elif action == "role_join":
-            self._msg = ""
+        self._msg = ""
+        if aktion == "create":
+            self._oeffne_erstellen()
+        elif aktion == "code":
             self._return_view = _JOIN
             self._view = _JOIN
-            return True
-        elif action == "back_menu":
-            return False
+        elif aktion == "strecken":
+            self.shell.state_machine.transition("online_strecken")
+        elif aktion == "beitreten" and self._browser.gewaehlt is not None:
+            self._beitreten_aus_liste(self._browser.gewaehlt)
         return True
+
+    def _beitreten_aus_liste(self, e) -> None:
+        """Eine Zeile der Liste wurde gewaehlt. Mit Passwort wird erst gefragt."""
+        if e.password:
+            self._pw_ziel = (e.server, e.code)
+            self._return_view = _BROWSER
+            self._passwort_abfrage(falsch=False)
+            return
+        self._return_view = _BROWSER
+        self._start_connect(e.server, is_host=False, lobby_code=e.code)
+
+    def _passwort_abfrage(self, *, falsch: bool) -> None:
+        """Zur Passwortabfrage. Nach einem falschen Passwort mit freundlichem
+        Hinweis und leerem Feld; wer es erneut versucht, kommt ohne Umweg weiter."""
+        self._pw_input.text = ""
+        self._pw_group.index = 0
+        self._msg = tr("Das Passwort stimmt nicht. Bitte noch einmal versuchen.") if falsch else ""
+        self._view = _PASSWORD
+        if self._return_view not in (_BROWSER, _JOIN):
+            self._return_view = _BROWSER
+
+    def _oeffne_erstellen(self) -> None:
+        """Von der Liste zum Erstellen einer Lobby."""
+        self._return_view = _HOST_SERVER
+        self._view = _HOST_SERVER
+        self._angaben.pruefen()
+        self._angaben.meldung = ""
+        if self._server_defs:
+            if not self._selected_srv_id:
+                self._selected_srv_id = self._server_defs[0].id
+            for row, sd in zip(self._server_rows, self._server_defs):
+                row.selected = (sd.id == self._selected_srv_id)
+            self._btn_create.enabled = True
+            self._btn_create.focusable = True
+
+    def _vorgabe_lobbyname(self) -> str:
+        """„Lobby von <Name>" — passt in die 24 Zeichen, die der Relay behaelt."""
+        from src.core import profile
+        return f"Lobby von {self._player_name()}"[:profile.LOBBY_NAME_MAX].strip()
+
+    def _host_gruppe_bauen(self, behalten: bool = False) -> None:
+        """Fokusgruppe und Platz der Erstellen-Ansicht. Das Passwortfeld ist nur
+        bei „mit Passwort" da, deshalb wird neu gerechnet."""
+        ende = self._angaben.anordnen(960 - 420, self._form_y)
+        y = ende + 30
+        self._btn_back_host.rect.y = y
+        self._btn_create.rect.y = y
+        self._host_group.set_widgets(
+            [*self._server_rows, *self._angaben.widgets(),
+             self._btn_back_host, self._btn_create], keep_focus=behalten)
+
+    def _lobby_info_lesen(self, data: dict) -> None:
+        """Name und Sichtbarkeit der Lobby aus JOIN_OK / LOBBY_STATE.
+
+        Alles vom Relay laeuft durch die Saeuberung (H2.12); ein Relay ohne die
+        Neuerung schickt die Felder nicht, dann bleibt es bei „privat".
+        """
+        from src.net import servertext
+        if "lobby_name" in data:
+            self._lobby_name = servertext.saeubern(data.get("lobby_name"), 24, zeilen=False)
+        if data.get("visibility") in ("public", "password", "private"):
+            self._lobby_sicht = data["visibility"]
+        if "has_password" in data:
+            self._lobby_hat_pw = data.get("has_password") is True
+
+    # -- Passwortabfrage ---------------------------------------------------------
+    def _password_event(self, event: pygame.event.Event) -> bool | None:
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._msg = ""
+            self._view = self._return_view if self._return_view in (_BROWSER, _JOIN) else _BROWSER
+            return True
+        if self._osk_fuer_textfeld(event, self._pw_group, self._pw_input,
+                                   weiter=self._btn_pw_join):
+            return True
+        aktion = self._pw_group.handle_event(event)
+        if aktion == "edit":
+            self._msg = ""
+            return True
+        if aktion == "back_role":
+            self._msg = ""
+            self._view = self._return_view if self._return_view in (_BROWSER, _JOIN) else _BROWSER
+            return True
+        if aktion != "pw_join" or self._pw_ziel is None:
+            return True
+        from src.core import profile
+        ok, grund = profile.validate_lobby_password(self._pw_input.text)
+        if not ok:
+            self._msg = grund
+            return True
+        server, code = self._pw_ziel
+        self._msg = ""
+        self._start_connect(server, is_host=False, lobby_code=code,
+                            password=self._pw_input.text)
+        return True
+
+    def _osk_fuer_textfeld(self, event, gruppe, feld, weiter=None) -> bool:
+        """Am Controller oeffnet ENTER auf einem Textfeld die Bildschirmtastatur
+        (wie beim Lobby-Code). Gibt True zurueck, wenn das Ereignis verbraucht ist."""
+        from src.core import gamepad
+        if (event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN
+                and gruppe.focused is feld and gamepad.using_pad() and self.osk is None):
+            ziel = gruppe.widgets.index(weiter) if weiter in gruppe.widgets else gruppe.index
+            self.osk = OnScreenKeyboard(
+                feld, on_done=lambda: setattr(gruppe, "index", ziel))
+            return True
+        return False
+
+    # -- Lobby-Angaben in der Lobby aendern ------------------------------------------
+    def _lobby_edit_oeffnen(self) -> None:
+        """Der Host aendert Sichtbarkeit, Name und Passwort seiner Lobby."""
+        self._edit_angaben = LobbyAngaben(
+            sichtbarkeit=self._lobby_sicht, name=self._lobby_name or self._vorgabe_lobbyname())
+        self._edit_angaben.pw_behalten = self._lobby_hat_pw
+        self._edit_gruppe_bauen()
+        self._msg = ""
+        self._view = _LOBBY_EDIT
+
+    def _edit_gruppe_bauen(self, behalten: bool = False) -> None:
+        a = self._edit_angaben
+        ende = a.anordnen(960 - 420, 330)
+        y = ende + 40
+        self._btn_edit_abbruch.rect.y = y
+        self._btn_edit_ok.rect.y = y
+        self._edit_group.set_widgets([*a.widgets(), self._btn_edit_abbruch,
+                                      self._btn_edit_ok], keep_focus=behalten)
+
+    def _lobby_edit_event(self, event: pygame.event.Event) -> bool | None:
+        a = self._edit_angaben
+        if a is None:
+            self._view = _LOBBY
+            return True
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._lobby_edit_schliessen()
+            return True
+        for feld in (a.name_feld, a.pw_feld):
+            if self._osk_fuer_textfeld(event, self._edit_group, feld,
+                                       weiter=self._btn_edit_ok):
+                return True
+        aktion = self._edit_group.handle_event(event)
+        if aktion == "edit":
+            self._msg = ""
+            a.meldung = ""
+        elif aktion == "sichtbarkeit":
+            self._edit_gruppe_bauen(behalten=True)
+        elif aktion == "edit_cancel":
+            self._lobby_edit_schliessen()
+        elif aktion == "edit_ok":
+            # Hat die Lobby schon ein Passwort, darf das Feld leer bleiben - es
+            # gilt dann das alte weiter (``pw_behalten``).
+            if not a.pruefen():
+                return True
+            from src.net import session
+            net = session.get()
+            if net:
+                net.send_tcp({"type": "SET_LOBBY_INFO",
+                              **a.nachricht(self._vorgabe_lobbyname())})
+            self._lobby_edit_schliessen()
+        return True
+
+    def _lobby_edit_schliessen(self) -> None:
+        self._view = _LOBBY
+        self._msg = ""
+        self._edit_angaben = None
+        self._build_lobby_group()
 
     def _host_server_event(self, event: pygame.event.Event) -> bool | None:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self._msg = ""
-            self._return_view = _ROLE
-            self._view = _ROLE
+            self._return_view = _BROWSER
+            self._view = _BROWSER
             return True
 
+        for feld in (self._angaben.name_feld, self._angaben.pw_feld):
+            if self._osk_fuer_textfeld(event, self._host_group, feld,
+                                       weiter=self._btn_create):
+                return True
         action = self._host_group.handle_event(event)
         if not action:
             return True
+        if action == "edit":
+            self._msg = ""
+            return True
+        if action == "sichtbarkeit":
+            self._msg = ""
+            self._host_gruppe_bauen(behalten=True)
+            return True
         if action == "back_role":
             self._msg = ""
-            self._return_view = _ROLE
-            self._view = _ROLE
+            self._return_view = _BROWSER
+            self._view = _BROWSER
             return True
         if action.startswith("pick_"):
             self._selected_srv_id = action[len("pick_"):]
@@ -2156,16 +2408,20 @@ class OnlineLobbyPage(Page):
             if server is None:
                 self._msg = "Kein Server verfügbar."
                 return True
+            if not self._angaben.pruefen():
+                self._msg = self._angaben.meldung
+                return True
             self._msg = ""
-            self._start_connect(server, is_host=True)
+            self._start_connect(server, is_host=True,
+                                angaben=self._angaben.nachricht(self._vorgabe_lobbyname()))
             return True
         return True
 
     def _join_event(self, event: pygame.event.Event) -> bool | None:
         if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self._msg = ""
-            self._return_view = _ROLE
-            self._view = _ROLE
+            self._return_view = _BROWSER
+            self._view = _BROWSER
             return True
 
         from src.core import gamepad
@@ -2182,8 +2438,8 @@ class OnlineLobbyPage(Page):
             return True
         if action == "back_role":
             self._msg = ""
-            self._return_view = _ROLE
-            self._view = _ROLE
+            self._return_view = _BROWSER
+            self._view = _BROWSER
             return True
         if action != "join":
             return True
@@ -2479,7 +2735,7 @@ class OnlineLobbyPage(Page):
 
     def _confirm_leave_lobby(self) -> None:
         self._cleanup_net()
-        self._view = _ROLE
+        self._view = _BROWSER
         self._msg  = ""
 
     def _ask_leave_gp(self) -> None:
@@ -2528,7 +2784,7 @@ class OnlineLobbyPage(Page):
             self._cleanup_net()
             self._gp_ui = None
             self._gp_phase = "lobby"
-            self._view = _ROLE
+            self._view = _BROWSER
             self._melde(tr("Du hast den Grand Prix verlassen."))
 
     def _draw_gp_overview(self, screen: pygame.Surface, area: pygame.Rect) -> None:
@@ -2622,6 +2878,10 @@ class OnlineLobbyPage(Page):
 
         if action == "pick_vehicle":
             self._navigate_to_car_select()
+            return
+
+        if action == "lobby_info" and self._is_host:
+            self._lobby_edit_oeffnen()
             return
 
         if action == "toggle_ready":
@@ -2749,7 +3009,8 @@ class OnlineLobbyPage(Page):
     #: eine Serie zu beenden ist keine Ebene hoch, der benannte Knopf sagt das
     #: und „‹ Zurueck" sagt es nicht. Die Uebersicht des Einzelspielers
     #: (``gp_overview_page``) hatte aus demselben Grund nie einen.
-    _HAT_EIGENEN_RUECKWEG = (_HOST_SERVER, _JOIN, _CONNECTING, _GP_OVERVIEW)
+    _HAT_EIGENEN_RUECKWEG = (_HOST_SERVER, _JOIN, _PASSWORD, _LOBBY_EDIT,
+                             _CONNECTING, _GP_OVERVIEW)
 
     def zurueck(self) -> None:
         """Eine Ebene hoch — je nachdem, in welcher man steht.
@@ -2762,10 +3023,12 @@ class OnlineLobbyPage(Page):
             self._ask_leave_lobby()
         elif self._view == _GP_OVERVIEW:
             self._ask_leave_gp()
-        elif self._view in (_HOST_SERVER, _JOIN):
+        elif self._view in (_HOST_SERVER, _JOIN, _PASSWORD):
             self._msg = ""
-            self._return_view = _ROLE
-            self._view = _ROLE
+            self._return_view = _BROWSER
+            self._view = _BROWSER
+        elif self._view == _LOBBY_EDIT:
+            self._lobby_edit_schliessen()
         elif self._view == _CONNECTING:
             self._cleanup_net()
             self._view = self._return_view
@@ -2779,12 +3042,16 @@ class OnlineLobbyPage(Page):
         if self._view not in self._HAT_EIGENEN_RUECKWEG:
             self.zurueck_zeichnen(screen, area)
 
-        if self._view == _ROLE:
-            self._draw_role(screen, area)
+        if self._view == _BROWSER:
+            self._draw_browser(screen, area)
         elif self._view == _HOST_SERVER:
             self._draw_host_server(screen, area)
         elif self._view == _JOIN:
             self._draw_join(screen, area)
+        elif self._view == _PASSWORD:
+            self._draw_password(screen, area)
+        elif self._view == _LOBBY_EDIT:
+            self._draw_lobby_edit(screen, area)
         elif self._view == _CONNECTING:
             self._draw_connecting(screen, area)
         elif self._view == _LOBBY:
@@ -2794,7 +3061,7 @@ class OnlineLobbyPage(Page):
 
         # Only the lobby keeps a footer status line. The pre-lobby views place
         # their messages next to the control that caused them.
-        if self._msg and self._view == _LOBBY:
+        if self._msg and self._view in (_LOBBY, _LOBBY_EDIT):
             theme.text(screen, tr(self._msg), theme.BODY, theme.DANGER,
                        (area.centerx, area.bottom - 84), center=True)
 
@@ -2817,22 +3084,16 @@ class OnlineLobbyPage(Page):
                 theme.HINT, theme.TEXT_DIM, (area.centerx, area.bottom - 40), center=True,
             )
 
-    def _draw_role(self, screen: pygame.Surface, area: pygame.Rect) -> None:
-        cx = area.centerx
-        theme.text(screen, tr("Als Gastgeber oder Gast spielen?"), theme.TITLE, theme.TEXT,
-                   (cx, 210), center=True)
-        theme.text(screen, tr("Als Gastgeber wählst du den Server und die Renneinstellungen."),
-                   theme.BODY, theme.TEXT_DIM, (cx, 262), center=True)
-        self._role_group.draw(screen)
+    def _draw_browser(self, screen: pygame.Surface, area: pygame.Rect) -> None:
+        self._browser.meldung = tr(self._msg) if self._msg else ""
+        self._browser.draw(screen, area)
         theme.text(screen, tr("Spielst du unter dem Namen {n} — änderbar in den Einstellungen.")
                    .format(n=self._player_name()),
-                   theme.HINT, theme.TEXT_FAINT, (cx, 520), center=True)
-        if self._msg:
-            theme.text(screen, tr(self._msg), theme.BODY, theme.DANGER, (cx, 570), center=True)
+                   theme.SMALL, theme.TEXT_FAINT, (1840, 952), topright=True)
 
     def _draw_host_server(self, screen: pygame.Surface, area: pygame.Rect) -> None:
         cx = area.centerx
-        theme.text(screen, tr("Server wählen"), theme.TITLE, theme.TEXT, (cx, 176), center=True)
+        theme.text(screen, tr("Lobby erstellen"), theme.TITLE, theme.TEXT, (cx, 176), center=True)
         theme.text(screen, tr("Der Ping gilt für dich — deine Mitspieler sehen eigene Werte."),
                    theme.BODY, theme.TEXT_DIM, (cx, 226), center=True)
 
@@ -2851,11 +3112,18 @@ class OnlineLobbyPage(Page):
             theme.text(screen, tr("Lobbys"), theme.SMALL, theme.TEXT_FAINT,
                        (row.rect.right - 20, head_y), topright=True)
 
-        self._host_group.draw(screen)
+        # Die Serverzeilen und Knoepfe zeichnet die Gruppe; das Formular zeichnet
+        # sich selbst (mit Beschriftungen), deshalb aus der Gruppe heraus.
+        fokus = self._host_group.focused
+        for w in self._host_group.widgets:
+            if w in self._angaben.widgets():
+                continue
+            w.draw(screen, focused=(w is fokus))
+        self._angaben.draw(screen, self._host_group)
 
         if self._msg:
             theme.text(screen, tr(self._msg), theme.BODY, theme.DANGER,
-                       (cx - 420, self._btn_create.rect.centery - 16))
+                       (cx - 420, self._btn_create.rect.y - 40))
 
     def _draw_join(self, screen: pygame.Surface, area: pygame.Rect) -> None:
         cx = area.centerx
@@ -2865,6 +3133,34 @@ class OnlineLobbyPage(Page):
         self._join_group.draw(screen)
         if self._msg:
             theme.text(screen, tr(self._msg), theme.BODY, theme.DANGER, (cx - 300, 396))
+
+    def _draw_password(self, screen: pygame.Surface, area: pygame.Rect) -> None:
+        cx = area.centerx
+        theme.text(screen, tr("Passwort eingeben"), theme.TITLE, theme.TEXT, (cx, 200), center=True)
+        ziel = self._pw_ziel[1] if self._pw_ziel else ""
+        theme.text(screen, tr("Die Lobby {c} ist durch ein Passwort geschützt.").format(c=ziel),
+                   theme.BODY, theme.TEXT_DIM, (cx, 262), center=True)
+        theme.text(screen, tr("Passwort"), theme.LABEL, theme.TEXT_DIM, (cx - 300, 326))
+        self._pw_group.draw(screen)
+        if self._msg:
+            theme.text(screen, tr(self._msg), theme.BODY, theme.DANGER, (cx - 300, 436))
+
+    def _draw_lobby_edit(self, screen: pygame.Surface, area: pygame.Rect) -> None:
+        a = self._edit_angaben
+        if a is None:
+            return
+        cx = area.centerx
+        theme.text(screen, tr("Sichtbarkeit & Name"), theme.TITLE, theme.TEXT, (cx, 176), center=True)
+        theme.text(screen, tr("Gilt sofort für alle in der Lobby und in der Lobbyliste."),
+                   theme.BODY, theme.TEXT_DIM, (cx, 236), center=True)
+        fokus = self._edit_group.focused
+        a.draw(screen, self._edit_group)
+        self._btn_edit_abbruch.draw(screen, fokus is self._btn_edit_abbruch)
+        self._btn_edit_ok.draw(screen, fokus is self._btn_edit_ok)
+        fehler = a.meldung or self._msg
+        if fehler:
+            theme.text(screen, tr(fehler), theme.BODY, theme.DANGER,
+                       (cx - 420, self._btn_edit_ok.rect.y - 40))
 
     def _draw_connecting(self, screen: pygame.Surface, area: pygame.Rect) -> None:
         dots = "." * (1 + int(self._time * 2) % 3)
@@ -2946,6 +3242,13 @@ class OnlineLobbyPage(Page):
                 srv_txt += f"  ·  {net.ping_ms:.0f} ms"
             theme.text(screen, srv_txt, theme.LABEL, theme.TEXT_DIM,
                        (rx + 850, ry + 4), topright=True)
+        # Name und Sichtbarkeit der Lobby (Host und Gaeste, aus LOBBY_STATE).
+        if self._lobby_name:
+            theme.text(screen, self._lobby_name, theme.BODY, theme.TEXT,
+                       (rx + 850, ry + 38), topright=True, max_w=470)
+        sicht = sichtbarkeit_text(self._lobby_sicht)
+        theme.text(screen, sicht, theme.LABEL, theme.TEXT_DIM, (rx + 850, ry + 78),
+                   topright=True)
         zeichnen.line(screen, theme.BORDER, (rx, ry + 110), (rx + 850, ry + 110), 1)
 
         # Roster header

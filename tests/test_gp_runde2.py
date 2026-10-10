@@ -368,5 +368,5 @@ def test_lobby_schliesst_erst_nach_dem_leerlauf(serie, netz):
 
     seite.update(1.0)
 
-    assert seite._view == olp._ROLE
+    assert seite._view == olp._BROWSER
     assert "Aktivität" in seite._msg
