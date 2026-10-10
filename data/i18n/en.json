@@ -930,5 +930,16 @@
   "Zu viele falsche Versuche. Bitte in einer Minute noch einmal probieren.": "Too many wrong attempts. Please try again in a minute.",
   "Ungültige Sichtbarkeit.": "Invalid visibility.",
   "Das Passwort muss 4 bis 16 Zeichen lang sein.": "The password must be 4 to 16 characters long.",
-  "Neues Passwort (leer = unverändert)": "New password (empty = unchanged)"
+  "Neues Passwort (leer = unverändert)": "New password (empty = unchanged)",
+  "RENNEN": "RACE",
+  "RENNEN — LOKAL": "RACE — LOCAL",
+  "Lokal": "Local",
+  "1 Spieler": "1 Player",
+  "2 Spieler (Splitscreen)": "2 Players (split screen)",
+  "Wie möchtest du fahren?": "How do you want to race?",
+  "Wie viele Spieler fahren?": "How many players?",
+  "An diesem Gerät: allein oder zu zweit im Splitscreen.": "On this device: alone or two players in split screen.",
+  "Gegen andere im Netz: Lobby erstellen oder beitreten.": "Against others online: create or join a lobby.",
+  "Allein am Steuer: gegen Computerfahrer oder auf Bestzeit.": "Alone at the wheel: against computer drivers or chasing a best time.",
+  "Zwei Spieler an einem Gerät, mit geteiltem Bildschirm.": "Two players on one device with a split screen."
 }

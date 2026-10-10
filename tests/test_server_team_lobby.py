@@ -207,7 +207,7 @@ def test_online_results_returns_to_active_lobby_and_tab2():
     shell = MenuShellState(MockSM())
     # Enter results with an online race config
     shell.enter(results=[{"name": "P1", "position": 1}], race_config={"is_online": True})
-    assert shell.tab == 2  # Active tab must be 2 (MEHRSPIELER ONLINE)
+    assert shell.tab == 0  # RENNEN (seit 1.1.0 auch für online)
 
     # Set up active mock session and lobby page
     mock_net = client.NetworkClient()
@@ -225,8 +225,9 @@ def test_online_results_returns_to_active_lobby_and_tab2():
     res_page.handle_event(type("Event", (), {"type": -1})())
 
 
-    assert shell.tab == 2
-    assert shell.page_stack == [mock_page]
+    assert shell.tab == 0
+    assert shell.page_stack[-1] is mock_page
+    assert [type(p).__name__ for p in shell.page_stack[:-1]] == ["RennenWahlPage"]
     assert mock_page._view == "lobby"
 
     # Cleanup mock session

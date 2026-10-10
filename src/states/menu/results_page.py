@@ -6,6 +6,7 @@ import time
 import pygame
 
 from src.states.menu.page import Page
+from src.states.menu_shell_state import TAB_RENNEN
 from src.core import race_setup
 from src.ui import theme
 from src.ui.widgets import Button
@@ -202,10 +203,10 @@ class ResultsPage(Page):
         if (getattr(lp, "_is_host", False) and present_ok
                 and n == m and not self._restart_fired):
             self._restart_fired = True
-            self.shell.tab = 2
+            self.shell.tab = TAB_RENNEN
             lp.shell = self.shell
             lp.resume_after_race()
-            self.shell.page_stack = [lp]
+            self.shell.page_stack = self.shell.rennen_ebenen("online") + [lp]
             lp.request_restart()
 
     def _set_status(self, msg: str) -> None:
@@ -268,7 +269,7 @@ class ResultsPage(Page):
                 # (session kept through the race). Reuse the persisted lobby page
                 # so we land in the roster, not the create/join screen.
                 from src.net import session
-                self.shell.tab = 2
+                self.shell.tab = TAB_RENNEN
                 page = session.get_lobby_page()
                 net = session.get()
                 if page is not None and net is not None and net.connected:
@@ -277,7 +278,7 @@ class ResultsPage(Page):
                     # can no longer start a rematch that would exclude us.
                     page.leave_results_vote()
                     page.resume_after_race()
-                    self.shell.page_stack = [page]
+                    self.shell.page_stack = self.shell.rennen_ebenen("online") + [page]
                 else:
                     if page is None:
                         from src.states.menu.online_lobby_page import OnlineLobbyPage
@@ -289,12 +290,16 @@ class ResultsPage(Page):
                         page._view = "entry"
                     if not page._msg:
                         page._msg = tr("Verbindung zur Lobby wurde getrennt.")
-                    self.shell.page_stack = [page]
+                    self.shell.page_stack = self.shell.rennen_ebenen("online") + [page]
                 return
 
             else:
-                self.shell.tab = 1 if s.is_multiplayer else 0
-                self.shell.page_stack = [MPLobbyPage() if s.is_multiplayer else LobbyPage()]
+                # Zurueck in die Lobby, mit den Auswahlseiten darunter: ESC geht
+                # von dort genau eine Ebene hoch (Lokal -> RENNEN -> Menueleiste).
+                self.shell.tab = TAB_RENNEN
+                self.shell.page_stack = self.shell.rennen_ebenen(
+                    "mp_local" if s.is_multiplayer else "single")
+                self.shell.page_stack.append(MPLobbyPage() if s.is_multiplayer else LobbyPage())
             self.shell.page_stack[-1].enter(self.shell)
         elif action == "menu":
             # Leaving to the main menu ends the online session/lobby.

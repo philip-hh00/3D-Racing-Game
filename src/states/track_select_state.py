@@ -176,19 +176,17 @@ class TrackSelectState(BaseState):
         return pygame.Rect(self.right_panel_rect.right - 460,
                            self.left_panel_rect.bottom + 16, 460, 60)
 
-    def _online_taste(self) -> str:
-        """Kurzer Hinweis auf die Taste: O auf der Tastatur, Y am Controller."""
-        from src.core import input_mode
-        return "Y" if input_mode.is_pad() else "O"
-
     def _draw_online_button(self, screen: pygame.Surface) -> None:
         from src.core import display
         r = self._online_rect()
-        hover = r.collidepoint(display.mouse_pos())
+        # Kein Tastenkuerzel: der Knopf wird mit der Maus geklickt oder mit dem
+        # Fokus (rechts) angewaehlt und mit ENTER/A ausgeloest.
+        hover = r.collidepoint(display.mouse_pos()) or getattr(self, "_online_fokus", False)
         zeichnen.rect(screen, (30, 44, 58) if hover else (22, 32, 44), r, border_radius=6)
-        zeichnen.rect(screen, (120, 200, 255) if hover else (70, 130, 175), r, 2,
+        zeichnen.rect(screen, (120, 200, 255) if hover else (70, 130, 175), r,
+                      3 if getattr(self, "_online_fokus", False) else 2,
                       border_radius=6)
-        theme.text_fit(screen, f"{tr('Online-Strecken')}  [{self._online_taste()}]",
+        theme.text_fit(screen, tr('Online-Strecken'),
                        theme.BODY, (180, 225, 255) if hover else (140, 195, 235),
                        r.inflate(-24, 0), center=True)
 
@@ -288,7 +286,20 @@ class TrackSelectState(BaseState):
                     self.track_scroll = max(0, min(max_scroll, getattr(self, "track_scroll", 0) - event.y))
             elif event.type == pygame.KEYDOWN:
                 from src.core import keybindings as kb
-                if event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
+                if getattr(self, "_online_fokus", False):
+                    # Der Knopf "Online-Strecken" hat den Fokus: ENTER/A oeffnet,
+                    # jede andere Richtung geht zurueck in die Liste.
+                    if event.key == pygame.K_RETURN:
+                        self._online_strecken()
+                    elif event.key == pygame.K_ESCAPE:
+                        self._zurueck()
+                    elif event.key in (pygame.K_LEFT, pygame.K_UP, pygame.K_DOWN,
+                                       pygame.K_a, pygame.K_w, pygame.K_s):
+                        self._online_fokus = False
+                    continue
+                if event.key in (pygame.K_RIGHT, pygame.K_d):
+                    self._online_fokus = True
+                elif event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
                     self.selected_index = (self.selected_index - 1) % len(self.track_keys)
                     self._track_ensure_visible()
                 elif event.key in (pygame.K_DOWN, pygame.K_s, kb.get("brake")):
@@ -296,9 +307,6 @@ class TrackSelectState(BaseState):
                     self._track_ensure_visible()
                 elif event.key == pygame.K_RETURN:
                     self._confirm()
-                elif event.key == pygame.K_o or (event.key == pygame.K_y
-                                                 and getattr(event, "synthetic", False)):
-                    self._online_strecken()
                 elif event.key == pygame.K_ESCAPE:
                     self._zurueck()
 

@@ -41,20 +41,39 @@ _UEBERZUG_RAND = "rand"
 _SEITE_DECKKRAFT = 150
 
 _TABS = [
-    ("EINZELSPIELER",      "Einzelspieler",       "single"),
-    ("MEHRSPIELER LOKAL",  "Mehrspieler_Lokal",   "mp_local"),
-    ("MEHRSPIELER ONLINE", "Mehrspieler_Online",  "online"),
-    ("STRECKENEDITOR",     "Streckeneditor",      "editor"),
-    ("WERKSTATT",          "Werkstatt",           "werkstatt"),
-    ("PROFIL",             "Profil",              "profil"),
-    ("EINSTELLUNGEN",      "Einstellungen",       "settings"),
+    ("RENNEN",         "Einzelspieler",  "rennen"),
+    ("STRECKENEDITOR", "Streckeneditor", "editor"),
+    ("WERKSTATT",      "Werkstatt",      "werkstatt"),
+    ("PROFIL",         "Profil",         "profil"),
+    ("EINSTELLUNGEN",  "Einstellungen",  "settings"),
 ]
 
-#: Index des Werkstatt-Tabs — gebraucht vom Kurzweg aus der Fahrzeugauswahl.
-TAB_WERKSTATT = 4
+#: Index des Rennen-Tabs. Er ersetzt seit 1.1.0 die drei Tabs Einzelspieler,
+#: Mehrspieler lokal und Mehrspieler online; die Wahl dazwischen treffen jetzt
+#: die Auswahlseiten (``rennen_wahl_page``).
+TAB_RENNEN = 0
 #: Index des Editor-Tabs. Der Streckeneditor ist ein eigener Zustand, keine
 #: Seite in dieser Schale, und muss seinen eigenen Tab hervorheben können.
-TAB_EDITOR = 3
+TAB_EDITOR = 1
+#: Index des Werkstatt-Tabs — gebraucht vom Kurzweg aus der Fahrzeugauswahl.
+TAB_WERKSTATT = 2
+TAB_PROFIL = 3
+TAB_EINSTELLUNGEN = 4
+
+#: Hintergrundvideo je Rennart. Seiten ohne eigenen Wunsch (``VIDEO_STAMM``)
+#: erben den der Seite darunter, die Auswahlseiten bleiben beim Tab-Video.
+_RENNEN_STAMM = {
+    "single": "Einzelspieler",
+    "mp_local": "Mehrspieler_Lokal",
+    "online": "Mehrspieler_Online",
+}
+#: Seiten, die sich nicht selbst um ihr Video kuemmern. Nach Klassenname, damit
+#: die Lobbys dafuer nicht angefasst werden muessen.
+_SEITEN_STAMM = {
+    "MPNamePage": "Mehrspieler_Lokal",
+    "MPLobbyPage": "Mehrspieler_Lokal",
+    "OnlineLobbyPage": "Mehrspieler_Online",
+}
 
 
 def tab_rects() -> list[pygame.Rect]:
@@ -175,6 +194,9 @@ class MenuShellState(BaseState):
 
         self._announcement: dict | None = None
         self._ann_ok_rect: pygame.Rect | None = None
+        #: Rennart der Serien-/Ergebnisseiten ("single" | "mp_local" | "online"),
+        #: nur fuer das Hintergrundvideo.
+        self._rennen_art: str | None = None
 
     @property
     def quit_requested(self) -> bool:
@@ -213,7 +235,10 @@ class MenuShellState(BaseState):
         results = kwargs.get("results")
         if results is not None:
             race_cfg = kwargs.get("race_config") or {}
-            self.tab = 2 if race_cfg.get("is_online") else 0
+            self.tab = TAB_RENNEN
+            from src.core import race_setup as _rs0
+            self._rennen_art = ("online" if race_cfg.get("is_online") else
+                                "mp_local" if _rs0.current().is_multiplayer else "single")
             from src.states.menu.results_page import ResultsPage
             self.page_stack = [ResultsPage(results, race_cfg)]
             self.page_stack[-1].enter(self)
@@ -222,30 +247,27 @@ class MenuShellState(BaseState):
         # Re-open a specific lobby (e.g. after leaving a selection screen).
         reopen = kwargs.get("reopen")
         if reopen == "mp_lobby":
-            self.tab = 1
-            from src.states.menu.mp_name_page import MPNamePage
+            self.tab = TAB_RENNEN
             from src.states.menu.mp_lobby_page import MPLobbyPage
-            p1 = MPNamePage()
             p2 = MPLobbyPage()
-            self.page_stack = [p1, p2]
-            p1.enter(self)
+            self.page_stack = self.rennen_ebenen("mp_local") + [p2]
             p2.enter(self)
         elif reopen == "lobby":
-            self.tab = 0
+            self.tab = TAB_RENNEN
             from src.states.menu.lobby_page import LobbyPage
-            self.page_stack = [LobbyPage()]
+            self.page_stack = self.rennen_ebenen("single") + [LobbyPage()]
             self.page_stack[-1].enter(self)
         elif reopen == "online_lobby":
-            self.tab = 2
+            self.tab = TAB_RENNEN
             from src.net import session as _sess
             page = _sess.get_lobby_page()
             if page is not None:
                 page.shell = self
-                self.page_stack = [page]
+                self.page_stack = self.rennen_ebenen("online") + [page]
                 page.on_return_from_select()
             else:
                 from src.states.menu.online_lobby_page import OnlineLobbyPage
-                self.page_stack = [OnlineLobbyPage()]
+                self.page_stack = self.rennen_ebenen("online") + [OnlineLobbyPage()]
                 self.page_stack[-1].enter(self)
 
         elif reopen == "werkstatt":
@@ -262,12 +284,13 @@ class MenuShellState(BaseState):
             # online. Der Tab richtet sich danach, wo die Serie herkommt.
             from src.states.menu.gp_overview_page import GPOverviewPage
             from src.core import race_setup as _rs
-            self.tab = 1 if _rs.current().is_multiplayer else 0
+            self.tab = TAB_RENNEN
+            self._rennen_art = "mp_local" if _rs.current().is_multiplayer else "single"
             self.page_stack = [GPOverviewPage()]
             self.page_stack[-1].enter(self)
 
         elif reopen == "online_lobby_resume":
-            self.tab = 2
+            self.tab = TAB_RENNEN
             from src.net import session as _sess
             page = _sess.get_lobby_page()
             if page is not None and _sess.get() is not None:
@@ -278,15 +301,79 @@ class MenuShellState(BaseState):
                 hinweis = kwargs.get("lobby_msg")
                 if hinweis:
                     page._msg = tr(hinweis)
-                self.page_stack = [page]
+                self.page_stack = self.rennen_ebenen("online") + [page]
             else:
                 from src.states.menu.online_lobby_page import OnlineLobbyPage
-                self.page_stack = [OnlineLobbyPage()]
+                self.page_stack = self.rennen_ebenen("online") + [OnlineLobbyPage()]
                 self.page_stack[-1].enter(self)
 
     # ------------------------------------------------------------------
     # Background handling
     # ------------------------------------------------------------------
+    def _hintergrund_stamm(self) -> str:
+        """Welches Video gerade hinter dem Menue laeuft.
+
+        Der Tab gibt den Standard vor (RENNEN: Einzelspieler). Eine Seite darf
+        ein anderes wollen -- ``VIDEO_STAMM`` oder ein Eintrag in ``_SEITEN_STAMM``
+        -- und hat sie keinen Wunsch, gilt der der Seite darunter, damit z.B. der
+        Wechsel von der Online-Lobby in die Ergebnisse das Video nicht umschaltet.
+        """
+        for seite in reversed(self.page_stack):
+            name = getattr(seite, "VIDEO_STAMM", None) or _SEITEN_STAMM.get(
+                type(seite).__name__)
+            if name:
+                return name
+        art = getattr(self, "_rennen_art", None)
+        if self.page_stack and self.tab == TAB_RENNEN and art in _RENNEN_STAMM:
+            return _RENNEN_STAMM[art]
+        return _TABS[self.tab][1]
+
+    # ------------------------------------------------------------------
+    # RENNEN: Auswahlseiten und ihre Ebenen
+    # ------------------------------------------------------------------
+    def rennen_ebenen(self, art: str) -> list:
+        """Die Seiten, die bei *art* unter dem Ziel liegen -- fertig betreten.
+
+        ``"online"``    -> [Rennen]
+        ``"single"``    -> [Rennen, Lokal]
+        ``"mp_local"``  -> [Rennen, Lokal, Name Spieler 2]
+
+        Wer eine Lobby direkt aufbaut (Rueckkehr aus Auswahl, Ergebnis, Grand
+        Prix), setzt sie auf diese Ebenen, damit ESC wieder genau eine Stufe hoch
+        fuehrt statt in die Menueleiste zu fallen. Aendert race_setup nicht.
+        """
+        from src.states.menu.rennen_wahl_page import RennenWahlPage, LokalWahlPage
+        seiten: list = [RennenWahlPage(vorwahl="online" if art == "online" else "lokal")]
+        if art != "online":
+            seiten.append(LokalWahlPage(vorwahl="mp" if art == "mp_local" else "single"))
+        if art == "mp_local":
+            from src.states.menu.mp_name_page import MPNamePage
+            seiten.append(MPNamePage())
+        for seite in seiten:
+            seite.enter(self)
+        return seiten
+
+    def rennen_starten(self, art: str) -> None:
+        """Eine neue Rennvorbereitung beginnen: die Seite fuer *art* oeffnen und
+        die Rennparameter so setzen, wie die frueheren Tabs es taten."""
+        from src.core import race_setup
+        s = race_setup.current()
+        if art == "single":
+            s.is_multiplayer = False
+            s.ai_roster.clear()
+            s.sync_ai_roster()
+            from src.states.menu.lobby_page import LobbyPage
+            self.push_page(LobbyPage())
+        elif art == "mp_local":
+            s.is_multiplayer = True
+            s.ai_roster.clear()
+            s.sync_ai_roster()
+            from src.states.menu.mp_name_page import MPNamePage
+            self.push_page(MPNamePage())
+        elif art == "online":
+            from src.states.menu.online_lobby_page import OnlineLobbyPage
+            self.push_page(OnlineLobbyPage())
+
     def _ensure_video(self, stem: str) -> None:
         """Open the video for *stem* (closing the previous one)."""
         if stem == self._video_stem:
@@ -323,11 +410,12 @@ class MenuShellState(BaseState):
 
     def _goto_tab(self, i: int) -> None:
         """Switch to tab *i* with a crossfade from the current frame."""
-        cur_stem = _TABS[self.tab][1]
+        cur_stem = self._video_stem or _TABS[self.tab][1]
         frame = self._current_frame(cur_stem)
         self._fade_from = frame.copy() if frame is not None else None
         self._prev_tab = self.tab
         self.tab = i
+        self._rennen_art = None
         self._fade = 0.0
 
     def _bg(self, stem: str) -> pygame.Surface | None:
@@ -359,7 +447,7 @@ class MenuShellState(BaseState):
         return blur
 
     def _draw_tab_background(self, screen: pygame.Surface) -> None:
-        stem = _TABS[self.tab][1]
+        stem = self._hintergrund_stamm()
         self._ensure_video(stem)
         frame = self._current_frame(stem)
         in_page = bool(self.page_stack)
@@ -486,23 +574,10 @@ class MenuShellState(BaseState):
 
     def _open_tab(self) -> None:
         kind = _TABS[self.tab][2]
-        from src.core import race_setup
-        s = race_setup.current()
-        if kind == "single":
-            s.is_multiplayer = False
-            s.ai_roster.clear()
-            s.sync_ai_roster()
-            from src.states.menu.lobby_page import LobbyPage
-            self.push_page(LobbyPage())
-        elif kind == "mp_local":
-            s.is_multiplayer = True
-            s.ai_roster.clear()
-            s.sync_ai_roster()
-            from src.states.menu.mp_name_page import MPNamePage
-            self.push_page(MPNamePage())
-        elif kind == "online":
-            from src.states.menu.online_lobby_page import OnlineLobbyPage
-            self.push_page(OnlineLobbyPage())
+        self._rennen_art = None
+        if kind == "rennen":
+            from src.states.menu.rennen_wahl_page import RennenWahlPage
+            self.push_page(RennenWahlPage())
         elif kind == "soon":
             self.push_page(ComingSoonPage(_TABS[self.tab][0].title()))
         elif kind == "editor":
