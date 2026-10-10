@@ -60,6 +60,10 @@ class Grafik:
     #: wirken höchstens je Bild; 0 schaltet sie ab. Lichtschatten gibt es auf
     #: keiner Stufe — nur die Sonnen- und Mondschatten der Schattenkarte.
     lichter_max: int = 24
+    #: Spiegel im Cockpit (nur dort sichtbar): 0 aus (dunkles Glas), 1 niedrig
+    #: (halbe Auflösung, jedes zweite Bild), 2 hoch (volle Auflösung, der
+    #: Innenspiegel jedes Bild, die Außenspiegel jedes zweite). Siehe ``spiegel.py``.
+    spiegel: int = 2
 
 
 STUFEN: dict[str, Grafik] = {
@@ -67,12 +71,12 @@ STUFEN: dict[str, Grafik] = {
                       bloom=False, kantenglaettung="fxaa", deko_dichte=0.4,
                       sichtweite_m=700.0, gras=0, gelaende_detail=0,
                       strecken_details=0, reifenspuren=False,
-                      fahrzeug_lod_m=20.0, gelaende_schatten=1, lichter_max=6),
+                      fahrzeug_lod_m=20.0, gelaende_schatten=1, lichter_max=6, spiegel=0),
     "mittel": Grafik(stufe="mittel", aufloesung_skala=1.0, schatten_px=2048, ssao=0,
                      bloom=True, kantenglaettung="fxaa", deko_dichte=0.7,
                      sichtweite_m=1100.0, gras=1, gelaende_detail=1,
                      strecken_details=1, reifenspuren=True,
-                     fahrzeug_lod_m=35.0, gelaende_schatten=2, lichter_max=12),
+                     fahrzeug_lod_m=35.0, gelaende_schatten=2, lichter_max=12, spiegel=1),
     "hoch": Grafik(),
     "ultra": Grafik(stufe="ultra", ssao=2, deko_dichte=1.0, sichtweite_m=2400.0,
                     fahrzeug_lod_m=120.0),

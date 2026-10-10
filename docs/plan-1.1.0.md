@@ -102,12 +102,15 @@ liegt in `rohdaten/glb_v110/`. Neu bauen geht mit `tools\blender\bauen.bat
 fahrzeuge` (ca. 5 min je Auto). Vor einem Build von 1.1.0 nach
 `assets/vehicles/` kopieren.
 
+**Welle 2, Spiegel (fertig):** `src/render3d/spiegel.py`,
+`Rennszene._spiegel_rendern`; Grafikfeld `spiegel` (0 aus, 1 niedrig, 2 hoch;
+Niedrig-Stufe aus, Mittel 1, Hoch/Ultra 2), Regler in den Grafikeinstellungen.
+Nur in der Cockpitansicht und nur für Spiegel im Bild. Kosten auf `gp` im
+Cockpit: etwa +1,2 ms Median auf Hoch (Niedrig +0,9) (Messung abwechselnd je Bild).
+
 **Offen, Welle 2:**
-1. Funktionierende Spiegel. Render-to-texture mit
-   `Ansichtskamera.blick_aus(...)`; Material `spiegel` auf
-   `spiegel_innen/l/r`.
-2. Wetter: Regen (nasse Fahrbahn, weniger Grip, Gischt).
-3. Strecken online austauschen (Server-Änderung).
+1. Wetter: Regen (nasse Fahrbahn, weniger Grip, Gischt).
+2. Strecken online austauschen (Server-Änderung).
 
 **Offen, sonst:**
 - Augpunkt im Kompaktwagen: Der Dachhimmel nimmt oben fast 40 % des Bildes

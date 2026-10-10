@@ -39,6 +39,7 @@ from pathlib import Path
 import numpy as np
 
 from . import begrenzung, grafik, matrix, mesh, schatten, shader, tageszeit, track_mesh, vehicle_node
+from . import spiegel as spiegel_modul
 from . import tageszeit as tageszeit_modul   # der Parameter ``tageszeit`` der Szene verdeckt den Namen
 from .nachbearbeitung import Nachbearbeitung
 from .reifenspuren import ERSATZRAEDER, Reifenspuren
@@ -556,13 +557,38 @@ def _zeichenplan(modell: mesh.Modell) -> dict:
     return plan
 
 
+#: Das Spiegelglas ohne Bild (Spiegel aus, andere Autos, Werkstatt): dunkles,
+#: spiegelndes Glas, das Himmel und Umgebung zurückwirft, mit einem Hauch Eigenhelligkeit
+#: — ohne sie bliebe es im Schatten ein schwarzes Loch. Die Werksfarbe im Modell
+#: ist helles Chrom, das neben dem Cockpit wie ein Loch leuchtete.
+SPIEGEL_GLAS = (("grundton", (0.55, 0.57, 0.6)), ("metallic_faktor", 1.0),
+                ("rauheit_faktor", 0.12), ("hat_basisfarbe", 0.0),
+                ("hat_metallic_rauheit", 0.0), ("emission", (0.010, 0.012, 0.015)))
+
+
+#: Scheiben von Autos im Spiegel: deckend und dunkel statt durchscheinend — ein
+#: Durchgang weniger, und man sieht nicht durchs Dach auf die Strecke.
+SPIEGEL_FENSTER = (("grundton", (0.05, 0.06, 0.07)), ("metallic_faktor", 0.0),
+                   ("rauheit_faktor", 0.15), ("alpha_faktor", 1.0),
+                   ("lack_effekt", (0.0, 0.0, 0.0)))
+
+
 def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                            lack: Lackwerte | None, durchsichtig,
-                           bremse: float = 0.0, leuchten: tuple | None = None) -> None:
+                           bremse: float = 0.0, leuchten: tuple | None = None,
+                           spiegel: dict | None = None, nur=None,
+                           merk: dict | None = None) -> None:
     """Alle Teile eines Fahrzeugs an ihren Matrizen zeichnen.
 
     ``durchsichtig``: False = nur Deckendes, True = nur Glas, None = alles.
     Den Mischmodus stellt der Aufrufer ein.
+
+    ``spiegel``: ``{knotenname: textur}`` mit den Bildern der Spiegel (siehe
+    ``spiegel.py``). Das Glas eines Knotens ohne Bild bleibt dunkles Glas.
+    ``nur``: eine Menge von Materialnamen — nur diese Teile werden gezeichnet
+    (Autos im Spiegel, ``spiegel.AUTO_MATERIALIEN``), das Glas deckend und dunkel.
+    ``merk``: die Matrizen als Bytes je Teil, vom Aufrufer gehalten — Bild,
+    Glas und Spiegel zeichnen dasselbe Auto mit denselben Matrizen.
 
     Die Matrizen eines Fahrzeugs sind **starr** (Drehung und Verschiebung,
     keine Skalierung) — dann ist die Normalmatrix der Drehteil selbst, und die
@@ -577,10 +603,13 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
         return
     u_modell = p["modell"]
     u_normale = p.get("normalmatrix", None)
-    bytes_je_teil: dict = {}
+    bytes_je_teil: dict = {} if merk is None else merk
     zuletzt = None
     for hm, eintraege in gruppen:
+        if nur is not None and (hm is None or hm.daten.name not in nur):
+            continue
         material_gesetzt = False
+        ist_spiegel = hm is not None and hm.daten.name == spiegel_modul.MATERIAL
         for name, vao in eintraege:
             m = matrizen.get(name)
             if m is None:
@@ -588,7 +617,16 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
             if not material_gesetzt:
                 if hm is not None:
                     lack_material_setzen(p, hm, lack, bremse, leuchten)
+                    if ist_spiegel:
+                        shader.setzen_viele(p, SPIEGEL_GLAS)
+                    elif nur is not None and hm.daten.name == "glas":
+                        shader.setzen_viele(p, SPIEGEL_FENSTER)
                 material_gesetzt = True
+            if ist_spiegel:
+                bild = spiegel.get(name) if spiegel else None
+                if bild is not None:
+                    bild.use(spiegel_modul.EINHEIT)
+                shader.setzen(p, "spiegel_modus", 1.0 if bild is not None else 0.0)
             if name != zuletzt:
                 b = bytes_je_teil.get(name)
                 if b is None:
@@ -600,6 +638,8 @@ def fahrzeugteile_zeichnen(p, modell: mesh.Modell, matrizen: dict,
                     u_normale.write(b[1])
                 zuletzt = name
             vao.render()
+        if ist_spiegel:
+            shader.setzen(p, "spiegel_modus", 0.0)
     # Strang L: nach dem Auto zeichnet dasselbe Programm Strecke und Gelände.
     shader.setzen(p, "lack_effekt", (0.0, 0.0, 0.0))
 
@@ -648,6 +688,10 @@ class Rennszene:
         self.schattenkarte = None
         self.nachbearbeitung: Nachbearbeitung | None = None
         self.reifenspuren: Reifenspuren | None = None
+        #: Spiegelbilder der Menschen im Cockpit (``spiegel.py``) und, was das
+        #: laufende :meth:`zeichnen` davon auf die Gläser legt: ``{kennung: {knoten: textur}}``.
+        self.spiegelspeicher: spiegel_modul.Spiegelspeicher | None = None
+        self._spiegel_aktiv: dict = {}
         #: Die Ideallinie, die in diesem Bild auf dem Asphalt liegt (Fahrhilfe,
         #: ``ideallinie.Ideallinie3D``) oder None. Der Rennzustand setzt sie vor
         #: jedem Zeichnen, im Splitscreen je Bildhälfte die des Spielers.
@@ -684,6 +728,7 @@ class Rennszene:
         from . import licht
         self.nachbearbeitung = Nachbearbeitung(ctx)
         self.reifenspuren = Reifenspuren(ctx)
+        self.spiegelspeicher = spiegel_modul.Spiegelspeicher(ctx)
         if self.schattenwurf_an:
             try:
                 self.schattenkarte = licht.Schattenkarte(
@@ -1045,12 +1090,18 @@ class Rennszene:
             self._radplaetze[stand.schluessel] = plaetze
         return plaetze
 
-    def zeichnen(self, mvp: np.ndarray, kamera_position, staende, fokus=None) -> None:
+    def zeichnen(self, mvp: np.ndarray, kamera_position, staende, fokus=None,
+                 spiegel: int | None = None) -> None:
         """Ein Bild der Welt aus einer Kamera. Schreibt nichts fort.
 
         Ziel ist, was gerade gebunden ist, im gesetzten Ausschnitt: die Welt
         entsteht als lineares HDR im Zwischenpuffer der Nachbearbeitung und
         wird erst am Ende abgebildet und dorthin geschrieben.
+
+        ``spiegel``: Kennung des Wagens, dessen Spiegel in diesem Bild zu
+        sehen sind (Cockpitansicht, siehe ``spiegel.noetig``); sie werden vor
+        dem Bild in ihre Texturen gerechnet. ``None``: kein Spiegel — das Glas
+        bleibt dunkel.
         """
         staende = list(staende)
         fokus = kamera_position if fokus is None else fokus
@@ -1066,23 +1117,18 @@ class Rennszene:
             licht_mvp = karte.matrix(fokus, self.himmel.sonne)
             self._schattenkarte_zeichnen(staende, fokus)
 
-        self.nachbearbeitung.beginnen(mvp, kamera_position, einstellung)
-
-        for p in (self.programm, self.programm_instanz):
-            shader.matrix_setzen(p, "mvp", mvp)
-            shader.matrix_setzen(p, "licht_mvp", licht_mvp)
-            shader.setzen(p, "kamera_position", tuple(float(w) for w in kamera_position))
-            shader.setzen(p, "hat_schatten", 1.0 if karte is not None else 0.0)
-        self.himmel.binden(2)
-        if karte is not None:
-            karte.binden(3)
-        else:
-            self._leere_tiefe.use(3)
-        if self.gelaendesicht is not None:                # Strang W2
-            self.gelaendesicht.setzen((self.programm, self.programm_instanz),
-                                      an=einstellung.gelaende_schatten > 0)
+        # Lichter hängen am Fokus, nicht an der Kamera: einmal für Bild und Spiegel.
         if self.tageszeit.lichter:
             self._lichter_setzen(staende, fokus, einstellung)
+        self._spiegel_aktiv = {}
+        if spiegel is not None and int(einstellung.spiegel) > 0 and self.spiegelspeicher is not None:
+            bilder = self._spiegel_rendern(spiegel, staende, mvp, einstellung, licht_mvp, karte)
+            if bilder:
+                self._spiegel_aktiv[spiegel] = bilder
+
+        self.nachbearbeitung.beginnen(mvp, kamera_position, einstellung)
+        self._welt_karten(licht_mvp, karte, einstellung)
+        self._welt_kamera(mvp, kamera_position)
 
         # Deckendes von nah nach fern: was verdeckt ist, verwirft der
         # Tiefentest, bevor der teure Fragment-Shader läuft. In der
@@ -1133,6 +1179,120 @@ class Rennszene:
             self.reifenspuren.rauch_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position,
                                              tiefe, self.nachbearbeitung.groesse)
         self.nachbearbeitung.abschliessen(self.belichtung)
+
+    def _welt_karten(self, licht_mvp, karte, einstellung) -> None:
+        """Licht und Karten für die Weltprogramme: Schattenkarte, Himmel, Geländeschatten."""
+        for p in (self.programm, self.programm_instanz):
+            shader.matrix_setzen(p, "licht_mvp", licht_mvp)
+            shader.setzen(p, "hat_schatten", 1.0 if karte is not None else 0.0)
+        self.himmel.binden(2)
+        if karte is not None:
+            karte.binden(3)
+        else:
+            self._leere_tiefe.use(3)
+        if self.gelaendesicht is not None:                # Strang W2
+            self.gelaendesicht.setzen((self.programm, self.programm_instanz),
+                                      an=einstellung.gelaende_schatten > 0)
+
+    def _welt_kamera(self, mvp, kamera_position) -> None:
+        """Die Kamera für die Weltprogramme — für das Bild wie für einen Spiegel."""
+        pos = tuple(float(w) for w in kamera_position)
+        for p in (self.programm, self.programm_instanz):
+            shader.matrix_setzen(p, "mvp", mvp)
+            shader.setzen(p, "kamera_position", pos)
+
+    # -- Spiegel (spiegel.py) -------------------------------------------------
+    def _spiegel_rendern(self, kennung: int, staende, mvp_haupt, einstellung,
+                         licht_mvp, karte) -> dict:
+        """Die Spiegelbilder des Wagens ``kennung`` rechnen: ``{knoten: textur}``.
+
+        Nur Spiegel, deren Glas im Bild der Hauptkamera liegt; auf Niedrig
+        nur jedes zweite Bild je Spiegel (die Textur behält ihr letztes Bild).
+        Die Schattenkarte des Hauptbildes gilt weiter — sie hängt am Wagen
+        und der Spiegel sitzt am Wagen.
+        """
+        stand = next((s for s in staende if s.kennung == kennung), None)
+        knoten = self.knotenspeicher.knoten(kennung)
+        fm = self.speicher.holen(stand.schluessel) if stand is not None else None
+        if stand is None or knoten is None or fm is None:
+            return {}
+        stufe = 2 if int(einstellung.spiegel) >= 2 else 1
+        puffer = self.spiegelspeicher.satz(kennung, stufe)
+        takt = self.spiegelspeicher.takt(kennung)
+        matrizen = self._teilmatrizen(stand, fm)
+        aufbau = knoten.aufbau_matrix()
+        ctx = self.ctx
+        ziel, ausschnitt, schere = ctx.fbo, tuple(ctx.viewport), ctx.scissor
+        bilder = {}
+        self._welt_karten(licht_mvp, karte, einstellung)
+        try:
+            for i, name in enumerate(spiegel_modul.NAMEN):
+                ursprung = knoten.anbauteile.get(name)
+                m = matrizen.get(name)
+                if ursprung is None or m is None:
+                    continue
+                pf = puffer[name]
+                if not spiegel_modul.sichtbar(mvp_haupt, m[:3, 3]):
+                    pf.gueltig = False
+                    continue
+                if not pf.gueltig or spiegel_modul.jetzt_dran(stufe, takt, i):
+                    auge, blick_ziel, oben = spiegel_modul.pose(
+                        name, ursprung, stand.pos_m, stand.gierwinkel_rad, aufbau)
+                    self._spiegel_bild(pf, name, auge, blick_ziel, oben, kennung, staende)
+                bilder[name] = pf.farbe
+        finally:
+            ziel.use()
+            ctx.viewport = ausschnitt
+            ctx.scissor = schere
+            ctx.depth_mask = True
+            ctx.disable(moderngl.BLEND)
+        return bilder
+
+    def _spiegel_bild(self, pf, name: str, auge, ziel, oben, eigene: int, staende) -> None:
+        """Ein Spiegelbild in seinen Puffer zeichnen: billig, ohne alles, was man dort nicht sieht.
+
+        Keine Schattenkarte neu, kein Gras, keine Reifenspuren, kein Rauch,
+        keine Ideallinie, keine Kontaktschatten; Autos im LOD1 mit den großen
+        Teilen (``spiegel.AUTO_MATERIALIEN``), die nächsten
+        :data:`spiegel.AUTOS_MAX` bis :data:`spiegel.AUTO_WEITE_M`; von der
+        Deko nur die Kulisse. Im Innenspiegel fehlt der eigene Wagen (die
+        Kamera sitzt in ihm), in den Außenspiegeln steht seine Flanke am Rand.
+        """
+        mvp = spiegel_modul.matrix(name, pf.groesse, auge, ziel, oben)
+        pf.beginnen()
+        self._welt_kamera(mvp, auge)
+        pos = np.asarray(auge, dtype=np.float64)[:2]
+        sichtbar = []
+        for s in staende:
+            if s.entfaerbt or (s.kennung == eigene and name == spiegel_modul.SPIEGEL_INNEN):
+                continue
+            abstand = float(np.hypot(*(np.asarray(s.pos_m, dtype=np.float64)[:2] - pos)))
+            if abstand <= spiegel_modul.AUTO_WEITE_M and _im_bild(mvp, s.pos_m):
+                sichtbar.append((abstand, s))
+        sichtbar.sort(key=lambda e: e[0])
+        del sichtbar[spiegel_modul.AUTOS_MAX:]
+        p = self.programm
+        for nam, wert in (("entfaerbung", 0.0), ("deckkraft", 1.0), ("uv_skala", 1.0),
+                          ("boden_farbe", FAHRZEUG_BODEN)):
+            shader.setzen(p, nam, wert)
+        for _a, s in sichtbar:
+            fm = self.speicher.holen(s.schluessel)
+            if fm is not None:
+                fahrzeugteile_zeichnen(p, fm.lod1 or fm.modell, self._teilmatrizen(s, fm), s.lack,
+                                       None, s.bremse, None, nur=spiegel_modul.AUTO_MATERIALIEN,
+                                       merk=self._matrizen_bytes(s))
+        shader.setzen(p, "boden_farbe", getattr(self, "_boden_thema", shader.BODEN_FARBE))
+        if self.deko is not None:
+            self.ctx.enable(moderngl.DEPTH_TEST)
+            self.ctx.disable(moderngl.BLEND)
+            self.deko.zeichnen(mvp, auge, "spiegel", weite_m=spiegel_modul.DEKO_WEITE_M)
+        if self.fernwald is not None:
+            self.fernwald.zeichnen()
+        if self.masten is not None:
+            self.masten.zeichnen(auge)
+        self._strecke_zeichnen()
+        self.himmel.zeichnen(mvp, auge)
+        pf.abschliessen()
 
     # -- Nacht: Lampen, Masten, Lichterliste ---------------------------------
     def _nachtlichter_bauen(self) -> None:
@@ -1298,6 +1458,10 @@ class Rennszene:
             vorrat[1][schluessel] = self._teilmatrizen_rechnen(stand, fm)
         return vorrat[1][schluessel]
 
+    def _matrizen_bytes(self, stand: Fahrzeugstand) -> dict:
+        """Je Bild und Fahrzeug ein Merkzettel für die Matrizen als Bytes (siehe ``fahrzeugteile_zeichnen``)."""
+        return self._matrizen_vorrat[1].setdefault(("bytes", stand.kennung, id(stand)), {})
+
     def _teilmatrizen_rechnen(self, stand: Fahrzeugstand, fm: Fahrzeugmodell) -> dict:
         knoten = self.knotenspeicher.knoten(stand.kennung)
         if knoten is not None:
@@ -1344,7 +1508,9 @@ class Rennszene:
         tz = self.tageszeit
         leuchten = (tz.vorn_leuchten, tz.hinten_leuchten) if tz.lichter and not stand.entfaerbt else None
         fahrzeugteile_zeichnen(p, modell, self._teilmatrizen(stand, fahrzeugmodell),
-                               stand.lack, durchsichtig, stand.bremse, leuchten)
+                               stand.lack, durchsichtig, stand.bremse, leuchten,
+                               spiegel=self._spiegel_aktiv.get(stand.kennung),
+                               merk=self._matrizen_bytes(stand))
         shader.setzen(p, "boden_farbe", getattr(self, "_boden_thema", shader.BODEN_FARBE))
 
         self.ctx.depth_mask = True
@@ -1392,6 +1558,9 @@ class Rennszene:
         if getattr(self, "reifenspuren", None) is not None:
             self.reifenspuren.freigeben()
             self.reifenspuren = None
+        if getattr(self, "spiegelspeicher", None) is not None:
+            self.spiegelspeicher.freigeben()
+            self.spiegelspeicher = None
         for ding in (getattr(self, "programm", None), getattr(self, "programm_instanz", None),
                      getattr(self, "_leere_tiefe", None)):
             if ding is not None:

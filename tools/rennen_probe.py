@@ -28,6 +28,9 @@ def main() -> int:
     ap.add_argument("--stufe", default="",
                     help="Grafikstufe erzwingen (niedrig, mittel, hoch, ultra); sonst die aus dem Profil")
     ap.add_argument("--tageszeit", default="Tag", help="Tag, Abend oder Nacht")
+    ap.add_argument("--ansicht", default="",
+                    help="Kameraansicht des Menschen erzwingen: verfolger_fern, verfolger_nah, "
+                         "motorhaube oder cockpit (mit Spiegeln)")
     ap.add_argument("--setzen", action="append", default=[],
                     help="Einzelwert nach der Stufe, z. B. --setzen ssao=0 (mehrfach)")
     args = ap.parse_args()
@@ -61,6 +64,10 @@ def main() -> int:
                                          tageszeit=args.tageszeit)
     print(f"Aufbau mit Laden: {time.perf_counter() - t0:.2f} s, "
           f"Szene: {'ja' if rennen.szene is not None else 'NEIN'}")
+
+    if args.ansicht:
+        for kam in rennen._kameras:
+            kam.ansicht_setzen(args.ansicht)
 
     ordner = Path(args.bilder) if args.bilder else None
     if ordner:

@@ -2693,7 +2693,7 @@ class RaceState(BaseState):
         if self.szene is None or not self._kameras:
             return
         from src.core import display
-        from src.render3d import camera as kamera3d
+        from src.render3d import camera as kamera3d, spiegel
         ctx = display.kontext()
         if ctx is None:
             return
@@ -2725,7 +2725,9 @@ class RaceState(BaseState):
             mvp = projektion @ kam.blickmatrix()
             if self._hilfen is not None:
                 self._hilfen.linie_setzen(kam)      # Ideallinie dieses Spielers
-            self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=getattr(kam, "fokus", kam.ziel))
+            # Spiegel nur im Cockpit (spiegel.noetig): sonst sieht sie niemand.
+            self.szene.zeichnen(mvp, kam.auge, self._staende, fokus=getattr(kam, "fokus", kam.ziel),
+                                spiegel=szenen_kennung(mensch) if spiegel.noetig(kam) else None)
             self._letzte_sicht = (mvp, ausschnitt, briefkasten)
 
     def auf_bildschirm(self, pos_px, hoehe_m: float = 0.0):
