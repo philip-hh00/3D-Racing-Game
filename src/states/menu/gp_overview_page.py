@@ -21,6 +21,7 @@ from src.core import grand_prix, race_setup
 from src.core.i18n import tr
 from src.states.menu.gp_overview import GPOverview
 from src.states.menu.page import Page
+from src.states.menu_shell_state import TAB_RENNEN
 from src.ui import theme
 from src.ui.focus import FocusGroup
 from src.ui.widgets import Button, Dialog
@@ -201,8 +202,10 @@ class GPOverviewPage(Page):
         from src.states.menu.mp_lobby_page import MPLobbyPage
         s = race_setup.current()
         grand_prix.cancel()
-        self.shell.tab = 1 if s.is_multiplayer else 0
-        self.shell.page_stack = [MPLobbyPage() if s.is_multiplayer else LobbyPage()]
+        self.shell.tab = TAB_RENNEN
+        self.shell.page_stack = self.shell.rennen_ebenen(
+            "mp_local" if s.is_multiplayer else "single")
+        self.shell.page_stack.append(MPLobbyPage() if s.is_multiplayer else LobbyPage())
         self.shell.page_stack[-1].enter(self.shell)
 
     # ── Anzeige ──────────────────────────────────────────────────────────────

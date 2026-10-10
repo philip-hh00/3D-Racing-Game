@@ -472,7 +472,7 @@ def test_vier_ebenen_brauchen_vier_druecke(monkeypatch):
     sm.register("vehicle_lab", labor)
 
     sm.transition("menu")
-    shell.tab = 5
+    shell.tab = 4
     seite = SettingsPage()
     shell.push_page(seite)
     seite._focus_content = True
@@ -510,7 +510,7 @@ def test_der_editor_nimmt_die_leiste_der_menueschale():
     from src.states.menu_shell_state import tab_rects
     leer = EditorState.__new__(EditorState)
     assert leer._tab_rects() == tab_rects()
-    assert len(leer._tab_rects()) == 7
+    assert len(leer._tab_rects()) == 5
 
 
 def test_der_editor_hebt_seinen_eigenen_tab_hervor():

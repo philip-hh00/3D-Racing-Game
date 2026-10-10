@@ -619,10 +619,12 @@ class EditorState(BaseState):
             if e.key == pygame.K_ESCAPE:
                 self._browse_zurueck()
             elif e.key == pygame.K_PAGEUP:
-                self.state_machine.transition("menu", tab_idx=2)
+                from src.states.menu_shell_state import TAB_EDITOR
+                self.state_machine.transition("menu", tab_idx=TAB_EDITOR - 1)
                 return
             elif e.key == pygame.K_PAGEDOWN:
-                self.state_machine.transition("menu", tab_idx=4)
+                from src.states.menu_shell_state import TAB_EDITOR
+                self.state_machine.transition("menu", tab_idx=TAB_EDITOR + 1)
                 return
             elif e.key in (pygame.K_UP, pygame.K_w):
                 self._browse_idx = (self._browse_idx - 1) % len(self._projects)

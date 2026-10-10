@@ -58,14 +58,14 @@ def _zeichnen(s: ProfilPage) -> pygame.Surface:
 
 
 # ---------------------------------------------------------------------------
-# Die Menüleiste mit sieben Tabs
+# Die Menüleiste mit fünf Tabs
 # ---------------------------------------------------------------------------
-def test_sieben_tabs_passen_ins_bild():
+def test_alle_tabs_passen_ins_bild():
     """Mit den früheren festen 288 px wäre die Leiste 2064 px breit gewesen —
     zwei Tabs hätten über dem Bildrand gehangen."""
     shell = MenuShellState.__new__(MenuShellState)
     rects = shell._tab_rects()
-    assert len(rects) == len(_TABS) == 7
+    assert len(rects) == len(_TABS) == 5
     assert rects[0].x >= 0
     assert rects[-1].right <= SCREEN_WIDTH
     assert len({r.width for r in rects}) == 1, "alle gleich breit"

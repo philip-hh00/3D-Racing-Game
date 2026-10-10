@@ -890,5 +890,16 @@
   "Name oder Autor …": "Name or author …",
   "Bild hoch/runter": "Page up/down",
   "Blättern": "Flip pages",
-  "Spiegel (Cockpit)": "Mirrors (cockpit)"
+  "Spiegel (Cockpit)": "Mirrors (cockpit)",
+  "RENNEN": "RACE",
+  "RENNEN — LOKAL": "RACE — LOCAL",
+  "Lokal": "Local",
+  "1 Spieler": "1 Player",
+  "2 Spieler (Splitscreen)": "2 Players (split screen)",
+  "Wie möchtest du fahren?": "How do you want to race?",
+  "Wie viele Spieler fahren?": "How many players?",
+  "An diesem Gerät: allein oder zu zweit im Splitscreen.": "On this device: alone or two players in split screen.",
+  "Gegen andere im Netz: Lobby erstellen oder beitreten.": "Against others online: create or join a lobby.",
+  "Allein am Steuer: gegen Computerfahrer oder auf Bestzeit.": "Alone at the wheel: against computer drivers or chasing a best time.",
+  "Zwei Spieler an einem Gerät, mit geteiltem Bildschirm.": "Two players on one device with a split screen."
 }
