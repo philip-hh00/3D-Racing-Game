@@ -1395,13 +1395,18 @@ async def _force_finish_after(lobby: Lobby, grace: float) -> None:
     log.info(f"Lobby {lobby.lobby_id}: FORCE_FINISH broadcast (grace expired)")
 
 
+RACE_GO_COUNTDOWN_MS = 3500
+
+
 async def _maybe_race_go(lobby: Lobby):
     """Once every connected peer has finished loading, start the countdown."""
     if lobby.state != "racing" or not lobby.loaded:
         return
     if not set(lobby.clients.keys()).issubset(lobby.loaded):
         return
-    await _broadcast(lobby, {"type": "RACE_GO"})
+    # GO liegt RACE_GO_COUNTDOWN_MS nach dem Absenden; jeder Client rechnet vom
+    # Eintreffen seine Laufzeit ab (Feld optional, aeltere Clients nehmen 3,5 s).
+    await _broadcast(lobby, {"type": "RACE_GO", "countdown_ms": RACE_GO_COUNTDOWN_MS})
     log.info(f"Lobby {lobby.lobby_id}: RACE_GO (all {len(lobby.loaded)} loaded)")
 
 
@@ -2305,6 +2310,13 @@ SICHT_PRIVAT      = "private"
 SICHTBARKEITEN    = (SICHT_OEFFENTLICH, SICHT_PASSWORT, SICHT_PRIVAT)
 
 LOBBYNAME_MAX = 24
+
+
+def vorgabe_lobbyname(host: str) -> str:
+    """„<Host>'s Lobby" — in beiden Sprachen gleich. Der Hostname wird gekuerzt,
+    damit das Ganze in LOBBYNAME_MAX passt."""
+    rest = "'s Lobby"
+    return f"{str(host)[:LOBBYNAME_MAX - len(rest)]}{rest}".strip()
 PW_MIN, PW_MAX = 4, 16
 #: Rechenaufwand des Passworthashs. PBKDF2 ist in jedem Python dabei; der Wert
 #: ist bewusst mittel — die Lobbypasswoerter sind kurzlebig, und die Grenze fuer
@@ -2490,7 +2502,7 @@ def lobby_angaben(msg: dict, hostname: str, alt: Optional[Lobby] = None) -> tupl
     Bei einer Aenderung (*alt* gesetzt) bleibt, was nicht in der Nachricht steht.
     Das Passwort ist ``None``, wenn es nicht neu gesetzt wird.
     """
-    vorgabe_name = f"Lobby von {hostname}"[:LOBBYNAME_MAX].strip()
+    vorgabe_name = vorgabe_lobbyname(hostname)
     if alt is None:
         sicht = msg.get("visibility", SICHT_PRIVAT)
         name_roh = msg.get("lobby_name", "")
@@ -2577,7 +2589,7 @@ def lobby_liste() -> list:
             continue
         out.append({
             "code": lobby.lobby_id,
-            "name": lobby.lobby_name or f"Lobby von {host.name}"[:LOBBYNAME_MAX].strip(),
+            "name": lobby.lobby_name or vorgabe_lobbyname(host.name),
             "host": host.name,
             "players": len(lobby.clients),
             "max": min(lobby.roster_size, MAX_SLOTS),

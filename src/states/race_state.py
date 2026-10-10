@@ -3458,8 +3458,19 @@ class RaceState(BaseState):
                     return
                 elif msg_type == "RACE_GO":
                     # Everyone finished loading — start the synchronized countdown.
+                    # GO liegt "countdown_ms" nach dem Absenden am Server (aelterer
+                    # Server: 3,5 s). Vom Eintreffen ab, abzueglich der Laufzeit.
                     if self.race_manager is not None:
-                        self.race_manager.release_countdown(3.5)
+                        import time as _t
+                        try:
+                            sekunden = float(data.get("countdown_ms", 3500)) / 1000.0
+                        except (TypeError, ValueError):
+                            sekunden = 3.5
+                        sekunden = min(10.0, max(1.0, sekunden))
+                        latenz = getattr(nc, "einfache_laufzeit_s", 0.0)
+                        self.race_manager.release_countdown(
+                            sekunden, ankunft=data.get("_ankunft", _t.monotonic()),
+                            latenz_s=min(latenz, sekunden - 0.5))
                 elif msg_type == "GAME_PAUSED":
                     self.paused = True
                     self._pause_by_name = data.get("by_name", "Spieler")

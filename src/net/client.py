@@ -26,6 +26,7 @@ Usage:
 """
 from __future__ import annotations
 
+import collections
 import json
 import queue
 import socket
@@ -70,6 +71,10 @@ class NetworkClient:
         self._ping_sent:    float = 0.0
         self._ping_ms:      float = 0.0
         self._ping_interval: float = 1.0
+        # Die letzten Umlaufzeiten (ms). Fuer die Startsynchronisation zaehlt die
+        # kleinste: Ausreisser durch Warteschlangen machen die Laufzeit nur
+        # groesser, nie kleiner als die Leitung wirklich ist.
+        self._ping_verlauf: collections.deque = collections.deque(maxlen=8)
         # Zeitpunkt (time.monotonic) des letzten TCP-PING bzw. UDP-Pings.
         self._tcp_ping_zuletzt: float = 0.0
         self._udp_ping_zuletzt: float = 0.0
@@ -310,6 +315,13 @@ class NetworkClient:
         return self._ping_ms
 
     @property
+    def einfache_laufzeit_s(self) -> float:
+        """Geschaetzte Laufzeit Server -> Client in Sekunden (halbe kleinste
+        Umlaufzeit der letzten Pings). 0.0, solange noch kein Ping beantwortet ist."""
+        werte = [w for w in tuple(self._ping_verlauf) if w > 0.0]
+        return min(werte) / 2000.0 if werte else 0.0
+
+    @property
     def connected(self) -> bool:
         return self._alive
 
@@ -373,6 +385,7 @@ class NetworkClient:
                     ts = unpack_pong(data)
                     if ts is not None:
                         self._ping_ms = (time.monotonic() - ts) * 1000.0
+                        self._ping_verlauf.append(self._ping_ms)
                 elif t == UDP_STATE:
                     parsed = unpack_state(data)
                     if parsed:
@@ -396,6 +409,11 @@ class NetworkClient:
         if msg.get("type") == "JOIN_OK":
             self._lobby_id = msg.get("lobby_id", "")
             self._slot     = msg.get("slot", -1)
+        elif msg.get("type") == "RACE_GO":
+            # Eintreffen hier im Empfangsthread festhalten: das Spiel holt die
+            # Meldung erst im naechsten Bild ab, und wann das ist, schwankt je
+            # Rechner. Die Startsynchronisation rechnet vom Eintreffen aus.
+            msg["_ankunft"] = time.monotonic()
 
     def _udp_send(self, data: bytes):
         if self._udp:

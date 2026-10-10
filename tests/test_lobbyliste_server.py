@@ -116,7 +116,7 @@ def test_standardname_und_bereinigung(tmp_path):
                 relay, "Berta", visibility="public",
                 lobby_name="Böse\n‮Name<script>" + "x" * 80)
             namen = {e["code"]: e["name"] for e in await _liste(relay)}
-            assert namen[ok1["lobby_id"]] == "Lobby von Anna"
+            assert namen[ok1["lobby_id"]] == "Anna's Lobby"
             n = namen[ok2["lobby_id"]]
             assert len(n) <= srv.LOBBYNAME_MAX
             assert "\n" not in n and "‮" not in n and "<" not in n
@@ -493,3 +493,9 @@ def test_ein_server_ohne_die_neuerung_beantwortet_nichts():
     den Typen des Handshakes — ein alter Relay faellt in ``else: return`` und
     schliesst. Hier nur: der neue Typ kollidiert mit keinem bestehenden."""
     assert srv.LOBBYLISTE_TYPEN.isdisjoint(srv.STRECKEN_TYPEN | {"INFO", "HOST", "JOIN"})
+
+
+def test_vorgabename_wird_gekuerzt():
+    n = srv.vorgabe_lobbyname("B" * 40)
+    assert len(n) <= srv.LOBBYNAME_MAX and n.endswith("'s Lobby")
+    assert srv.vorgabe_lobbyname("test") == "test's Lobby"

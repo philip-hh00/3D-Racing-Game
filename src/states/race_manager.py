@@ -1,6 +1,7 @@
 """RaceManager – countdown, states, standings, per-vehicle finish times & DNF handling."""
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING, Any
 from src.core.event_bus import EventBus
 from src.track.lap_tracker import LapTracker
@@ -54,6 +55,9 @@ class RaceManager:
         # the server sends RACE_GO (release_countdown). Prevents the host — whose
         # loading screen eats real time — from losing part of its own countdown.
         self._hold_countdown = hold_countdown
+        # Online nach RACE_GO: Zeitpunkt (``_uhr``-Zeit), zu dem GO kommt.
+        self._go_mono: float | None = None
+        self._uhr = time.monotonic       # austauschbar fuer Tests
 
         # Der Bus gehoert vor die Rundenzaehler: sie melden darauf, und wer hier
         # einen eigenen Bus bekommt, muss die Rundenmeldungen auch dort hoeren.
@@ -85,13 +89,30 @@ class RaceManager:
     # ------------------------------------------------------------------
     # Update loop
     # ------------------------------------------------------------------
-    def release_countdown(self, seconds: float = 3.5) -> None:
+    def release_countdown(self, seconds: float = 3.5, *, ankunft: float | None = None,
+                          latenz_s: float = 0.0) -> None:
         """Start (or restart) the countdown now — called on the server's RACE_GO
-        once all peers finished loading, so every client counts down in sync."""
+        once all peers finished loading, so every client counts down in sync.
+
+        Der Server meldet RACE_GO an alle gleichzeitig; GO ist *seconds* nach dem
+        **Absenden**. Jeder Client rechnet deshalb vom **Eintreffen** der Meldung
+        (*ankunft*, ``time.monotonic()`` aus dem Empfangsthread - nicht vom Bild,
+        in dem sie abgeholt wird) die einfache Laufzeit *latenz_s* ab. Der
+        Countdown laeuft dann an der Uhr (``_go_mono``), nicht an der Summe der
+        Bildzeiten: ein langsamer Rechner (dt ist auf 0,1 s gedeckelt) oder ein
+        Ruckler verschiebt GO nicht mehr. Ohne *ankunft* (Offline, Tests)
+        zaehlt die Bildzeit wie bisher.
+        """
         self._hold_countdown = False
         self._go_time = None
         self.state = "countdown"
         self.countdown_timer = seconds
+        if ankunft is None:
+            self._go_mono = None
+            return
+        rest = max(0.0, seconds - max(0.0, latenz_s))
+        self._go_mono = float(ankunft) + rest
+        self.countdown_timer = self._go_mono - self._uhr()
 
     def adopt_vehicle(self, vehicle, lap: int = 1, waypoint_progress: float = 0.0,
                       elapsed: float = 0.0) -> None:
@@ -135,13 +156,19 @@ class RaceManager:
         if self.state == "countdown":
             if self._hold_countdown:
                 return   # waiting for all peers to finish loading (RACE_GO)
-            if self._go_time is not None:
-                import time
+            ueberschuss = 0.0
+            if self._go_mono is not None:
+                self.countdown_timer = self._go_mono - self._uhr()
+                # Ein Bild kann ueber GO hinausfallen: die Zeit seit GO gehoert
+                # schon zum Rennen, sonst startet jede Uhr eine Bildlaenge spaeter.
+                ueberschuss = min(0.5, max(0.0, -self.countdown_timer))
+            elif self._go_time is not None:
                 self.countdown_timer = self._go_time - time.time()
             else:
                 self.countdown_timer -= dt
             if self.countdown_timer <= 0:
                 self.state = "racing"
+                self.race_time = ueberschuss
                 self._event_bus.emit("race_start")
         elif self.state in ("racing", "finishing"):
             self.race_time += dt
