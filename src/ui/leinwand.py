@@ -174,6 +174,36 @@ class Flaeche(pygame.Surface):
         return pygame.Surface.get_at(self, (min(_px(pos[0], self._s), super().get_width() - 1),
                                             min(_px(pos[1], self._s), super().get_height() - 1)))
 
+    def rand_fortsetzen(self, innen) -> None:
+        """Den Rand um ``innen`` (Raster) aus dessen äußerster Pixelreihe füllen.
+
+        Für Zustände, die nur in ihren sicheren 16:9-Bereich zeichnen
+        (:mod:`src.core.display`): ein einfarbiger oder senkrecht
+        verlaufender Hintergrund setzt sich damit nahtlos bis zum Fensterrand
+        fort, statt in einem Balken zu enden. Durchsichtiges bleibt
+        durchsichtig. Ein schmaler Streifen wird gestreckt, das kostet
+        Bruchteile einer Millisekunde.
+        """
+        r = _rect_px(innen, self._s).clip(pygame.Rect(0, 0, *pygame.Surface.get_size(self)))
+        bw, bh = pygame.Surface.get_size(self)
+        if r.width <= 0 or r.height <= 0:
+            return
+
+        def streifen(quelle: pygame.Rect, ziel: pygame.Rect) -> None:
+            if ziel.width <= 0 or ziel.height <= 0:
+                return
+            teil = pygame.Surface.subsurface(self, quelle)
+            breit = pygame.transform.scale(teil, ziel.size)
+            pygame.Surface.blit(self, breit, ziel.topleft)
+            if self._schmutz is not None:
+                self._schmutz.markieren(ziel)
+
+        streifen(pygame.Rect(r.left, r.top, 1, r.height), pygame.Rect(0, r.top, r.left, r.height))
+        streifen(pygame.Rect(r.right - 1, r.top, 1, r.height),
+                 pygame.Rect(r.right, r.top, bw - r.right, r.height))
+        streifen(pygame.Rect(0, r.top, bw, 1), pygame.Rect(0, 0, bw, r.top))
+        streifen(pygame.Rect(0, r.bottom - 1, bw, 1), pygame.Rect(0, r.bottom, bw, bh - r.bottom))
+
     def subsurface(self, rect):
         """Ein Ausschnitt — eine **Sicht** auf dieselben Bildpunkte, mit Skala.
 

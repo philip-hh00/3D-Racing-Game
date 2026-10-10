@@ -179,8 +179,21 @@ _grad_cache: dict[tuple[int, int], pygame.Surface] = {}
 _vignette_cache: dict[tuple[int, int], pygame.Surface] = {}
 
 
-def draw_background(screen: pygame.Surface) -> None:
-    """Fill with the shared vertical gradient."""
+def draw_background(screen: pygame.Surface, stem: str = "Einzelspieler",
+                    farbe: tuple | None = None) -> None:
+    """Der gemeinsame Hintergrund aller Vollbildzustaende.
+
+    Mit OpenGL zeigt die Videoebene das Menuevideo ``stem`` ueber das **ganze
+    Fenster** (gedimmt, wie hinter einer Menueseite); die Flaeche bleibt hier
+    durchsichtig. Sonst (Tests, keine Datei) der Ersatz: ``farbe`` einfarbig,
+    ohne Angabe der gemeinsame senkrechte Verlauf.
+    """
+    from src.core import display
+    if display.ist_bildflaeche(screen) and display.hintergrund_video(stem):
+        return
+    if farbe is not None:
+        screen.fill(farbe)
+        return
     w, h = screen.get_size()
     grad = _grad_cache.get((w, h))
     if grad is None:

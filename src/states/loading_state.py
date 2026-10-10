@@ -151,7 +151,7 @@ class LoadingState(BaseState):
         W, H = SCREEN_WIDTH, SCREEN_HEIGHT
 
         # --- Background gradient ------------------------------------------
-        screen.fill((10, 11, 18))
+        theme.draw_background(screen, farbe=(10, 11, 18))
         # Subtle radial glow in the center
         glow = leinwand.flaeche((600, 600), pygame.SRCALPHA)
         for r in range(280, 0, -8):

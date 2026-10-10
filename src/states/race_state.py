@@ -173,6 +173,11 @@ def lackwerte(kennung):
 class RaceState(BaseState):
     """The main racing state, managing the physics simulation, entities, camera, and HUD."""
 
+    #: Das Rennen bekommt die **ganze** virtuelle Flaeche (src/core/display.py,
+    #: ``zustand_zeichnen``), nicht nur den sicheren 16:9-Bereich: HUD und
+    #: Minimap haengen an den echten Bildraendern, die Welt fuellt das Fenster.
+    volle_flaeche = True
+
     def __init__(self, state_machine: StateMachine) -> None:
         super().__init__(state_machine)
         self.physics_world: PhysicsWorld | None = None
@@ -555,9 +560,7 @@ class RaceState(BaseState):
         self.minimap = Minimap(self.track)
         if self._split:
             # Shared minimap, centred along the bottom.
-            pw = getattr(self.minimap, "PANEL_W", 300)
-            ph = getattr(self.minimap, "PANEL_H", 200)
-            self.minimap.pos = (SCREEN_WIDTH // 2 - pw // 2, SCREEN_HEIGHT - ph - 20)
+            self.minimap.anker = "mitte"
 
         # Post-finish state: player AI takeover + which cars got the 0.5 slowdown
         self._player_ai_ids: set[int] = set()
@@ -692,6 +695,12 @@ class RaceState(BaseState):
         if getattr(self, "_load_video", None) is not None:
             return                      # läuft schon (ein Ladebildschirm, ein Video)
         self._load_video = None
+        #: Mit OpenGL zeigt die gemeinsame Videoebene den Hintergrund
+        #: (``_lade_ebene``), ueber das ganze Fenster und ohne Entschluesseln hier.
+        self._load_stem = stem
+        from src.core import display
+        if display.video_ebene() is not None:
+            return
         if os.path.isfile(path):
             from src.ui.video_player import VideoPlayer
             vp = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT), faden=False)
@@ -815,13 +824,16 @@ class RaceState(BaseState):
         # abschliessen, sonst steht am Ende nichts auf dem Schirm.
         pygame.event.pump()
         display.bild_beginnen()
-        screen = display.virtual_surface()
+        voll = display.virtual_surface()
+        screen = display.sicherer_bereich(voll)
         cx, cy = SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2
 
         # Background: the same looping video as the submenu we came from.
         vid = getattr(self, "_load_video", None)
         frame = vid.get_surface() if (vid is not None and vid.ok) else None
-        if frame is not None:
+        if self._lade_ebene(screen):
+            pass
+        elif frame is not None:
             vid.update(1.0 / 60.0)
             screen.blit(frame, (0, 0))
             dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -830,6 +842,7 @@ class RaceState(BaseState):
         else:
             theme.draw_background(screen)
             screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+        self._rand_fortsetzen(voll)
 
         name = getattr(self.track, "name", "") if getattr(self, "track", None) else ""
         if name:
@@ -2429,8 +2442,9 @@ class RaceState(BaseState):
         for hud, kam in zip(huds, self._kameras):
             if hud is not None:
                 hud.dashboard_sichtbar = getattr(kam, "ansicht", "") != "cockpit"
-        mitten = ([SCREEN_WIDTH // 4, SCREEN_WIDTH * 3 // 4] if self._split
-                  else [SCREEN_WIDTH // 2])
+        breite = screen.get_width()
+        mitten = ([breite // 4, breite * 3 // 4] if self._split
+                  else [breite // 2])
         for slot, (name, rest) in self._ansicht_hinweis.items():
             if slot - 1 < len(mitten):
                 theme.text(screen, tr(name), theme.LABEL, theme.ACCENT,
@@ -2757,7 +2771,7 @@ class RaceState(BaseState):
         # wie im Motorsport — bei GO gehen alle gleichzeitig aus.
         self.szene.ampel_setzen(self._portal_ampel_stufe())
 
-        briefkasten = display.ansichtsfenster(display.current_win_size())
+        briefkasten = display.vollbild(display.current_win_size())
         x, y, b, h = briefkasten
         if self._split and len(self._kameras) > 1:
             haelften = [(x, y, b // 2, h), (x + b // 2, y, b - b // 2, h)]
@@ -2788,6 +2802,10 @@ class RaceState(BaseState):
     def auf_bildschirm(self, pos_px, hoehe_m: float = 0.0):
         """Einen Weltpunkt (Spielpixel) auf die virtuelle Flaeche rechnen.
 
+        Gemeint ist die **ganze** Flaeche (:func:`display.virtual_surface`); wer
+        in den sicheren Bereich zeichnet, zieht dessen Versatz
+        (:func:`display.sicherer_rand`) ab.
+
         Fuer alles, was im 2D-Weg einfach den Kameraversatz abgezogen hat und
         jetzt durch die Projektion muss — Werkzeuge zeichnen damit ihre
         Wegpunkte und Ideallinien ueber die 3D-Strecke.
@@ -2808,8 +2826,9 @@ class RaceState(BaseState):
         fenster_x = vx + (ndc[0] * 0.5 + 0.5) * vb
         fenster_y = vy + (ndc[1] * 0.5 + 0.5) * vh
         from src.core import display
-        return (int((fenster_x - bx) / max(1, bb) * display.VIRT_W),
-                int((bh - (fenster_y - by)) / max(1, bh) * display.VIRT_H))
+        rb, rh = display.raster_groesse(display.current_win_size())
+        return (int((fenster_x - bx) / max(1, bb) * rb),
+                int((bh - (fenster_y - by)) / max(1, bh) * rh))
 
     def _mitschnitt_zeichnen(self, screen: pygame.Surface) -> None:
         """Rueckmeldung des Klangmitschnitts, oben mittig unter dem Banner.
@@ -2828,50 +2847,82 @@ class RaceState(BaseState):
             text = tr("Mitschnitt läuft — F9 beendet ihn.")
         if text:
             theme.text(screen, text, theme.LABEL, theme.ACCENT,
-                       (SCREEN_WIDTH // 2, 60), center=True)
+                       (screen.get_width() // 2, 60), center=True)
+
+    def _lade_ebene(self, screen: pygame.Surface) -> bool:
+        """Der Hintergrund des Lade- und Warteschirms aus der gemeinsamen Videoebene."""
+        from src.core import display
+        stem = getattr(self, "_load_stem", None)
+        return bool(stem) and display.ist_bildflaeche(screen) and display.hintergrund_video(stem)
+
+    @staticmethod
+    def _schleier(flaeche: pygame.Surface, alpha: int) -> None:
+        """Die ganze Flaeche (auch den Rand neben dem sicheren Bereich) abdunkeln."""
+        schleier = leinwand.flaeche(flaeche.get_size(), pygame.SRCALPHA)
+        schleier.fill((0, 0, 0, alpha))
+        flaeche.blit(schleier, (0, 0))
+
+    @staticmethod
+    def _rand_fortsetzen(voll: pygame.Surface) -> None:
+        """Den Rand neben dem sicheren Bereich aus dessen Kante fuellen (Ladebild, Warten)."""
+        from src.core import display
+        if display.sicherer_bereich(voll) is not voll and hasattr(voll, "rand_fortsetzen"):
+            voll.rand_fortsetzen(display.sicherer_rand(voll.get_size()))
 
     def render(self, screen: pygame.Surface) -> None:
         """Die Welt in 3D zeichnen, HUD und Minimap darueber.
 
-        ``screen`` ist die virtuelle Flaeche von 1920x1080, und sie ist zu
-        Beginn des Bildes **durchsichtig**. Wo hier nichts gezeichnet wird,
+        ``screen`` ist die ganze virtuelle Flaeche (mindestens 1920x1080, bei
+        anderen Seitenverhaeltnissen breiter oder hoeher), und sie ist zu
+        Beginn des Bildes **durchsichtig**. HUD, Minimap und Ampel haengen an
+        ihren Raendern; Pausenmenue, Dialoge und Warteschirm zeichnen in den
+        sicheren 1920x1080-Bereich in der Mitte. Wo hier nichts gezeichnet wird,
         scheint die 3D-Welt durch — deshalb wird sie nicht mehr mit der
         Hintergrundfarbe der Strecke gefuellt. Die Farbe war im 2D-Weg das,
         was ausserhalb der Fahrbahn zu sehen war; in 3D ist das der
         Untergrund und der Himmel.
         """
+        from src.core import display
+        voll = screen
+        sicher = display.sicherer_bereich(voll)
         self._welt_zeichnen()
-        self._ansicht_huds(screen)
+        self._ansicht_huds(voll)
 
         if self._split and self._movie.geteilt_gesamt():
-            self._movie.gesamt_banner(screen)       # beide im Ziel: ein Bild, ein Banner
+            self._movie.gesamt_banner(voll)       # beide im Ziel: ein Bild, ein Banner
         elif self._split:
-            for i, (x, hud_obj) in enumerate([(0, self.hud1), (SCREEN_WIDTH // 2, self.hud2)]):
+            breite, hoehe = voll.get_size()
+            for i, (x, hud_obj) in enumerate([(0, self.hud1), (breite // 2, self.hud2)]):
                 if hud_obj:
-                    sub = screen.subsurface((x, 0, SCREEN_WIDTH // 2, SCREEN_HEIGHT))
+                    sub = voll.subsurface((x, 0, breite // 2, hoehe))
                     if not self._movie.hud_zeichnen(sub, i, 0.75):
                         hud_obj.render(sub, scale=0.75)
-            zeichnen.line(screen, (12, 12, 18),
-                             (SCREEN_WIDTH // 2, 0), (SCREEN_WIDTH // 2, SCREEN_HEIGHT), 4)
+            zeichnen.line(voll, (12, 12, 18),
+                             (breite // 2, 0), (breite // 2, hoehe), 4)
         else:
             if DEBUG and self.physics_world:
-                self.physics_world.debug_draw(screen)
+                self.physics_world.debug_draw(voll)
                 # Zeichnet an der Schmutzverfolgung vorbei (pygame.draw direkt).
-                if hasattr(screen, "schmutz_alles"):
-                    screen.schmutz_alles()
-            if not self._movie.hud_zeichnen(screen, 0) and self.hud:
-                self.hud.render(screen)
+                if hasattr(voll, "schmutz_alles"):
+                    voll.schmutz_alles()
+            if not self._movie.hud_zeichnen(voll, 0) and self.hud:
+                self.hud.render(voll)
             if self._online:
-                self._render_ping_overlay(screen)
-                self._render_leave_toasts(screen)
+                self._render_ping_overlay(voll)
+                self._render_leave_toasts(voll)
 
         # Shared minimap (all vehicles).
         if getattr(self, "minimap", None) and not self._movie.alle_menschen_im_film():
             vehicles = [*self._humans, *self.ai_vehicles, *self._remote_vehicles]
             pid = self.player.id if self.player else None
-            self.minimap.render(screen, vehicles, player_id=pid)
+            self.minimap.render(voll, vehicles, player_id=pid)
 
-        self._mitschnitt_zeichnen(screen)
+        self._mitschnitt_zeichnen(voll)
+
+        # Ab hier gelten absolute 1920x1080-Koordinaten: Warteschirm, Pause,
+        # Dialoge sitzen im sicheren Bereich. Nur die Abdunkelung geht ueber
+        # die ganze Flaeche (``_schleier``).
+        screen = sicher
 
         # Online: a peer that finished loading early sits in a frozen scene
         # until everyone has loaded (RACE_GO). Show a proper waiting screen
@@ -2888,16 +2939,15 @@ class RaceState(BaseState):
             # noch lud. Jetzt sieht die Wartezeit auf beiden Seiten gleich aus.
             vid = getattr(self, "_load_video", None)
             frame = vid.get_surface() if (vid is not None and vid.ok) else None
-            if frame is not None:
+            if self._lade_ebene(screen):
+                pass                            # Video samt Abdunklung: Videoebene
+            elif frame is not None:
                 vid.update(1.0 / 60.0)
                 screen.blit(frame, (0, 0))
-                dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                dark.fill((0, 0, 0, 150))
-                screen.blit(dark, (0, 0))
+                self._rand_fortsetzen(voll)
+                self._schleier(voll, 150)
             else:
-                ov = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                ov.fill((0, 0, 0, 235))
-                screen.blit(ov, (0, 0))
+                self._schleier(voll, 235)
 
             dots = "." * (1 + int(_t.time() * 2) % 3)
             theme.text(screen, tr("Warte auf andere Fahrer") + dots, theme.TITLE,
@@ -2931,14 +2981,10 @@ class RaceState(BaseState):
         # uses self.paused for its own overlay and has no race pause menu).
         if self.paused and not getattr(self, "_is_edit_pause", False):
             if self._pause_view == "settings" and self._pause_settings:
-                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 220))
-                screen.blit(overlay, (0, 0))
+                self._schleier(voll, 220)
                 self._pause_settings.draw(screen, pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT))
             elif self._pause_view == "standings":
-                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
-                screen.blit(overlay, (0, 0))
+                self._schleier(voll, 180)
 
                 panel_rect = pygame.Rect(SCREEN_WIDTH // 2 - 450, SCREEN_HEIGHT // 2 - 340, 900, 680)
                 theme.panel(screen, panel_rect, alpha=235, border=theme.ACCENT)
@@ -3065,9 +3111,7 @@ class RaceState(BaseState):
                     self._pause_group.draw(screen)
 
             elif getattr(self, "_pause_view", None) == "multiplayer_pause" and self._pause_group:
-                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
-                screen.blit(overlay, (0, 0))
+                self._schleier(voll, 180)
 
                 panel_rect = pygame.Rect(SCREEN_WIDTH // 2 - 250, SCREEN_HEIGHT // 2 - 240, 500, 480)
                 theme.panel(screen, panel_rect, alpha=235, border=theme.ACCENT)
@@ -3095,9 +3139,7 @@ class RaceState(BaseState):
                 self._pause_group.draw(screen)
 
             elif self._pause_group:
-                overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-                overlay.fill((0, 0, 0, 180))
-                screen.blit(overlay, (0, 0))
+                self._schleier(voll, 180)
 
                 panel_rect = pygame.Rect(SCREEN_WIDTH // 2 - 200, SCREEN_HEIGHT // 2 - 170, 400, 340)
                 theme.panel(screen, panel_rect, alpha=230, border=theme.ACCENT)
@@ -3111,13 +3153,11 @@ class RaceState(BaseState):
         if getattr(self, "_resume_countdown_timer", 0.0) > 0.0:
             
             # Draw semi-transparent overlay
-            overlay = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 100))
-            screen.blit(overlay, (0, 0))
+            self._schleier(voll, 100)
             
             # Gleiche Ampel wie im Startcountdown, Zeitlauf wie bisher.
             stufe, los = fortsetzen_stufe(self._resume_countdown_timer)
-            HUD.zeichne_ampel(screen, SCREEN_WIDTH, 1.0, stufe, 1.0, los=los)
+            HUD.zeichne_ampel(voll, voll.get_width(), 1.0, stufe, 1.0, los=los)
 
         if self._dialog is not None:
             self._dialog.draw(screen)
@@ -3126,9 +3166,7 @@ class RaceState(BaseState):
         # kurzen Nachlaufzeit zieht ein schwarzer Schleier auf (08.08.2026).
         alpha = self._outro_alpha()
         if alpha > 0:
-            schleier = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-            schleier.fill((0, 0, 0, alpha))
-            screen.blit(schleier, (0, 0))
+            self._schleier(voll, alpha)
 
     # ── Online-multiplayer helpers ────────────────────────────────────────────
 
