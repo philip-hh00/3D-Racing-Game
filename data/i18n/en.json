@@ -821,6 +821,12 @@
   "Tag": "Day",
   "Abend": "Evening",
   "Nacht": "Night",
+  "Wetter": "Weather",
+  "Wetter:": "Weather:",
+  "Trocken": "Dry",
+  "Regen": "Rain",
+  "Viele": "Many",
+  "Gischt": "Spray",
   "Nachtlichter": "Night lights",
   "Wenige": "Few"
 }

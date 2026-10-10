@@ -407,6 +407,8 @@ class RaceState(BaseState):
             lack=_prof.current().paint(config_key),
             config_key=config_key,
         )
+        # Wetter dieses Rennens (Lobby): weniger Haftung im Regen, fuer alle gleich.
+        self.player.wetter_setzen(self._wetter_waehlen())
         # Splitscreen: each player has an explicit device. Otherwise (single
         # player, online): accept keyboard AND the first controller.
         self.player.input_source = input_source.make_source(setup.p1_input if self._split else "auto")
@@ -429,6 +431,7 @@ class RaceState(BaseState):
                 lack=_prof.current().paint(setup.player2_vehicle),
                 config_key=setup.player2_vehicle,
             )
+            self.player2.wetter_setzen(self._wetter_waehlen())
             self.player2.input_source = input_source.make_source(setup.p2_input)
             human_count = 2
 
@@ -593,7 +596,7 @@ class RaceState(BaseState):
         from src.ai.stufen import STUFEN
         for _hp in self._humans:
             try:
-                fahrplan_bauen(self.track, _hp.config, STUFEN["expert"])
+                fahrplan_bauen(self.track, getattr(_hp, "wirk_config", _hp.config), STUFEN["expert"])
             except Exception:
                 pass
             self._lade_melden("uebernahme", (self._humans.index(_hp) + 1) / len(self._humans))
@@ -609,7 +612,9 @@ class RaceState(BaseState):
                 try:
                     _cfg = VehicleFactory.get_config(_key)
                     if _cfg:
-                        fahrplan_bauen(self.track, _cfg, _stufe(_setup.ai_difficulty))
+                        from src.render3d import wetter as _wetter
+                        fahrplan_bauen(self.track, _wetter.wirksame_config(_cfg, self._wetter_waehlen()),
+                                       _stufe(_setup.ai_difficulty))
                 except Exception:
                     pass
         self._ladeanzeige_beenden()
@@ -987,6 +992,7 @@ class RaceState(BaseState):
                 lack=lack.ki_lack(vid),
             )
             if ai:
+                ai.wetter_setzen(self._wetter_waehlen())   # vor dem Fahrplan der KI
                 ai.config_key = cfg_key   # remembered so online play can broadcast it
                 ai_vehicles.append(ai)
         return ai_vehicles
@@ -1137,6 +1143,8 @@ class RaceState(BaseState):
 
             klang = sfx_rennen.Rennklang()
             klang.starten(self._klang_fahrzeuge(), schluessel)
+            from src.render3d import wetter as _wetter
+            klang.regen_starten(_wetter.vorgabe(self._wetter_waehlen()).rauschen)
             klang.startsignal_vorbereiten()
             self._klang = klang
         except Exception as exc:
@@ -2457,7 +2465,7 @@ class RaceState(BaseState):
                 himmelordner=wurzel / "assets" / "himmel",
                 umgebungsordner=wurzel / "assets" / "umgebung",
                 platzierungen=orte, fahrzeuge=fahrzeuge, sofort=False,
-                tageszeit=self._tageszeit_waehlen())
+                tageszeit=self._tageszeit_waehlen(), wetter=self._wetter_waehlen())
             # Laden in Schritten, dazwischen der Ladebildschirm: alles liegt
             # lokal, aber bei tausend Bäumen und acht Autos dauert es doch
             # ein, zwei Sekunden, und ein stehendes Fenster wirkt abgestürzt.
@@ -2485,6 +2493,13 @@ class RaceState(BaseState):
         from src.render3d import tageszeit
         kwargs = getattr(self, "_enter_kwargs", None) or {}
         return tageszeit.normiere(kwargs.get("tageszeit", getattr(race_setup.current(), "time_of_day", "Tag")))
+
+    def _wetter_waehlen(self) -> str:
+        """Trocken oder Regen dieses Rennens (wie die Tageszeit: ``wetter=`` in ``enter`` oder die Lobby)."""
+        from src.core import race_setup
+        from src.render3d import wetter
+        kwargs = getattr(self, "_enter_kwargs", None) or {}
+        return wetter.normiere(kwargs.get("wetter", getattr(race_setup.current(), "weather", "Trocken")))
 
     def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
         """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.
@@ -3151,6 +3166,7 @@ class RaceState(BaseState):
         )
         if veh is None:
             return False
+        veh.wetter_setzen(self._wetter_waehlen())
 
         # 4. Carry the last known velocity over so the car doesn't stand still.
         if veh.body:

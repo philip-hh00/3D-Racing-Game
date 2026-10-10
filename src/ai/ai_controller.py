@@ -68,7 +68,9 @@ class AIController:
         from src.ai.planer import Planer
         from src.ai.regler import Bahnregler
         from src.ai.taktik import Taktik
-        cfg = self.vehicle.config
+        # Bei Regen die Werte mit weniger Haftung und Bremskraft (Vehicle.wirk_config):
+        # niedrigeres Kurventempo, früheres Bremsen. Trocken ist es ``config`` selbst.
+        cfg = getattr(self.vehicle, "wirk_config", self.vehicle.config)
         self.fahrplan = fahrplan_bauen(self.track, cfg, self.difficulty)
         seed = int(getattr(self.vehicle, "id", 0) or 0)
         self._pers = persoenlichkeit(seed, self.difficulty)
