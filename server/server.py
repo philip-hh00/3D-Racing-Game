@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -323,6 +325,14 @@ class Lobby:
     offers: Dict[int, dict] = field(default_factory=dict)      # slot -> {"name","data","size","from"}
     offer_buf: Dict[int, bytes] = field(default_factory=dict)  # laufende Uebertragung
     offer_meta: Dict[int, dict] = field(default_factory=dict)  # slot -> {"name","size"}
+    # Lobbyliste (Plan 1.1.0): Sichtbarkeit, Anzeigename und Passwort. Ohne die
+    # Angaben des Hosts (aelteres Spiel) bleibt die Lobby privat, also unlistbar.
+    # Das Passwort liegt nur als Salz + Hash vor, nie im Klartext.
+    sichtbarkeit: str = "private"    # "public" | "password" | "private"
+    lobby_name: str = ""
+    pw_salt: bytes = b""
+    pw_hash: bytes = b""
+    pw_geaendert: float = 0.0        # monotonic; bremst Passwortwechsel
 
     @property
     def host(self) -> Optional[ClientConn]:
@@ -595,6 +605,7 @@ class _Registry:
         if lobby:
             self.unbind_lobby(lid)
             _wache.lobby_ab(lid)
+            _pw_wache.lobby_ab(lid)
             log.info(f"Lobby removed: {lid}")
 
     def bind_udp(self, addr: Tuple, lid: str, slot: int):
@@ -712,6 +723,7 @@ def _lobby_state(lobby: Lobby) -> dict:
         "settings": lobby.settings,
         "mode": lobby.mode,
         "roster_size": lobby.roster_size,
+        **lobby_info(lobby),
         "team_balance": team_balance_info(lobby),
         "players": [
             {
@@ -786,6 +798,11 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             await _strecken_anfrage(writer, msg, ip)
             return
 
+        # Lobbyliste (Plan 1.1.0): ebenfalls eine kurze Anfrage-Verbindung.
+        if t in LOBBYLISTE_TYPEN:
+            await _lobbyliste_anfrage(writer, msg, ip)
+            return
+
         if t == "HOST":
             cfg = _load_live_config()
             required = str(cfg.get("required_version", ""))
@@ -813,8 +830,17 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 await _send(writer, {"type": "JOIN_FAIL", "code": "DATA_MISMATCH",
                                      "reason": "Spieldateien veraendert."})
                 return
+            # Sichtbarkeit, Name und Passwort **vor** dem Anlegen pruefen: eine
+            # Lobby mit unbrauchbaren Angaben soll gar nicht erst entstehen.
+            try:
+                angaben = lobby_angaben(msg, name)
+            except _LobbyFehler as f:
+                await _send(writer, {"type": "JOIN_FAIL", "code": f.code,
+                                     "reason": f.reason})
+                return
             lobby = _registry.create()
             lobby.inhalt = inhalt
+            lobby_angaben_setzen(lobby, *angaben)
             _wache.lobby_an(ip, lobby.lobby_id)
             slot  = 0
             conn  = ClientConn(slot=slot, name=name, reader=reader,
@@ -825,7 +851,7 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             lobby.next_slot     = 1
             await _send(writer, {"type": "JOIN_OK", "slot": slot,
                                  "lobby_id": lobby.lobby_id, "is_host": True,
-                                 "udp_token": conn.token})
+                                 "udp_token": conn.token, **lobby_info(lobby)})
             log.info(f"Host '{name}' → lobby {lobby.lobby_id}")
 
         elif t == "JOIN":
@@ -850,6 +876,12 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             lobby = _registry.get(lid)
             if not lobby:
                 await _send(writer, {"type": "JOIN_FAIL", "reason": "Lobby nicht gefunden."})
+                return
+            # Passwort **vor** allen weiteren Auskuenften ueber die Lobby (voll,
+            # laeuft schon): wer es nicht kennt, erfaehrt davon nichts.
+            absage = passwort_beitritt(lobby, msg, ip)
+            if absage is not None:
+                await _send(writer, absage)
                 return
             # Gleiche Fahrwerte wie der Host (src/core/integritaet.py). Ein
             # Client ohne das Feld (aelter als 1.0.0) scheitert schon an der
@@ -897,7 +929,7 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             normalize_ai_teams(lobby)
             await _send(writer, {"type": "JOIN_OK", "slot": slot,
                                  "lobby_id": lid, "is_host": False,
-                                 "udp_token": conn.token})
+                                 "udp_token": conn.token, **lobby_info(lobby)})
             log.info(f"Client '{name}' joined {lid} → slot {slot}")
             await _broadcast(lobby, _lobby_state(lobby))
             # Vorschlaege bleiben liegen, wer spaeter kommt bekommt sie trotzdem.
@@ -1010,6 +1042,10 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 if before != after:
                     reset_lobby_ready(lobby)
                 await _broadcast(lobby, _lobby_state(lobby))
+
+            # ── Host: Sichtbarkeit, Name, Passwort der Lobby ────────────────
+            elif t == "SET_LOBBY_INFO" and conn.is_host:
+                await _lobby_info_aendern(lobby, conn, msg)
 
             # ── Any client: pick own team (Team-Zeitfahren) ─────────────────
             elif t == "SET_TEAM":
@@ -2246,6 +2282,313 @@ async def _strecken_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) ->
                                  "reason": _STRECKEN_TEXT["ERROR"]})
         except Exception:
             pass
+
+
+# ── Lobbyliste: Sichtbarkeit, Name, Passwort (Plan 1.1.0) ───────────────────────
+#
+# Jede Lobby traegt eine Sichtbarkeit, die der Host waehlt:
+#
+#   public    in der Liste, jeder darf beitreten
+#   password  in der Liste mit Schloss, Beitritt nur mit Passwort
+#   private   nicht in der Liste, Beitritt nur mit dem Code (wie bisher)
+#
+# **Abwaertskompatibel:** ein ``HOST`` ohne ``visibility`` (aelteres Spiel) legt
+# eine private Lobby an. Alles Neue steht in eigenen Funktionen; in den
+# bestehenden Handlern sind es nur kurze Aufrufe.
+
+#: Nachrichtentypen, die als eigene kurze Verbindung beantwortet werden.
+LOBBYLISTE_TYPEN = frozenset({"LOBBY_LIST"})
+
+SICHT_OEFFENTLICH = "public"
+SICHT_PASSWORT    = "password"
+SICHT_PRIVAT      = "private"
+SICHTBARKEITEN    = (SICHT_OEFFENTLICH, SICHT_PASSWORT, SICHT_PRIVAT)
+
+LOBBYNAME_MAX = 24
+PW_MIN, PW_MAX = 4, 16
+#: Rechenaufwand des Passworthashs. PBKDF2 ist in jedem Python dabei; der Wert
+#: ist bewusst mittel — die Lobbypasswoerter sind kurzlebig, und die Grenze fuer
+#: Fehlversuche (unten) ist die eigentliche Bremse.
+PW_ITERATIONEN = int(os.environ.get("RACE_PW_ITERATIONEN", "20000"))
+
+#: Fehlversuche je Absender im Zeitfenster, danach Sperre bis das Fenster
+#: abgelaufen ist. Absender = IP, hinter einem Tunnel (Hamburg) die ``cid`` des
+#: Spielers; ohne beides ein gemeinsames Konto mit zehnfacher Grenze.
+PW_VERSUCHE        = int(os.environ.get("RACE_PW_VERSUCHE", "5"))
+PW_FENSTER         = float(os.environ.get("RACE_PW_FENSTER", "60"))
+#: Zusaetzlich je Lobby, ueber alle Absender: eine selbst erzeugte ``cid`` ist
+#: leicht zu wechseln, die Lobby aber nicht.
+PW_VERSUCHE_LOBBY  = int(os.environ.get("RACE_PW_VERSUCHE_LOBBY", "30"))
+PW_FENSTER_LOBBY   = float(os.environ.get("RACE_PW_FENSTER_LOBBY", "600"))
+#: Abfragen der Lobbyliste je Minute und Absender (der Client fragt alle 5 s).
+LOBBYLISTE_PRO_MIN = int(os.environ.get("RACE_LOBBYLISTE_PRO_MIN", "30"))
+#: Wie oft der Host das Passwort wechseln darf (Sekunden Abstand): jeder Wechsel
+#: kostet einen Hash.
+PW_WECHSEL_ABSTAND = 1.0
+
+_LOBBY_TEXT = {
+    "BAD_PASSWORD":        "Falsches Passwort.",
+    "PASSWORD_REQUIRED":   "Diese Lobby ist durch ein Passwort geschützt.",
+    "TOO_MANY_ATTEMPTS":   "Zu viele falsche Versuche. Bitte in einer Minute noch einmal probieren.",
+    "BAD_VISIBILITY":      "Ungültige Sichtbarkeit.",
+    "BAD_PASSWORD_FORMAT": f"Das Passwort muss {PW_MIN} bis {PW_MAX} Zeichen lang sein.",
+    "RATE":                "Zu viele Anfragen. Bitte einen Moment warten.",
+}
+
+
+class _LobbyFehler(Exception):
+    """Eine Absage mit Kennung; ``reason`` bekommt der Spieler zu lesen."""
+
+    def __init__(self, code: str, text: str = "") -> None:
+        super().__init__(code)
+        self.code = code
+        self.reason = text or _LOBBY_TEXT.get(code, "Fehler.")
+
+
+# -- Passwort -----------------------------------------------------------------
+
+def pw_pruefen(roh) -> str:
+    """Das Passwort, wenn es die Form hat; sonst ``_LobbyFehler``.
+
+    4 bis 16 druckbare Zeichen, keine Steuerzeichen. Kein ``strip``: ein
+    Leerzeichen am Ende gehoert dann zum Passwort, und der Client darf es genauso
+    senden, wie der Spieler es getippt hat.
+    """
+    if (not isinstance(roh, str) or not (PW_MIN <= len(roh) <= PW_MAX)
+            or not roh.isprintable()):
+        raise _LobbyFehler("BAD_PASSWORD_FORMAT")
+    return roh
+
+
+def pw_hash_von(pw: str, salz: bytes) -> bytes:
+    return hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salz, PW_ITERATIONEN)
+
+
+def pw_setzen(lobby: Lobby, pw: str) -> None:
+    """Passwort der Lobby ablegen — als frisches Salz und Hash, nie im Klartext."""
+    lobby.pw_salt = secrets.token_bytes(16)
+    lobby.pw_hash = pw_hash_von(pw, lobby.pw_salt)
+
+
+def pw_loeschen(lobby: Lobby) -> None:
+    lobby.pw_salt = b""
+    lobby.pw_hash = b""
+
+
+def pw_stimmt(lobby: Lobby, pw) -> bool:
+    """Ob *pw* zum Passwort der Lobby passt. Vergleich in konstanter Zeit."""
+    if not lobby.pw_hash:
+        return True
+    if not isinstance(pw, str) or len(pw) > 64:
+        return False
+    return hmac.compare_digest(pw_hash_von(pw, lobby.pw_salt), lobby.pw_hash)
+
+
+class _PwWache:
+    """Zaehlt falsche Passwoerter je Absender und je Lobby.
+
+    Gleitendes Fenster: gezaehlt werden nur Fehlversuche der letzten
+    ``PW_FENSTER`` Sekunden. Ein Absender ueber der Grenze wird abgewiesen, ohne
+    dass ueberhaupt gehasht wird — die Sperre ist billiger als der Versuch.
+    """
+
+    def __init__(self) -> None:
+        self._absender: Dict[str, "list[float]"] = {}
+        self._lobbys: Dict[str, "list[float]"] = {}
+
+    @staticmethod
+    def _frisch(liste: "list[float]", fenster: float, jetzt: float) -> "list[float]":
+        return [z for z in liste if jetzt - z < fenster]
+
+    def gesperrt(self, schluessel: str, faktor: int, lid: str) -> bool:
+        jetzt = time.monotonic()
+        a = self._frisch(self._absender.get(schluessel, []), PW_FENSTER, jetzt)
+        l = self._frisch(self._lobbys.get(lid, []), PW_FENSTER_LOBBY, jetzt)
+        return len(a) >= PW_VERSUCHE * faktor or len(l) >= PW_VERSUCHE_LOBBY
+
+    def fehlversuch(self, schluessel: str, lid: str) -> None:
+        jetzt = time.monotonic()
+        self._absender[schluessel] = self._frisch(
+            self._absender.get(schluessel, []), PW_FENSTER, jetzt) + [jetzt]
+        self._lobbys[lid] = self._frisch(
+            self._lobbys.get(lid, []), PW_FENSTER_LOBBY, jetzt) + [jetzt]
+        if len(self._absender) > 2000:        # alte Absender nicht ewig halten
+            for k in [k for k, v in self._absender.items()
+                      if not self._frisch(v, PW_FENSTER, jetzt)]:
+                self._absender.pop(k, None)
+
+    def lobby_ab(self, lid: str) -> None:
+        self._lobbys.pop(lid, None)
+
+
+_pw_wache = _PwWache()
+
+
+def passwort_beitritt(lobby: Lobby, msg: dict, ip: str) -> Optional[dict]:
+    """Prueft das Passwort eines ``JOIN``. ``None`` = darf weiter, sonst die
+    Absage als fertige ``JOIN_FAIL``-Nachricht.
+
+    Ohne Passwort in der Nachricht wird **nicht** gezaehlt: das ist kein Raten,
+    der Client fragt damit nur, ob eines noetig ist (Beitritt per Code).
+    """
+    if not lobby.pw_hash:
+        return None
+    pw = msg.get("password")
+    if pw is None or pw == "":
+        return {"type": "JOIN_FAIL", "code": "BAD_PASSWORD", "need_password": True,
+                "reason": _LOBBY_TEXT["PASSWORD_REQUIRED"]}
+    # Absender wie bei den Strecken: eine unterscheidbare IP zaehlt selbst,
+    # hinter einem Tunnel die ``cid``, sonst ein gemeinsames Konto.
+    schluessel, faktor = _strecken_schluessel(ip, msg)
+    if _pw_wache.gesperrt(schluessel, faktor, lobby.lobby_id):
+        _wache._merken("pw_versuche", ip, f"Lobby {lobby.lobby_id}")
+        return {"type": "JOIN_FAIL", "code": "TOO_MANY_ATTEMPTS",
+                "retry_after": int(PW_FENSTER),
+                "reason": _LOBBY_TEXT["TOO_MANY_ATTEMPTS"]}
+    if pw_stimmt(lobby, pw):
+        return None
+    _pw_wache.fehlversuch(schluessel, lobby.lobby_id)
+    return {"type": "JOIN_FAIL", "code": "BAD_PASSWORD", "need_password": True,
+            "reason": _LOBBY_TEXT["BAD_PASSWORD"]}
+
+
+# -- Angaben der Lobby ----------------------------------------------------------
+
+def lobby_angaben(msg: dict, hostname: str, alt: Optional[Lobby] = None) -> tuple:
+    """``(Sichtbarkeit, Name, Passwort oder None)`` aus einem ``HOST`` oder
+    ``SET_LOBBY_INFO``. Wirft ``_LobbyFehler``.
+
+    Fehlt ``visibility`` bei einem ``HOST``, gilt ``private`` (aelteres Spiel).
+    Bei einer Aenderung (*alt* gesetzt) bleibt, was nicht in der Nachricht steht.
+    Das Passwort ist ``None``, wenn es nicht neu gesetzt wird.
+    """
+    vorgabe_name = f"Lobby von {hostname}"
+    if alt is None:
+        sicht = msg.get("visibility", SICHT_PRIVAT)
+        name_roh = msg.get("lobby_name", "")
+    else:
+        sicht = msg.get("visibility", alt.sichtbarkeit)
+        name_roh = msg.get("lobby_name", alt.lobby_name)
+    if not isinstance(sicht, str) or sicht not in SICHTBARKEITEN:
+        raise _LobbyFehler("BAD_VISIBILITY")
+    name = saeubere_text(name_roh, LOBBYNAME_MAX, vorgabe_name) if name_roh else vorgabe_name
+    pw = None
+    if sicht == SICHT_PASSWORT:
+        if msg.get("password") not in (None, ""):
+            pw = pw_pruefen(msg.get("password"))
+        elif alt is None or not alt.pw_hash:
+            raise _LobbyFehler("BAD_PASSWORD_FORMAT")   # Passwort-Lobby ohne Passwort
+    return sicht, name, pw
+
+
+def lobby_angaben_setzen(lobby: Lobby, sicht: str, name: str, pw: Optional[str]) -> None:
+    lobby.sichtbarkeit = sicht
+    lobby.lobby_name = name
+    if sicht != SICHT_PASSWORT:
+        pw_loeschen(lobby)          # ein altes Passwort bleibt nicht liegen
+    elif pw is not None:
+        pw_setzen(lobby, pw)
+
+
+def lobby_info(lobby: Lobby) -> dict:
+    """Was Mitglieder einer Lobby ueber deren Sichtbarkeit erfahren — nie den Hash."""
+    return {
+        "lobby_name": lobby.lobby_name,
+        "visibility": lobby.sichtbarkeit,
+        "has_password": bool(lobby.pw_hash),
+    }
+
+
+async def _lobby_info_aendern(lobby: Lobby, conn: ClientConn, msg: dict) -> None:
+    """``SET_LOBBY_INFO`` des Hosts: Sichtbarkeit, Name, Passwort."""
+    if msg.get("password") not in (None, "") and (
+            time.monotonic() - lobby.pw_geaendert < PW_WECHSEL_ABSTAND):
+        await _send(conn.writer, {"type": "ERROR", "code": "RATE",
+                                  "reason": _LOBBY_TEXT["RATE"]})
+        return
+    try:
+        sicht, name, pw = lobby_angaben(msg, conn.name, alt=lobby)
+    except _LobbyFehler as f:
+        await _send(conn.writer, {"type": "ERROR", "code": f.code, "reason": f.reason})
+        return
+    if pw is not None:
+        lobby.pw_geaendert = time.monotonic()
+    lobby_angaben_setzen(lobby, sicht, name, pw)
+    log.info(f"Lobby {lobby.lobby_id}: Sichtbarkeit {sicht}, Name '{name}'")
+    await _broadcast(lobby, _lobby_state(lobby))
+
+
+# -- Die Liste -------------------------------------------------------------------
+
+def lobby_im_rennen(lobby: Lobby) -> bool:
+    """Ob die Lobby gerade nicht beitretbar ist, weil gefahren wird.
+
+    Ein Grand Prix zaehlt fuer die **ganze Serie** als „im Rennen": zwischen den
+    Laeufen sitzen die Spieler in der Uebersicht, nicht in der Lobby. Erst wenn
+    die Serie vorbei ist (``gp_active`` faellt weg), ist sie wieder offen.
+    """
+    if lobby.state != "lobby" or lobby.starting:
+        return True
+    s = lobby.settings
+    return bool(s.get("gp_active")
+                and (s.get("gp_phase") == "overview" or s.get("gp_locked")))
+
+
+def lobby_liste() -> list:
+    """Die oeffentlichen und passwortgeschuetzten Lobbys dieses Servers.
+
+    Private erscheinen nie. Weder Hash noch Mitgliederdaten — nur, was die
+    Liste zeigt.
+    """
+    out = []
+    for lobby in list(_registry.lobbies.values()):
+        if lobby.sichtbarkeit not in (SICHT_OEFFENTLICH, SICHT_PASSWORT):
+            continue
+        host = lobby.host
+        if host is None:
+            continue
+        out.append({
+            "code": lobby.lobby_id,
+            "name": lobby.lobby_name or f"Lobby von {host.name}",
+            "host": host.name,
+            "players": len(lobby.clients),
+            "max": min(lobby.roster_size, MAX_SLOTS),
+            "status": "racing" if lobby_im_rennen(lobby) else "lobby",
+            "password": lobby.sichtbarkeit == SICHT_PASSWORT,
+            "mode": lobby.mode,
+        })
+    return out
+
+
+_lobbyliste_zeiten: Dict[str, "list[float]"] = {}
+
+
+def _lobbyliste_erlaubt(schluessel: str, faktor: int) -> bool:
+    """Gleitendes Minutenfenster je Absender."""
+    jetzt = time.monotonic()
+    z = [t for t in _lobbyliste_zeiten.get(schluessel, []) if jetzt - t < 60.0]
+    if len(z) >= LOBBYLISTE_PRO_MIN * faktor:
+        _lobbyliste_zeiten[schluessel] = z
+        return False
+    z.append(jetzt)
+    _lobbyliste_zeiten[schluessel] = z
+    if len(_lobbyliste_zeiten) > 2000:
+        for k in [k for k, v in _lobbyliste_zeiten.items()
+                  if not any(jetzt - t < 60.0 for t in v)]:
+            _lobbyliste_zeiten.pop(k, None)
+    return True
+
+
+async def _lobbyliste_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) -> None:
+    """``LOBBY_LIST`` beantworten. Die Verbindung schliesst der Aufrufer."""
+    schluessel, faktor = _strecken_schluessel(ip, msg)
+    if not _lobbyliste_erlaubt(schluessel, faktor):
+        _wache._merken("lobbyliste_rate", ip, "LOBBY_LIST")
+        await _send(writer, {"type": "LOBBY_ERROR", "code": "RATE",
+                             "reason": _LOBBY_TEXT["RATE"]})
+        return
+    await _send(writer, {"type": "LOBBY_LIST", "server_tag": SERVER_TAG,
+                         "lobbies": lobby_liste()})
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────
