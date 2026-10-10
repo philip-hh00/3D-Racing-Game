@@ -31,8 +31,7 @@ from src.ui.widgets import Button, Stepper, TextInput, OnScreenKeyboard, ServerR
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
-from src.render3d import tageszeit as tz
-from src.render3d import wetter as wt
+from src.core import rennbedingungen as _bed
 from src.states.menu.gp_overview import GPOverview
 from src.states.menu.lobby_angaben import LobbyAngaben, sichtbarkeit_text
 from src.states.menu.lobby_browser import LobbyBrowser
@@ -178,16 +177,13 @@ class OnlineLobbyPage(Page):
         self._selected_vehicle    = s.player_vehicle
         self._selected_difficulty = s.ai_difficulty
         self._selected_laps       = s.laps
-        # Tageszeit: der Host wählt (zuletzt gewählter Wert aus dem Profil), der
-        # Gast liest sie aus den Lobbyeinstellungen. Fehlt das Feld dort (Host
-        # mit älterem Spiel), ist es Tag.
-        from src.core import profile as _profil
-        self._selected_tageszeit  = tz.normiere(_profil.current().tageszeit)
-        s.time_of_day             = self._selected_tageszeit
-        # Wetter ebenso: der Host wählt, der Gast liest es aus den
-        # Lobbyeinstellungen; fehlt das Feld (älterer Host), ist es Trocken.
-        self._selected_wetter     = wt.normiere(_profil.current().wetter)
-        s.weather                 = self._selected_wetter
+        # Tageszeit und Wetter wählt niemand: der Host würfelt sie beim Rennstart
+        # (``_bedingungen_wuerfeln``) und verteilt sie über die Einstellungen;
+        # Gäste lesen sie dort. Fehlen die Felder (älterer Host), gilt Tag und
+        # Trocken.
+        self._selected_tageszeit, self._selected_wetter = _bed.STANDARD
+        s.time_of_day = self._selected_tageszeit
+        s.weather     = self._selected_wetter
 
         self._roster_size    = _ROSTER_SIZE
         self._selected_mode  = "Rennen"        # "Rennen" | "Team-Zeitfahren"
@@ -347,14 +343,6 @@ class OnlineLobbyPage(Page):
         self._laps_stepper = Stepper(
             pygame.Rect(0, 0, w, h), "Runden",
             [str(n) for n in range(1, 11)], self._selected_laps - 1,
-        )
-        self._tageszeit_stepper = Stepper(
-            pygame.Rect(0, 0, w, h), tr("Tageszeit"), [tr(n) for n in tz.NAMEN],
-            tz.NAMEN.index(self._selected_tageszeit), action="set_tageszeit",
-        )
-        self._wetter_stepper = Stepper(
-            pygame.Rect(0, 0, w, h), tr("Wetter"), [tr(n) for n in wt.NAMEN],
-            wt.NAMEN.index(self._selected_wetter), action="set_wetter",
         )
         self._diff_stepper = Stepper(
             pygame.Rect(0, 0, w, h), "KI-Schwierigkeit",
@@ -1160,8 +1148,6 @@ class OnlineLobbyPage(Page):
                  self._laps_stepper]
         if gp_mode and self._gp_races_stepper.focusable:
             reihe.append(self._gp_races_stepper)
-        reihe.append(self._tageszeit_stepper)
-        reihe.append(self._wetter_stepper)
         # Der Schalter fuer Streckenvorschlaege stand hier bis zum 05.08.2026.
         # Er sitzt jetzt in der Grand-Prix-Uebersicht, „eine Seite später":
         # dort liegt die Liste, auf die er sich bezieht, und dort kann der Host
@@ -1213,10 +1199,6 @@ class OnlineLobbyPage(Page):
         if self._is_host:
             self._laps_stepper.enabled   = True
             self._laps_stepper.focusable = True
-            self._tageszeit_stepper.enabled   = True
-            self._tageszeit_stepper.focusable = True
-            self._wetter_stepper.enabled   = True
-            self._wetter_stepper.focusable = True
             self._mode_stepper.enabled   = True
             self._mode_stepper.focusable = True
             self._class_stepper.enabled  = True
@@ -1248,10 +1230,6 @@ class OnlineLobbyPage(Page):
         else:
             self._laps_stepper.enabled   = False
             self._laps_stepper.focusable = False
-            self._tageszeit_stepper.enabled   = False
-            self._tageszeit_stepper.focusable = False
-            self._wetter_stepper.enabled   = False
-            self._wetter_stepper.focusable = False
             self._mode_stepper.enabled   = False
             self._mode_stepper.focusable = False
             self._size_stepper.enabled   = False
@@ -1475,18 +1453,34 @@ class OnlineLobbyPage(Page):
         ]
 
     def _tageszeit_setzen(self, name) -> None:
-        """Die Tageszeit übernehmen (Gast: vom Host; Host: eigene Wahl) und in den Rennaufbau legen."""
-        self._selected_tageszeit = tz.normiere(name)
-        self._tageszeit_stepper.index = tz.NAMEN.index(self._selected_tageszeit)
+        """Die Tageszeit übernehmen (Gast: vom Host; Host: eigener Wurf) und in den Rennaufbau legen."""
+        self._selected_tageszeit = _bed.normiere(name, None)[0]
         from src.core import race_setup
         race_setup.current().time_of_day = self._selected_tageszeit
 
     def _wetter_setzen(self, name) -> None:
-        """Das Wetter übernehmen (Gast: vom Host; Host: eigene Wahl) und in den Rennaufbau legen."""
-        self._selected_wetter = wt.normiere(name)
-        self._wetter_stepper.index = wt.NAMEN.index(self._selected_wetter)
+        """Das Wetter übernehmen (Gast: vom Host; Host: eigener Wurf) und in den Rennaufbau legen."""
+        self._selected_wetter = _bed.normiere(None, name)[1]
         from src.core import race_setup
         race_setup.current().weather = self._selected_wetter
+
+    def _bedingungen_wuerfeln(self) -> None:
+        """Host, beim Rennstart: Tageszeit und Wetter dieses Rennens würfeln und verteilen.
+
+        Nur der Host würfelt (``core.rennbedingungen``); Zeitfahren und
+        Team-Zeitfahren bleiben bei Tag und Trocken. Das Ergebnis geht über die
+        Einstellungen an alle, **bevor** die Strecke übertragen und gestartet
+        wird (dieselbe TCP-Verbindung, die Reihenfolge bleibt): jeder baut sein
+        Rennen mit denselben Bedingungen auf, denn im Regen haftet das Auto
+        schlechter. Der Aufruf liegt in ``_request_start`` und damit auf jedem
+        Weg zum Start: Lobby, Grand-Prix-Lauf und Neustart aus der Wertung.
+        """
+        if not self._is_host:
+            return
+        tageszeit, wetter = _bed.wuerfeln(modus=self._selected_mode)
+        self._tageszeit_setzen(tageszeit)
+        self._wetter_setzen(wetter)
+        self._push_settings()
 
     def _push_settings(self) -> None:
         from src.net import session
@@ -1634,6 +1628,9 @@ class OnlineLobbyPage(Page):
         net = session.get()
         if not net:
             return
+        # Tageszeit und Wetter dieses Rennens: der Host wuerfelt, alle bekommen
+        # dasselbe (siehe _bedingungen_wuerfeln).
+        self._bedingungen_wuerfeln()
         # Grand Prix: beim ersten Lauf die Serie anlegen. Nur der Host fuehrt
         # sie - Gaeste sehen ausschliesslich das, was er ueber die Einstellungen
         # verteilt.
@@ -2865,8 +2862,6 @@ class OnlineLobbyPage(Page):
             return
 
         old_laps  = self._laps_stepper.index
-        old_tz    = self._tageszeit_stepper.index
-        old_wetter = self._wetter_stepper.index
         old_mode  = self._mode_stepper.index
         old_size  = self._size_stepper.index
         old_class = self._class_stepper.index
@@ -2941,16 +2936,6 @@ class OnlineLobbyPage(Page):
         size_changed  = self._is_host and self._size_stepper.index != old_size
         class_changed = self._is_host and self._class_stepper.index != old_class
         laps_changed  = self._is_host and self._laps_stepper.index != old_laps
-        tz_changed    = self._is_host and self._tageszeit_stepper.index != old_tz
-        if tz_changed:
-            self._tageszeit_setzen(tz.NAMEN[self._tageszeit_stepper.index])
-            from src.core import profile as _profil
-            _profil.current().set_tageszeit(self._selected_tageszeit)
-        wetter_changed = self._is_host and self._wetter_stepper.index != old_wetter
-        if wetter_changed:
-            self._wetter_setzen(wt.NAMEN[self._wetter_stepper.index])
-            from src.core import profile as _profil
-            _profil.current().set_wetter(self._selected_wetter)
 
         if mode_changed:
             self._selected_mode = _MODE_KEYS[self._mode_stepper.index]
@@ -2988,7 +2973,7 @@ class OnlineLobbyPage(Page):
             self._rebuild_roster_widgets()
             self._refresh_focus_group()
 
-        if laps_changed or tz_changed or wetter_changed or mode_changed or size_changed or class_changed:
+        if laps_changed or mode_changed or size_changed or class_changed:
             self._push_settings()
 
     # ── Draw ─────────────────────────────────────────────────────────────────
@@ -3209,8 +3194,6 @@ class OnlineLobbyPage(Page):
             tn = _track_name_from_path(self._selected_track_path)
             lines.append((tr("Strecke:"), tn))
             lines.append((tr("Runden:"), str(self._selected_laps)))
-            lines.append((tr("Tageszeit:"), tr(self._selected_tageszeit)))
-            lines.append((tr("Wetter:"), tr(self._selected_wetter)))
 
             ly = 192
             for label, value in lines:

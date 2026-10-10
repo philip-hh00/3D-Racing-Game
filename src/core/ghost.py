@@ -411,6 +411,10 @@ def generate_seed_ghost(track_path: str, progress_callback=None,
         _aufraeumen()
         return GhostData()
 
+    # Ghosts fahren immer bei Tag und Trocken (core.rennbedingungen): voller Grip,
+    # egal was das Spiel sonst gerade wuerfelt.
+    ai.wetter_setzen("Trocken")
+
     # Activate AI driving (by default AIVehicle.ai_active=False and brakes are held)
     ai.ai_active = True
 

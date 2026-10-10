@@ -226,6 +226,19 @@ landen. Zum Zurückschalten die Variablen leeren.
 `RACE_SERVER_UDP_PORT` fällt auf `RACE_SERVER_PORT` zurück, wenn es fehlt — was
 für einen Server ohne getrennte Tunnel meist das Richtige ist.
 
+### Tageszeit und Wetter erzwingen (Test)
+
+Tageszeit und Wetter eines Rennens werden gewürfelt (80 % Tag/Trocken, sonst
+Nacht/Trocken, Tag/Regen oder Nacht/Regen; Zeitfahren immer Tag/Trocken). Zum
+Testen legt die Umgebungsvariable `RACE_BEDINGUNGEN` das Ergebnis fest, zum
+Beispiel `Nacht/Regen`, `Regen` (= Tag + Regen), `Nacht` oder `Abend/Trocken`.
+Online gilt sie auf dem **Host**, der würfelt und das Ergebnis an alle verteilt;
+Gäste lesen sie nie. Zeitfahren und Team-Zeitfahren bleiben bei Tag/Trocken.
+
+```powershell
+$env:RACE_BEDINGUNGEN="Nacht/Regen"; python main.py
+```
+
 ---
 
 ## Was ohnehin schon ohne Neustart geht
