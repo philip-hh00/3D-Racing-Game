@@ -1,7 +1,8 @@
 """Der Weg zu den Online-Strecken: Streckenauswahl und Editor-Projektliste (Plan 1.1.0 §5).
 
-Taste O (Controller: Y) und der Knopf fuehren zum Zustand ``online_strecken``;
-der Zustand ist registriert, und der Rueckweg kommt dorthin zurueck.
+Der Knopf fuehrt zum Zustand ``online_strecken`` — per Maus oder per Fokus
+(rechts) und ENTER/A. Es gibt **kein Tastenkuerzel** (O, Y); der Zustand ist
+registriert, und der Rueckweg kommt dorthin zurueck.
 """
 from __future__ import annotations
 
@@ -35,8 +36,11 @@ def test_streckenauswahl_taste_und_knopf():
     z.enter()
     z.handle_events([_taste(pygame.K_o)])
     z.handle_events([_taste(pygame.K_y, synthetic=True)])       # Y am Controller
+    assert ziele == [], "keine Kuerzel"
     z.handle_events([_klick(z._online_rect().center)])
-    assert ziele == ["online_strecken"] * 3
+    z.handle_events([_taste(pygame.K_RIGHT, synthetic=True)])   # Fokus auf den Knopf
+    z.handle_events([_taste(pygame.K_RETURN, synthetic=True)])  # A
+    assert ziele == ["online_strecken"] * 2
     schirm = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
     z.render(schirm)
     # Der Knopf liegt im Bild und ueberdeckt weder Startknopf noch Liste.
@@ -54,7 +58,8 @@ def test_streckenauswahl_im_grand_prix_bleibt_bei_der_serie():
     original = grand_prix.is_active
     grand_prix.is_active = lambda: True
     try:
-        z.handle_events([_taste(pygame.K_o)])
+        z.handle_events([_taste(pygame.K_RIGHT)])
+        z.handle_events([_taste(pygame.K_RETURN)])
     finally:
         grand_prix.is_active = original
     assert ziele == []
@@ -65,8 +70,13 @@ def test_editor_projektliste_taste_und_knopf():
     sm, ziele = _zielliste()
     z = EditorState(sm)
     z._mode = "browse"
+    z._projects = []
     z._handle_browse_event(_taste(pygame.K_o))
+    z._handle_browse_event(_taste(pygame.K_y, synthetic=True))
+    assert ziele == [], "keine Kuerzel"
     z._handle_browse_event(_klick(z._online_rect().center))
+    z._handle_browse_event(_taste(pygame.K_RIGHT, synthetic=True))
+    z._handle_browse_event(_taste(pygame.K_RETURN, synthetic=True))
     assert ziele == ["online_strecken"] * 2
     assert pygame.Rect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT).contains(z._online_rect())
     # Der Knopf liegt neben der Projektliste, nicht auf ihr.

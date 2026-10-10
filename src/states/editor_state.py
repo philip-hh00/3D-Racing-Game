@@ -615,9 +615,22 @@ class EditorState(BaseState):
             self._browse_zurueck()
             _sfx.klick_quittieren(e, vorher)
             return
+        if e.type == pygame.KEYDOWN and getattr(self, "_online_fokus", False):
+            # Fokus auf dem Knopf "Online-Strecken" (kein Tastenkuerzel):
+            # ENTER/A oeffnet, Links/Hoch/Runter geht zurueck in die Liste.
+            if e.key == pygame.K_RETURN:
+                self._online_strecken()
+            elif e.key == pygame.K_ESCAPE:
+                self._browse_zurueck()
+            elif e.key in (pygame.K_LEFT, pygame.K_UP, pygame.K_DOWN,
+                           pygame.K_a, pygame.K_w, pygame.K_s):
+                self._online_fokus = False
+            return
         if e.type == pygame.KEYDOWN:
             if e.key == pygame.K_ESCAPE:
                 self._browse_zurueck()
+            elif e.key in (pygame.K_RIGHT, pygame.K_d):
+                self._online_fokus = True
             elif e.key == pygame.K_PAGEUP:
                 from src.states.menu_shell_state import TAB_EDITOR
                 self.state_machine.transition("menu", tab_idx=TAB_EDITOR - 1)
@@ -634,8 +647,6 @@ class EditorState(BaseState):
                 self._browse_ensure_visible()
             elif e.key == pygame.K_RETURN:
                 self._open_project(self._projects[self._browse_idx])
-            elif e.key == pygame.K_o or (e.key == pygame.K_y and getattr(e, "synthetic", False)):
-                self._online_strecken()
         elif e.type == pygame.MOUSEWHEEL:
             max_scroll = max(0, len(self._projects) - self._BROWSE_VISIBLE)
             self._browse_scroll = max(0, min(max_scroll, self._browse_scroll - e.y))
@@ -1653,11 +1664,11 @@ class EditorState(BaseState):
         # Online-Strecken: tauschen mit anderen Spielern.
         orect = self._online_rect()
         from src.core import display as _display, input_mode as _im
-        ohover = orect.collidepoint(_display.mouse_pos())
+        ohover = orect.collidepoint(_display.mouse_pos()) or getattr(self, "_online_fokus", False)
         zeichnen.rect(screen, (30, 44, 58) if ohover else (22, 32, 44), orect, border_radius=8)
         zeichnen.rect(screen, (120, 200, 255) if ohover else (70, 130, 175), orect, 2,
                       border_radius=8)
-        theme.text_fit(screen, f"{tr('Online-Strecken')}  [{'Y' if _im.is_pad() else 'O'}]",
+        theme.text_fit(screen, tr('Online-Strecken'),
                        theme.BODY, (180, 225, 255) if ohover else (140, 195, 235),
                        orect.inflate(-24, 0), center=True)
 
