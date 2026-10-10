@@ -211,3 +211,64 @@ def test_echte_datei_ueber_cv2(tmp_path):
         assert bild[45, 80, 2] > 200 and bild[45, 80, 0] < 60     # BGR: rot im letzten Kanal
     finally:
         strom.close(warten=True)
+
+
+# ---------------------------------------------------------------------------
+# Gemeinsamer Hintergrund fuer Vollbildzustaende
+# ---------------------------------------------------------------------------
+
+class _Ebene:
+    def __init__(self):
+        self.angefordert = []
+
+    def zeigen(self, strom, abdunkeln=0.0, vignette=0.0):
+        self.angefordert.append((strom, abdunkeln, vignette))
+
+
+def test_hintergrund_ohne_ebene_oder_datei_malt_der_zustand_selbst(tmp_path):
+    from src.ui.video_ebene import HintergrundVideo
+    hg = HintergrundVideo(str(tmp_path))
+    assert hg.zeigen(None, "Einzelspieler") is False         # kein OpenGL
+    assert hg.zeigen(_Ebene(), "Fehlt") is False              # keine Datei
+
+
+def test_hintergrund_oeffnet_einmal_wechselt_und_raeumt_auf(tmp_path, monkeypatch):
+    from src.ui import video_ebene as ve
+    for name in ("A", "B"):
+        (tmp_path / f"{name}.mp4").write_bytes(b"")
+    geoeffnet = []
+
+    class Strom:
+        fehler = False
+
+        def __init__(self, pfad):
+            geoeffnet.append(pfad)
+            self.zu = False
+
+        def close(self):
+            self.zu = True
+
+    monkeypatch.setattr(ve, "VideoStrom", Strom)
+    jetzt = [0.0]
+    hg = ve.HintergrundVideo(str(tmp_path), uhr=lambda: jetzt[0])
+    ebene = _Ebene()
+    assert hg.zeigen(ebene, "A") and hg.zeigen(ebene, "A") and hg.zeigen(ebene, "A")
+    assert len(geoeffnet) == 1                                # ein Strom fuer viele Bilder
+    erster = hg.strom
+    assert hg.zeigen(ebene, "B")                              # anderes Video: alter schliesst
+    assert erster.zu and len(geoeffnet) == 2
+    jetzt[0] += 1.0
+    hg.aufraeumen()
+    assert not hg.strom.zu                                    # noch kein Leerlauf
+    jetzt[0] += ve.HintergrundVideo.LEERLAUF_S
+    zweiter = hg.strom
+    hg.aufraeumen()
+    assert zweiter.zu and hg.strom is None
+
+
+def test_theme_hintergrund_ohne_opengl_faerbt_ein(monkeypatch):
+    import pygame
+    from src.ui import theme
+    flaeche = pygame.Surface((20, 20))
+    theme.draw_background(flaeche, farbe=(12, 12, 20))
+    assert tuple(flaeche.get_at((5, 5)))[:3] == (12, 12, 20)

@@ -420,3 +420,65 @@ class VideoEbene:
         self._tex = [None, None]
         for teil in (self._vao, self._vbo, self._programm):
             teil.release()
+
+
+# ---------------------------------------------------------------------------
+# Gemeinsamer Hintergrund fuer alle Vollbildzustaende
+# ---------------------------------------------------------------------------
+
+class HintergrundVideo:
+    """Das Menuevideo als Hintergrund fuer Zustaende ausserhalb der Menueschale.
+
+    Streckenwahl, Fahrzeugwahl, Online-Strecken, Willkommen, Ladebild: alle
+    hatten einen eigenen, flachen Hintergrund und liessen neben dem sicheren
+    16:9-Bereich eine dunkle Flaeche stehen. Jetzt zeigen sie dasselbe Video
+    wie das Menue, ueber das ganze Fenster (:class:`VideoEbene`). Der Zustand
+    ruft in jedem Bild :meth:`zeigen` und zeichnet nichts dahinter.
+
+    Der Strom bleibt :data:`LEERLAUF_S` Sekunden nach dem letzten Aufruf
+    offen — beim Wechsel zwischen zwei Zustaenden oeffnet nichts neu — und
+    wird dann von :meth:`aufraeumen` (jedes Bild, aus ``display``) geschlossen.
+    """
+
+    LEERLAUF_S = 3.0
+
+    def __init__(self, ordner: str = "data/menu", uhr=time.perf_counter) -> None:
+        self._ordner = ordner
+        self._uhr = uhr
+        self._strom: VideoStrom | None = None
+        self._stem: str | None = None
+        self._zuletzt = 0.0
+
+    @property
+    def strom(self):
+        return self._strom
+
+    def zeigen(self, ebene, stem: str, abdunkeln: float = 0.59, vignette: float = 0.0) -> bool:
+        """Das Video ``stem`` zeigen. ``False``: keins verfuegbar — der Aufrufer malt selbst."""
+        import os
+        if ebene is None:
+            return False
+        if stem != self._stem or self._strom is None:
+            self._schliessen()
+            self._stem = stem
+            pfad = os.path.join(self._ordner, f"{stem}.mp4")
+            if os.path.isfile(pfad):
+                try:
+                    self._strom = VideoStrom(pfad)
+                except Exception:
+                    self._strom = None
+        if self._strom is None or self._strom.fehler:
+            return False
+        self._zuletzt = self._uhr()
+        ebene.zeigen(self._strom, abdunkeln, vignette)
+        return True
+
+    def aufraeumen(self) -> None:
+        if self._strom is not None and self._uhr() - self._zuletzt > self.LEERLAUF_S:
+            self._schliessen()
+            self._stem = None
+
+    def _schliessen(self) -> None:
+        if self._strom is not None:
+            self._strom.close()
+            self._strom = None

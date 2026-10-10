@@ -142,6 +142,7 @@ _kontext = None
 _kontext_versucht: bool = False
 _ansicht3d = None
 _video_ebene = None
+_hintergrund = None
 _fensterobjekt = None
 
 # Set while handle_window_event() is restoring the configured window size
@@ -413,10 +414,35 @@ def bild_abschliessen() -> None:
         ausschnitt = vollbild()
         ctx.viewport = ausschnitt
         ctx.scissor = ausschnitt
+        if _hintergrund is not None:
+            _hintergrund.aufraeumen()
         if _video_ebene is not None:
             _video_ebene.zeichnen(ausschnitt[2:], raster_groesse(ausschnitt[2:]))
         bild.hud_zeichnen(virtual_surface())
     pygame.display.flip()
+
+
+def ist_bildflaeche(flaeche) -> bool:
+    """Ob ``flaeche`` die virtuelle Flaeche oder ihr sicherer Bereich ist (nicht irgendeine Zwischenflaeche)."""
+    return flaeche is _virtual or (_sicher is not None and flaeche is _sicher[1])
+
+
+def hintergrund_video(stem: str = "Einzelspieler", abdunkeln: float = 150 / 255,
+                      vignette: float = 0.0) -> bool:
+    """Das Menuevideo ``stem`` als Hintergrund dieses Bildes anfordern.
+
+    ``True``: die Videoebene zeigt es ueber das ganze Fenster, der Zustand malt
+    nichts dahinter. ``False`` (kein OpenGL, keine Datei): er malt seinen
+    Ersatzhintergrund selbst. Siehe :class:`src.ui.video_ebene.HintergrundVideo`.
+    """
+    global _hintergrund
+    ebene = video_ebene()
+    if ebene is None:
+        return False
+    if _hintergrund is None:
+        from src.ui.video_ebene import HintergrundVideo
+        _hintergrund = HintergrundVideo()
+    return _hintergrund.zeigen(ebene, stem, abdunkeln, vignette)
 
 
 def video_ebene():

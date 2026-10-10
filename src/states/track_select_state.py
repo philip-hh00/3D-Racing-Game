@@ -351,7 +351,7 @@ class TrackSelectState(BaseState):
     def render(self, screen: pygame.Surface) -> None:
         """Render the complete track selection screen."""
         # Deep space techy background
-        screen.fill((12, 12, 20))
+        theme.draw_background(screen, farbe=(12, 12, 20))
         self._draw_grid_background(screen)
 
         # Screen Title

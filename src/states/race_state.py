@@ -692,6 +692,12 @@ class RaceState(BaseState):
         if getattr(self, "_load_video", None) is not None:
             return                      # läuft schon (ein Ladebildschirm, ein Video)
         self._load_video = None
+        #: Mit OpenGL zeigt die gemeinsame Videoebene den Hintergrund
+        #: (``_lade_ebene``), ueber das ganze Fenster und ohne Entschluesseln hier.
+        self._load_stem = stem
+        from src.core import display
+        if display.video_ebene() is not None:
+            return
         if os.path.isfile(path):
             from src.ui.video_player import VideoPlayer
             vp = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT), faden=False)
@@ -822,7 +828,9 @@ class RaceState(BaseState):
         # Background: the same looping video as the submenu we came from.
         vid = getattr(self, "_load_video", None)
         frame = vid.get_surface() if (vid is not None and vid.ok) else None
-        if frame is not None:
+        if self._lade_ebene(screen):
+            pass
+        elif frame is not None:
             vid.update(1.0 / 60.0)
             screen.blit(frame, (0, 0))
             dark = leinwand.flaeche((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -2801,6 +2809,12 @@ class RaceState(BaseState):
             theme.text(screen, text, theme.LABEL, theme.ACCENT,
                        (screen.get_width() // 2, 60), center=True)
 
+    def _lade_ebene(self, screen: pygame.Surface) -> bool:
+        """Der Hintergrund des Lade- und Warteschirms aus der gemeinsamen Videoebene."""
+        from src.core import display
+        stem = getattr(self, "_load_stem", None)
+        return bool(stem) and display.ist_bildflaeche(screen) and display.hintergrund_video(stem)
+
     @staticmethod
     def _schleier(flaeche: pygame.Surface, alpha: int) -> None:
         """Die ganze Flaeche (auch den Rand neben dem sicheren Bereich) abdunkeln."""
@@ -2885,7 +2899,9 @@ class RaceState(BaseState):
             # noch lud. Jetzt sieht die Wartezeit auf beiden Seiten gleich aus.
             vid = getattr(self, "_load_video", None)
             frame = vid.get_surface() if (vid is not None and vid.ok) else None
-            if frame is not None:
+            if self._lade_ebene(screen):
+                pass                            # Video samt Abdunklung: Videoebene
+            elif frame is not None:
                 vid.update(1.0 / 60.0)
                 screen.blit(frame, (0, 0))
                 self._rand_fortsetzen(voll)

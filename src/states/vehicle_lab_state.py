@@ -694,7 +694,7 @@ class VehicleLabState(BaseState):
     # ------------------------------------------------------------------
 
     def render(self, screen: pygame.Surface) -> None:
-        screen.fill((14, 15, 24))
+        theme.draw_background(screen, farbe=(14, 15, 24))
         cfg = self._cfg()
         title = f"FAHRZEUG-LABOR — {cfg.name if cfg else '?'}  ({self._key})"
         screen.blit(self._fonts["title"].render(title, True, (255, 180, 0)), (40, 24))

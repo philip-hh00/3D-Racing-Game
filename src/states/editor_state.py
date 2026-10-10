@@ -1588,14 +1588,21 @@ class EditorState(BaseState):
         self.state_machine.zurueck()
 
     def _draw_browser(self, screen: pygame.Surface) -> None:
-        # Draw background video/image
-        self._ensure_video("Streckeneditor")
-        frame = self._current_frame("Streckeneditor")
-        if frame is not None:
-            screen.blit(frame, (0, 0))
-            screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+        # Draw background video/image. Mit OpenGL liegt das Video als Ebene
+        # ueber dem ganzen Fenster (Faden, Randabdunklung im Shader); nur ohne
+        # sie bleibt der Weg ueber VideoPlayer.
+        from src.core import display
+        if display.ist_bildflaeche(screen) and display.hintergrund_video(
+                "Streckeneditor", abdunkeln=0.0, vignette=120 / 255.0):
+            pass
         else:
-            theme.draw_background(screen)
+            self._ensure_video("Streckeneditor")
+            frame = self._current_frame("Streckeneditor")
+            if frame is not None:
+                screen.blit(frame, (0, 0))
+                screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+            else:
+                theme.draw_background(screen)
 
         # Draw main menu shell top tab bar
         self._draw_tab_bar(screen)
