@@ -160,29 +160,44 @@ def planen(fo, p: dict, L) -> Plan:
     pl.neigung = math.radians(22.0)             # Säulenachse über der Waagerechten
     z_w = min(L.z_a + 0.03, z_e - 0.10 - 0.93 * pl.kranz_r)
     # --- Zifferblätter -----------------------------------------------------------
-    # Sie sollen über dem Kranz stehen (aus dem Auge gesehen, mit Parallaxe), aber unter
-    # der Augenhöhe bleiben, sonst versperrt die Hutze die Sicht nach vorn. Reicht der
-    # Platz nicht, sitzt das Lenkrad tiefer.
+    # Das Kombiinstrument sitzt **im Armaturenbrett**: in dessen Rückwand (x_a - 0,40), unter
+    # der Oberkante, die als Haube darüber steht. Nichts ragt über das Armaturenbrett in die
+    # Frontscheibe. Das Lenkrad steht davor; aus dem Auge gesehen blickt man durch den Kranz
+    # über die Nabe auf die Zifferblätter. Dafür darf das Lenkrad tiefer sitzen, als es
+    # sonst stünde (nicht tiefer, als die Oberschenkel zulassen).
     pl.dial_r = 0.046
-    pl.dial_abstand = 0.07
-    x_dial = L.x_a - 0.42
-    z_c_max = z_e - 0.05 - (pl.dial_r + 0.02)
-    for _ in range(4):
-        z_kranz = z_w + pl.kranz_r * math.cos(pl.neigung) + 0.02
-        d_kranz = L.x_a - 0.46 + pl.kranz_r * math.sin(pl.neigung) - x_e
-        k = (x_dial - x_e) / max(d_kranz, 0.1)
-        z_proj = z_e - (z_e - z_kranz) * k
-        z_c = z_proj - 0.01 + (pl.dial_r + 0.009)
-        if z_c <= z_c_max:
+    pl.dial_abstand = 0.092                      # so weit auseinander, dass die Nabe dazwischen steht
+    x_wand = L.x_a - 0.40                        # Rückwand des Armaturenbretts
+    z_oben = L.z_a + 0.09                        # Oberkante des Armaturenbretts
+    x_dial = x_wand - 0.002                      # Zifferblatt senkrecht, bündig vor der Wand
+    x_lenkrad = L.x_a - 0.50                     # Kranzoberkante bleibt hinter der Wand
+    z_c_tief = z_oben - 0.02 - (pl.dial_r + 0.009)     # Rahmenoberkante 2 cm unter der Kante
+    z_c_hoch = z_c_tief + 0.035                         # höchstens so weit hinauf: Haube 3,5 cm über der Kante
+    z_w_min = z_w - 0.07                         # so viel tiefer darf das Lenkrad höchstens sitzen
+
+    def _projektion(x_p: float, z_p: float) -> float:
+        """Höhe, in der der Sehstrahl vom Auge durch (x_p, z_p) die Zifferblattebene trifft."""
+        return z_e - (z_e - z_p) * (x_dial - x_e) / max(x_p - x_e, 0.1)
+
+    z_c = z_c_tief
+    for _ in range(6):
+        # Oberkante der waagerechten Speichen (die Nabe steht zwischen den Zifferblättern),
+        # aus dem Auge auf die Wand projiziert.
+        z_nabe = _projektion(x_lenkrad, z_w + 0.025)
+        z_noetig = z_nabe + 0.012 + pl.dial_r + 0.009
+        # Im Bild bleiben: Zifferblattmitte höchstens 25 Grad unter dem Horizont (das Sichtfeld der
+        # Cockpitkamera reicht 32 Grad nach unten), soweit die Haube das zulässt.
+        z_blick = z_e - math.tan(math.radians(25.0)) * (x_dial - x_e)
+        z_c = min(max(z_noetig, z_blick, z_c_tief), z_c_hoch)
+        if z_noetig <= z_c_hoch + 1e-4 or z_w <= z_w_min:
             break
-        z_w -= (z_c - z_c_max) / k
-    z_c = min(z_c, z_c_max)
-    pl.lenkrad = Vector((L.x_a - 0.46, ys, z_w))
+        k = (x_dial - x_e) / max(x_lenkrad - x_e, 0.1)
+        z_w = max(z_w - (z_noetig - z_c_hoch) / k, z_w_min)
+    pl.lenkrad = Vector((x_lenkrad, ys, z_w))
     # Mitte der beiden Zifferblätter; links (+Y) die Drehzahl, rechts der Tacho.
-    mitte = Vector((L.x_a - 0.42, ys, z_c))
-    zum_auge = (pl.auge - mitte).normalized()
+    mitte = Vector((x_dial, ys, z_c))
     pl.z_c = z_c
-    pl.dial_basis = _basis(-zum_auge)        # +X vom Fahrer weg, gemeinsam für beide Zifferblätter
+    pl.dial_basis = _basis(Vector((1.0, 0.0, 0.0)))   # +X vom Fahrer weg, gemeinsam für beide Zifferblätter
     pl.dial_mitte = mitte
     y_ax = pl.dial_basis[1]                  # +Y des Blatts (nach links aus Sicht des Fahrers)
     pl.dial_ort = {"drehzahl": mitte + y_ax * pl.dial_abstand,
@@ -460,16 +475,16 @@ def _nadel_bauen(pl: Plan, name: str, ort: Vector, mats):
 
 def instrumente_bauen(pl: Plan, mats) -> tuple[list, list]:
     """Zifferblätter samt Rahmen und Hutze (starr, kommen in die Karosserie) und die beiden Nadeln."""
-    statisch, knoten = [], []
-    # Hutze: Kasten hinter den Zifferblättern, in derselben Neigung, ragt in das Armaturenbrett
-    x, y, z = pl.dial_basis
+    # Blende über den Zifferblättern: flache Haube, die aus der Oberkante des Armaturenbretts
+    # nach hinten ragt und mit ihr abschließt. Darüber nichts, was in die Scheibe ragt.
     r = pl.dial_r
     br = 2 * (pl.dial_abstand + r + 0.02)
-    hh = 2 * (r + 0.02)
-    tiefe = 0.14
-    hutze = t.kasten("hutze", (tiefe / 2 + 0.004, 0, 0), (tiefe, br, hh), mats["innenraum"], fase=0.03)
-    _in_welt(hutze, _matrix(pl.dial_mitte, x, y, z))
-    statisch.append(hutze)
+    x_wand = pl.layout.x_a - 0.40
+    z_haube = pl.z_c + r + 0.009 + 0.012       # Oberkante der Rahmen plus Luft
+    haube = t.kasten("hutze", (x_wand - 0.0175, pl.dial_mitte.y, z_haube), (0.035, br, 0.016),
+                     mats["innenraum"], fase=0.006)
+    statisch = [haube]
+    knoten = []
     bild = {
         "tacho": zifferblatt(pl.tacho_max, pl.tacho_schritt, 10.0, 1.0, None, "", "KMH"),
         "drehzahl": zifferblatt(pl.drehzahl_max, pl.drehzahl_schritt, pl.drehzahl_schritt / 2,
@@ -540,8 +555,9 @@ def innenspiegel_bauen(karosserie, fo, pl: Plan, mats):
     ziel = Vector((ms.x(u_kopf) + 0.12, 0.0, z_kopf - 0.085))
     treffer = t.strahl(karosserie, pl.auge, ziel - pl.auge)
     glas_pkt = Vector(treffer[0]) if treffer else ziel + Vector((0.12, 0, 0))
+    glas_pkt.y = 0.0                  # der Strahl vom Auge trifft seitlich: der Spiegel hängt in der Wagenmitte
     zum_auge = (pl.auge - glas_pkt).normalized()
-    mitte = glas_pkt + zum_auge * 0.075
+    mitte = glas_pkt + Vector((zum_auge.x, 0.0, zum_auge.z)).normalized() * 0.075
     mitte.z = min(mitte.z, z_kopf - 0.075)
     n = (pl.auge - mitte).normalized()
     x, y, z = _basis(n)            # +X zum Fahrer; Gehäuse in lokalen Maßen

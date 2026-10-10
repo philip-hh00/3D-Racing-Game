@@ -351,10 +351,20 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
 
     x_a, z_a, w_a, z_b = L.x_a, L.z_a, L.w_a, L.z_b
     # Armaturenbrett: Körper, gepolsterte Oberkante, Instrumentenhutze, Bildschirm, Düsen
+    # Im Cockpit sitzt das Kombiinstrument in der Rückwand (``teile_cockpit``): die Oberkante
+    # wird knapper gerundet, die Zierleiste und die Düsen weichen dem Instrumentenfeld.
+    plan = getattr(fo, "cockpit", None) if cockpit else None
+    frei = None if plan is None else (plan.dial_mitte.y - plan.dial_abstand - plan.dial_r - 0.04,
+                                      plan.dial_mitte.y + plan.dial_abstand + plan.dial_r + 0.04)
     teile.append(t.kasten("armatur", (x_a - 0.2, 0, (z_a + 0.09 + z_b) / 2), (0.4, w_a * 2, z_a + 0.09 - z_b),
-                          im, fase=0.04))
-    teile.append(t.kasten("armaturleiste", (x_a - 0.4, 0, z_a + 0.03), (0.03, w_a * 2 - 0.08, 0.035),
-                          akzent, fase=0.01))
+                          im, fase=0.04 if plan is None else 0.02))
+    leiste_y = [(-(w_a - 0.04), w_a - 0.04)]
+    if frei is not None:
+        leiste_y = [(-(w_a - 0.04), frei[0]), (frei[1], w_a - 0.04)]
+    for y0, y1 in leiste_y:
+        if y1 - y0 > 0.05:
+            teile.append(t.kasten("armaturleiste", (x_a - 0.4, (y0 + y1) / 2, z_a + 0.03),
+                                  (0.03, y1 - y0, 0.035), akzent, fase=0.01))
     if not cockpit:
         teile.append(t.kasten("hutze", (x_a - 0.34, w_a * 0.45, z_a + 0.12), (0.16, 0.3, 0.07), im, fase=0.03))
         # Kombiinstrument und Bildschirm leuchten aus dem Atlas anzeige.png.
@@ -367,6 +377,8 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
     to.anzeige_uv(schirm, 0.0, 0.5)
     teile.append(schirm)
     for y in (-w_a * 0.75, w_a * 0.75, -0.16, 0.16):
+        if frei is not None and frei[0] - 0.05 < y < frei[1] + 0.05:
+            continue
         teile.append(t.kasten("duese", (x_a - 0.405, y, z_a + 0.06), (0.01, 0.08, 0.035),
                               mats["kunststoff"], fase=0.003))
     # Mittelkonsole mit Wählhebel

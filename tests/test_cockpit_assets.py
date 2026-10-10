@@ -97,6 +97,42 @@ def test_cockpit_knoten_und_lage(key):
 
 
 @pytest.mark.parametrize("key", ALLE)
+def test_kombiinstrument_sitzt_hinter_dem_lenkrad_im_armaturenbrett(key):
+    """Das Lenkrad steht vor den Zifferblättern; sie flankieren die Nabe und liegen so tief,
+    dass nichts über das Armaturenbrett in die Scheibe ragt (Kranzoberkante liegt rund 8 cm
+    vor dem Lenkradursprung, die Zifferblattebene dahinter)."""
+    kopf, t = _lade(key)
+    kn = _knoten(kopf)
+    ort = {n: np.array(kn[n]["translation"]) for n in ("lenkrad", "nadel_tacho", "nadel_drehzahl")}
+    auge = np.array(t["cockpit"]["augpunkt"])
+    for name in ("nadel_tacho", "nadel_drehzahl"):
+        assert ort[name][0] - ort["lenkrad"][0] >= 0.09, f"{name} liegt nicht hinter dem Kranz"
+        assert ort[name][2] <= ort["lenkrad"][2] + 0.14, f"{name} sitzt zu hoch über der Nabe"
+        assert ort[name][2] > ort["lenkrad"][2] - 0.02
+        # Die Sicht über das Armaturenbrett: das Zifferblatt liegt deutlich unter Augenhöhe.
+        assert auge[2] - ort[name][2] > 0.18, name
+    # die Nabe steht in der Mitte zwischen beiden
+    assert abs((ort["nadel_tacho"][1] + ort["nadel_drehzahl"][1]) / 2 - ort["lenkrad"][1]) < 0.005
+    assert 0.07 < ort["nadel_drehzahl"][1] - ort["lenkrad"][1] < 0.12
+
+
+@pytest.mark.parametrize("key", ALLE)
+def test_spiegel_sitzen_im_blickfeld_des_fahrers(key):
+    """Innenspiegel mittig; linker Außenspiegel nicht weiter als 45 Grad seitlich und nicht
+    steil darunter (sonst liegt er am Bildrand hinter der A-Säule)."""
+    import math
+    kopf, t = _lade(key)
+    kn = _knoten(kopf)
+    auge = np.array(t["cockpit"]["augpunkt"])
+    assert abs(kn["spiegel_innen"]["translation"][1]) < 0.02
+    d = np.array(kn["spiegel_l"]["translation"]) - auge
+    azimut = math.degrees(math.atan2(d[1], d[0]))
+    hoehe = math.degrees(math.atan2(d[2], math.hypot(d[0], d[1])))
+    assert 20 < azimut <= 45, azimut
+    assert -20 < hoehe < -3, hoehe
+
+
+@pytest.mark.parametrize("key", ALLE)
 def test_cockpit_block_vollstaendig(key):
     _kopf, t = _lade(key)
     c = t["cockpit"]
