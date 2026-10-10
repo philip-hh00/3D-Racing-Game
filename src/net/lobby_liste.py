@@ -32,6 +32,12 @@ TIMEOUT = 4.0
 #: einmal eine Antwort; die Liste soll dabei nicht flackern.
 FEHLER_GEDULD = 2
 
+#: Fehlerkennung: der Server antwortet auf ``INFO``, kennt aber ``LOBBY_LIST`` nicht
+#: (ein aelterer Relay schliesst die Verbindung ohne Antwort). Das ist kein Ausfall.
+ZU_ALT = "TOO_OLD"
+#: Fehlerkennungen, bei denen der Server nicht (rechtzeitig) antwortet: ausgefallen.
+UNERREICHBAR = frozenset({"OFFLINE", "TIMEOUT"})
+
 IM_RENNEN = "racing"
 IN_LOBBY  = "lobby"
 
@@ -165,10 +171,11 @@ class LobbyListe:
     """
 
     def __init__(self, api=None, ping_von=None, server_liste=None,
-                 synchron: bool = False) -> None:
+                 synchron: bool = False, info_von=None) -> None:
         self.api = api
         self.synchron = synchron
         self._ping_von = ping_von
+        self._info_von = info_von
         self._server_liste = server_liste
         self._lock = threading.Lock()
         self._roh: dict[str, list[dict]] = {}
@@ -193,6 +200,14 @@ class LobbyListe:
             return None
         return st.ping_ms
 
+    def _info_antwortet(self, sd: ServerDef) -> bool:
+        """Ob der Server auf ``INFO`` antwortet (blockiert, nur im Arbeitsfaden)."""
+        if self._info_von is not None:
+            return bool(self._info_von(sd))
+        from src.net import server_probe
+        host, port, _udp = server_probe.resolve_endpoint(sd)
+        return server_probe.probe_tcp(sd, host, port, timeout=TIMEOUT) is not None
+
     # -- Abfragen --------------------------------------------------------------
     def aktualisieren(self) -> None:
         """Eine Runde: alle Server, parallel."""
@@ -215,6 +230,14 @@ class LobbyListe:
             fehler = ""
         except Exception as exc:                      # StreckenFehler und alles Unerwartete
             roh, fehler = None, str(getattr(exc, "code", "ERROR"))
+            if fehler == "UNSUPPORTED":
+                # Verbindung ohne Antwort geschlossen: ein aelterer Relay kennt die
+                # Lobbyliste noch nicht -- oder er ist weg. INFO entscheidet.
+                try:
+                    erreichbar = self._info_antwortet(sd)
+                except Exception:
+                    erreichbar = False
+                fehler = ZU_ALT if erreichbar else "OFFLINE"
         with self._lock:
             self.geladen.add(sd.id)
             if roh is not None:
@@ -255,6 +278,14 @@ class LobbyListe:
         """Was die Seite zeigt: gefiltert und sortiert."""
         return sortieren(filtern(self.alle(), nur_beitretbare=nur_beitretbare,
                                  server_id=server_id))
+
+    def zu_alt(self) -> list[ServerDef]:
+        """Server, die erreichbar sind, aber noch keine Lobbyliste kennen."""
+        return [s for s in self.server() if self.fehler.get(s.id) == ZU_ALT]
+
+    def ausgefallen(self) -> list[ServerDef]:
+        """Server, die gescheitert sind, ohne dass es am Alter liegt."""
+        return [s for s in self.server() if self.fehler.get(s.id) and self.fehler[s.id] != ZU_ALT]
 
     def alle_fehlgeschlagen(self) -> bool:
         """Ob jeder Server geantwortet hat — mit einem Fehler."""

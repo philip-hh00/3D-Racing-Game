@@ -215,12 +215,30 @@ def test_alte_eintraege_bleiben_kurz_und_verschwinden_dann():
 
 
 def test_server_ohne_lobbyliste_ist_kein_absturz():
-    """Ein Relay ohne die Neuerung schliesst ohne Antwort (UNSUPPORTED)."""
+    """Ein Relay ohne die Neuerung schliesst ohne Antwort (UNSUPPORTED), antwortet aber auf INFO."""
     api = Api({"hamburg": [_e("DBBBBB")]}, fehler={"helsinki": "UNSUPPORTED"})
-    liste = _liste(api)
+    liste = _liste(api, info_von=lambda sd: True)
     liste.aktualisieren()
-    assert liste.fehler["helsinki"] == "UNSUPPORTED"
+    assert liste.fehler["helsinki"] == lobby_liste.ZU_ALT
     assert len(liste.alle()) == 1
+    assert [s.id for s in liste.zu_alt()] == ["helsinki"] and liste.ausgefallen() == []
+
+
+def test_ohne_antwort_auch_auf_info_ist_der_server_ausgefallen_nicht_zu_alt():
+    api = Api({}, fehler={"helsinki": "UNSUPPORTED", "hamburg": "OFFLINE"})
+    liste = _liste(api, info_von=lambda sd: False)
+    liste.aktualisieren()
+    assert liste.fehler == {"helsinki": "OFFLINE", "hamburg": "OFFLINE"}
+    assert liste.zu_alt() == [] and len(liste.ausgefallen()) == 2
+
+
+def test_info_wird_nur_nach_geschlossener_verbindung_gefragt():
+    gefragt = []
+    api = Api({}, fehler={"helsinki": "TIMEOUT", "hamburg": "UNSUPPORTED"})
+    liste = _liste(api, info_von=lambda sd: gefragt.append(sd.id) or True)
+    liste.aktualisieren()
+    assert gefragt == ["hamburg"]
+    assert liste.fehler["helsinki"] == "TIMEOUT"
 
 
 def test_unsinnige_antwort_ist_ein_fehler():
@@ -346,6 +364,30 @@ def test_fuss_text_je_zustand():
     b2 = _ansicht(Api({}, fehler={"helsinki": "OFFLINE", "hamburg": "OFFLINE"}))
     b2.update(0.016)
     assert "Keine Verbindung" in b2._fusszeile()[0]
+
+
+def test_fuss_text_server_zu_alt_ist_keine_stoerung():
+    """Regression: ein erreichbarer Relay ohne LOBBY_LIST hiess "Keine Verbindung zu den Servern"."""
+    fehler = {"helsinki": "UNSUPPORTED", "hamburg": "UNSUPPORTED"}
+    b = _ansicht(Api({}, fehler=fehler), info_von=lambda sd: True)
+    b.update(0.016)
+    text, farbe = b._fusszeile()
+    assert "zu alt" in text and "Lobbyliste" in text
+    assert "Keine Verbindung" not in text and "erreichbar" not in text
+    # Einer zu alt, einer wirklich weg: beide Gruende stehen da, getrennt benannt.
+    api = Api({}, fehler={"helsinki": "UNSUPPORTED", "hamburg": "OFFLINE"})
+    b2 = _ansicht(api, info_von=lambda sd: sd.id == "helsinki")
+    b2.update(0.016)
+    text = b2._fusszeile()[0]
+    assert "Nicht erreichbar: Hamburg" in text and "Zu alt für die Lobbyliste: Helsinki" in text
+
+
+def test_fuss_text_zu_alt_ist_auch_englisch_uebersetzt():
+    import json
+    en = json.load(open(os.path.join(_ROOT, "data", "i18n", "en.json"), encoding="utf-8"))
+    for schluessel in ("Zu alt für die Lobbyliste: {s}",
+                       "Die Server sind zu alt für die Lobbyliste. Erstelle eine Lobby oder tritt per Code bei."):
+        assert en.get(schluessel)
 
 
 # --------------------------------------------------------------------------

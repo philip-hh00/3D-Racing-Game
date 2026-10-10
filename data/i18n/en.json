@@ -909,6 +909,8 @@
   "Keine beitretbare Lobby. Erstelle eine oder stelle den Filter um.": "No joinable lobby. Create one or change the filter.",
   "Gerade ist keine Lobby offen. Erstelle eine oder tritt per Code bei.": "No lobby is open right now. Create one or join with a code.",
   "Nicht erreichbar: {s}": "Unreachable: {s}",
+  "Zu alt für die Lobbyliste: {s}": "Too old for the lobby list: {s}",
+  "Die Server sind zu alt für die Lobbyliste. Erstelle eine Lobby oder tritt per Code bei.": "The servers are too old for the lobby list. Create a lobby or join with a code.",
   "{n} von {m} Lobbys beitretbar": "{n} of {m} lobbies joinable",
   "Öffentlich": "Public",
   "Öffentlich mit Passwort": "Public with password",
