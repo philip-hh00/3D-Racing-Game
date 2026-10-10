@@ -2336,6 +2336,36 @@ _LOBBY_TEXT = {
 }
 
 
+def _lobby_text(roh, laenge: int, vorgabe: str) -> str:
+    """Wie :func:`saeubere_name`, aber mit eigener Laenge und Vorgabe.
+
+    Eigene Funktion statt ``saeubere_text`` aus dem Streckenblock: dieser Block
+    soll ohne den Streckenaustausch laufen (der Live-Relay hat ihn noch nicht).
+    """
+    text = str(roh)[:laenge * 2]
+    sauber = "".join(z for z in text if z.isalnum() or z in NAME_EXTRA)
+    sauber = " ".join(sauber.split())[:laenge].strip()
+    return sauber or vorgabe
+
+
+def _absender_schluessel(ip: str, msg: dict) -> tuple:
+    """Wer fragt: ``(Schluessel, Faktor fuer die Grenze)``.
+
+    Eine unterscheidbare Adresse zaehlt selbst. Hinter einem Tunnel (Hamburg)
+    sind alle Spieler dieselbe Adresse - dort zaehlt die ``cid``, die der Client
+    mitschickt (zufaellig, vom Spieler selbst erzeugt). Das bremst ehrliche
+    Spieler einzeln und ist leicht zu umgehen; deshalb gibt es zusaetzlich die
+    Grenze je Lobby. Ohne ``cid`` teilen sich alle hinter dem Tunnel ein
+    gemeinsames Konto mit zehnfacher Grenze.
+    """
+    if _Wache.unterscheidbar(ip):
+        return f"ip:{ip}", 1
+    cid = "".join(z for z in str(msg.get("cid", ""))[:32] if z.isalnum())
+    if len(cid) >= 8:
+        return f"cid:{cid}", 1
+    return "proxy", 10
+
+
 class _LobbyFehler(Exception):
     """Eine Absage mit Kennung; ``reason`` bekommt der Spieler zu lesen."""
 
@@ -2437,9 +2467,7 @@ def passwort_beitritt(lobby: Lobby, msg: dict, ip: str) -> Optional[dict]:
     if pw is None or pw == "":
         return {"type": "JOIN_FAIL", "code": "BAD_PASSWORD", "need_password": True,
                 "reason": _LOBBY_TEXT["PASSWORD_REQUIRED"]}
-    # Absender wie bei den Strecken: eine unterscheidbare IP zaehlt selbst,
-    # hinter einem Tunnel die ``cid``, sonst ein gemeinsames Konto.
-    schluessel, faktor = _strecken_schluessel(ip, msg)
+    schluessel, faktor = _absender_schluessel(ip, msg)
     if _pw_wache.gesperrt(schluessel, faktor, lobby.lobby_id):
         _wache._merken("pw_versuche", ip, f"Lobby {lobby.lobby_id}")
         return {"type": "JOIN_FAIL", "code": "TOO_MANY_ATTEMPTS",
@@ -2471,7 +2499,7 @@ def lobby_angaben(msg: dict, hostname: str, alt: Optional[Lobby] = None) -> tupl
         name_roh = msg.get("lobby_name", alt.lobby_name)
     if not isinstance(sicht, str) or sicht not in SICHTBARKEITEN:
         raise _LobbyFehler("BAD_VISIBILITY")
-    name = saeubere_text(name_roh, LOBBYNAME_MAX, vorgabe_name) if name_roh else vorgabe_name
+    name = _lobby_text(name_roh, LOBBYNAME_MAX, vorgabe_name) if name_roh else vorgabe_name
     pw = None
     if sicht == SICHT_PASSWORT:
         if msg.get("password") not in (None, ""):
@@ -2581,7 +2609,7 @@ def _lobbyliste_erlaubt(schluessel: str, faktor: int) -> bool:
 
 async def _lobbyliste_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) -> None:
     """``LOBBY_LIST`` beantworten. Die Verbindung schliesst der Aufrufer."""
-    schluessel, faktor = _strecken_schluessel(ip, msg)
+    schluessel, faktor = _absender_schluessel(ip, msg)
     if not _lobbyliste_erlaubt(schluessel, faktor):
         _wache._merken("lobbyliste_rate", ip, "LOBBY_LIST")
         await _send(writer, {"type": "LOBBY_ERROR", "code": "RATE",

@@ -289,7 +289,7 @@ def test_wechselnde_cid_stoppt_die_lobbygrenze(tmp_path, monkeypatch):
 def test_ohne_cid_hinter_dem_tunnel_gemeinsames_konto_mit_hoeherer_grenze(tmp_path, monkeypatch):
     monkeypatch.setattr(srv, "PW_VERSUCHE", 1)
     monkeypatch.setattr(srv, "TRUSTED_PROXIES", frozenset({"127.0.0.1"}))
-    schluessel, faktor = srv._strecken_schluessel("127.0.0.1", {})
+    schluessel, faktor = srv._absender_schluessel("127.0.0.1", {})
     assert schluessel == "proxy" and faktor > 1
 
 
