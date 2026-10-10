@@ -389,7 +389,6 @@ def test_gast_liest_das_wetter_des_hosts(aufbau_sauber):
     seite = _online_seite(ist_host=False)
     seite._on_net(_lobbyzustand({"laps": 3, "tageszeit": "Nacht", "wetter": "Regen"}))
     assert seite._selected_wetter == "Regen"
-    assert wetter.NAMEN[seite._wetter_stepper.index] == "Regen"
     assert seite._selected_tageszeit == "Nacht", "die Tageszeit bleibt davon unberührt"
     from src.core import race_setup
     assert race_setup.current().weather == "Regen"
@@ -416,13 +415,13 @@ def test_host_verteilt_das_wetter_in_den_einstellungen(aufbau_sauber, monkeypatc
     assert {"mode", "laps", "track_path", "roster_size", "tageszeit"} <= set(gesendet[-1]["settings"])
 
 
-def test_nur_der_host_bedient_den_stepper(aufbau_sauber):
-    host = _online_seite(ist_host=True)
-    host._refresh_focus_group()
-    assert host._wetter_stepper.enabled and host._wetter_stepper in host._host_column_widgets()
-    gast = _online_seite(ist_host=False)
-    gast._refresh_focus_group()
-    assert not gast._wetter_stepper.enabled
+def test_online_lobby_hat_keine_steppers_fuer_tageszeit_und_wetter(aufbau_sauber):
+    for ist_host in (True, False):
+        seite = _online_seite(ist_host=ist_host)
+        seite._refresh_focus_group()
+        assert not hasattr(seite, "_wetter_stepper") and not hasattr(seite, "_tageszeit_stepper")
+        beschriftungen = [getattr(w, "label", "") for w in seite._host_column_widgets()]
+        assert "Wetter" not in beschriftungen and "Tageszeit" not in beschriftungen
 
 
 def test_server_kennt_das_feld_und_haelt_es_in_grenzen():
@@ -467,19 +466,23 @@ def test_rennaufbau_kennt_das_wetter():
     assert race_setup.RaceSetup().weather == "Trocken"
 
 
-def test_rennstart_nimmt_das_wetter_aus_der_lobbywahl_oder_dem_aufrufer(monkeypatch):
+def test_rennstart_nimmt_das_wetter_vom_aufrufer_oder_aus_dem_rennaufbau(monkeypatch):
     from src.core import race_setup
     from src.states.race_state import RaceState
     setup = race_setup.RaceSetup()
     monkeypatch.setattr(race_setup, "_current", setup)
-    selbst = types.SimpleNamespace(_enter_kwargs={})
+
+    def selbst(**kwargs):
+        s = object.__new__(RaceState)
+        s._enter_kwargs = kwargs
+        return s
+
     setup.weather = "Regen"
-    assert RaceState._wetter_waehlen(selbst) == "Regen"
-    # der Aufrufer sticht die Lobbywahl
-    selbst = types.SimpleNamespace(_enter_kwargs={"wetter": "Trocken"})
-    assert RaceState._wetter_waehlen(selbst) == "Trocken"
+    assert selbst()._wetter_waehlen() == "Regen"
+    # der Aufrufer sticht den Rennaufbau
+    assert selbst(wetter="Trocken")._wetter_waehlen() == "Trocken"
     setup.weather = "Quatsch"
-    assert RaceState._wetter_waehlen(types.SimpleNamespace(_enter_kwargs={})) == "Trocken"
+    assert selbst()._wetter_waehlen() == "Trocken"
 
 
 # ---------------------------------------------------------------------------
@@ -499,70 +502,31 @@ def profil_pfad(tmp_path, monkeypatch):
     monkeypatch.setattr(profile, "_current", None)
 
 
-def test_profil_merkt_das_letzte_wetter(profil_pfad):
+def test_altes_profil_mit_wetter_laedt_ohne_fehler_und_verliert_das_feld(profil_pfad):
+    """Seit 1.1.0 wird das Wetter gewürfelt und nicht mehr im Profil gemerkt."""
     from src.core import profile
-    p = profile.Profile(username="Tester")
-    assert p.wetter == "Trocken"
-    p.set_wetter("Regen")
-    assert profile.Profile.load().wetter == "Regen"
-    geladen = profile.Profile.load()
-    geladen.set_wetter("Trocken")
-    assert profile.Profile.load().wetter == "Trocken"
+    for alt in ("Regen", "Gewitter", 12, None):
+        profil_pfad.write_text(json.dumps({"username": "Alt", "wetter": alt}), encoding="utf-8")
+        p = profile.Profile.load()
+        assert p.username == "Alt"
+        assert not hasattr(p, "wetter") and not hasattr(p, "set_wetter")
+    p.save()
+    assert "wetter" not in json.loads(profil_pfad.read_text(encoding="utf-8"))
 
 
-def test_profil_ohne_feld_und_mit_muell_laedt_als_trocken(profil_pfad):
-    from src.core import profile
-    profil_pfad.write_text(json.dumps({"username": "Alt"}), encoding="utf-8")
-    assert profile.Profile.load().wetter == "Trocken"
-    profil_pfad.write_text(json.dumps({"username": "Alt", "wetter": "Gewitter"}), encoding="utf-8")
-    assert profile.Profile.load().wetter == "Trocken"
-    profil_pfad.write_text(json.dumps({"username": "Alt", "wetter": 12}), encoding="utf-8")
-    assert profile.Profile.load().wetter == "Trocken"
-
-
-def test_set_wetter_ohne_aenderung_schreibt_nicht(profil_pfad):
-    from src.core import profile
-    p = profile.Profile(username="Tester")
-    p.set_wetter("Trocken")
-    assert not profil_pfad.exists(), "unverändert heißt: keine Datei anfassen"
-
-
-def _seite_mit_profil(monkeypatch, klasse):
+def test_lobbys_haben_keinen_wetter_stepper(profil_pfad, monkeypatch):
     from tests import spielhilfe
     from tests.test_layout_regeln import _ShellAttrappe
     spielhilfe.aufbau_bewahren(monkeypatch)
     from src.entities.vehicle_factory import VehicleFactory
     VehicleFactory.load_all_configs()
-    from src.core import profile
-    profile.current().set_wetter("Regen")
-    seite = klasse()
-    seite.enter(_ShellAttrappe())
-    return seite
-
-
-def test_einzelspieler_lobby_nimmt_die_wahl_aus_dem_profil_und_gibt_sie_zurueck(profil_pfad, monkeypatch):
-    from src.core import profile, race_setup
     from src.states.menu.lobby_page import LobbyPage
-    seite = _seite_mit_profil(monkeypatch, LobbyPage)
-    assert wetter.NAMEN[seite.wetter.index] == "Regen"
-    assert race_setup.current().weather == "Regen"
-    seite.wetter.index = wetter.NAMEN.index("Trocken")
-    seite._tageszeit_uebernehmen()
-    assert race_setup.current().weather == "Trocken"
-    assert profile.Profile.load().wetter == "Trocken"
-    assert seite.wetter in seite.group.widgets
-
-
-def test_splitscreen_lobby_hat_das_wetter(profil_pfad, monkeypatch):
-    from src.core import profile, race_setup
     from src.states.menu.mp_lobby_page import MPLobbyPage
-    seite = _seite_mit_profil(monkeypatch, MPLobbyPage)
-    assert wetter.NAMEN[seite.wetter.index] == "Regen"
-    assert seite.wetter in seite.group.widgets
-    seite.wetter.index = 0
-    seite._tageszeit_uebernehmen()
-    assert race_setup.current().weather == "Trocken"
-    assert profile.Profile.load().wetter == "Trocken"
+    for klasse in (LobbyPage, MPLobbyPage):
+        seite = klasse()
+        seite.enter(_ShellAttrappe())
+        assert not hasattr(seite, "wetter") and not hasattr(seite, "tageszeit")
+        assert all(getattr(w, "label", "") not in ("Tageszeit", "Wetter") for w in seite.group.widgets)
 
 
 def test_oberflaeche_ist_uebersetzt():

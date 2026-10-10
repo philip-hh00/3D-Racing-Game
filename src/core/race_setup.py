@@ -91,10 +91,11 @@ class RaceSetup:
     vehicle_class: str = "Alle"
     laps: int = 3                   # 1–10
     #: Tageszeit des Rennens: "Tag", "Abend" oder "Nacht" (render3d.tageszeit).
-    #: Die Lobbys setzen es; der letzte Wert steht im Profil (``tageszeit``).
+    #: Gewuerfelt (core.rennbedingungen): offline setzt es ``RaceState.enter``,
+    #: online der Host in der Lobby beim Rennstart (Gaeste uebernehmen seinen Wert).
     time_of_day: str = "Tag"
-    #: Wetter des Rennens: "Trocken" oder "Regen" (render3d.wetter). Die Lobbys
-    #: setzen es; der letzte Wert steht im Profil (``wetter``).
+    #: Wetter des Rennens: "Trocken" oder "Regen" (render3d.wetter);
+    #: wird wie ``time_of_day`` gewuerfelt.
     weather: str = "Trocken"
     ai_difficulty: str = "medium"
     player_vehicle: str = "rookie"

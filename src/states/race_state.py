@@ -259,6 +259,9 @@ class RaceState(BaseState):
     def enter(self, **kwargs) -> None:
         """Initialize the physics world, load the track, spawn player vehicle, camera, and HUD."""
         self._enter_kwargs = kwargs
+        # Tageszeit und Wetter dieses Rennens: einmal festgelegt, bevor irgendetwas
+        # gebaut wird (Haftung der Autos, Fahrplan der KI, Szene, Regenklang).
+        self._bedingungen = self._bedingungen_festlegen(kwargs)
         self.paused = False
         self._pause_group = None
         self._pause_view = "main"
@@ -831,6 +834,14 @@ class RaceState(BaseState):
         name = getattr(self.track, "name", "") if getattr(self, "track", None) else ""
         if name:
             theme.text(screen, name, theme.TITLE, theme.TEXT, (cx, cy - 200), center=True)
+        # Nacht und Regen sind selten und werden gewuerfelt: wer sie bekommt, soll
+        # es vor dem Start erfahren. Der Normalfall (Tag, trocken) bleibt still.
+        bed = getattr(self, "_bedingungen", None)
+        if bed is not None:
+            from src.core import rennbedingungen
+            zeile = rennbedingungen.beschreibung(*bed)
+            if zeile:
+                theme.text(screen, zeile, theme.HINT, theme.ACCENT, (cx, cy - 150), center=True)
         stand = max(0.0, min(1.0, stand))
         theme.text(screen, tr("Lädt …  {p} %").format(p=int(stand * 100)), theme.TITLE,
                    theme.ACCENT, (cx, cy - 80), center=True)
@@ -2482,24 +2493,53 @@ class RaceState(BaseState):
             print(f"[RaceState] 3D-Szene nicht aufgebaut: {fehler}")
             self.szene = None
 
-    def _tageszeit_waehlen(self) -> str:
-        """Tag, Abend oder Nacht dieses Rennens.
+    def _bedingungen_festlegen(self, kwargs: dict) -> tuple[str, str]:
+        """Tageszeit und Wetter dieses Rennens: ``(tageszeit, wetter)``.
 
-        Der Aufrufer von ``enter`` kann sie festlegen (``tageszeit="Tag"``,
-        etwa die Probefahrt im Streckeneditor); sonst gilt die Wahl aus der
-        Lobby. Unbekannt oder fehlend ist Tag.
+        Niemand waehlt sie; sie werden selten und zufaellig gewuerfelt
+        (``core.rennbedingungen``):
+
+        * der Aufrufer von ``enter`` kann sie festlegen (``tageszeit=``,
+          ``wetter=``, etwa die Probefahrt im Streckeneditor);
+        * online hat der Host sie schon in der Lobby gewuerfelt und ueber die
+          Einstellungen verteilt - sie stehen im Rennaufbau; ein Gast wuerfelt
+          nie, sonst fuhren zwei Autos bei verschiedener Haftung;
+        * offline und im Splitscreen wuerfelt dieser Aufruf, je Rennen neu (im
+          Grand Prix also je Lauf); Zeitfahren und Team-Zeitfahren fahren
+          immer bei Tag und Trocken.
+
+        Das Ergebnis steht danach auch im Rennaufbau.
         """
-        from src.core import race_setup
-        from src.render3d import tageszeit
+        from src.core import race_setup, rennbedingungen
+        setup = race_setup.current()
+        if "tageszeit" in kwargs or "wetter" in kwargs:
+            ergebnis = rennbedingungen.normiere(kwargs.get("tageszeit"), kwargs.get("wetter"))
+        elif getattr(setup, "_online", False):
+            ergebnis = rennbedingungen.normiere(getattr(setup, "time_of_day", None),
+                                                getattr(setup, "weather", None))
+        else:
+            ergebnis = rennbedingungen.wuerfeln(modus=getattr(setup, "mode", "Rennen"))
+        setup.time_of_day, setup.weather = ergebnis
+        return ergebnis
+
+    def _bedingungen_gewaehlt(self) -> tuple[str, str]:
+        """Die beim Eintritt festgelegten Bedingungen (ohne zu wuerfeln)."""
+        bed = getattr(self, "_bedingungen", None)
+        if bed is not None:
+            return bed
+        from src.core import race_setup, rennbedingungen
         kwargs = getattr(self, "_enter_kwargs", None) or {}
-        return tageszeit.normiere(kwargs.get("tageszeit", getattr(race_setup.current(), "time_of_day", "Tag")))
+        setup = race_setup.current()
+        return rennbedingungen.normiere(kwargs.get("tageszeit", getattr(setup, "time_of_day", None)),
+                                        kwargs.get("wetter", getattr(setup, "weather", None)))
+
+    def _tageszeit_waehlen(self) -> str:
+        """Tag, Abend oder Nacht dieses Rennens (siehe ``_bedingungen_festlegen``)."""
+        return self._bedingungen_gewaehlt()[0]
 
     def _wetter_waehlen(self) -> str:
-        """Trocken oder Regen dieses Rennens (wie die Tageszeit: ``wetter=`` in ``enter`` oder die Lobby)."""
-        from src.core import race_setup
-        from src.render3d import wetter
-        kwargs = getattr(self, "_enter_kwargs", None) or {}
-        return wetter.normiere(kwargs.get("wetter", getattr(race_setup.current(), "weather", "Trocken")))
+        """Trocken oder Regen dieses Rennens (siehe ``_bedingungen_festlegen``)."""
+        return self._bedingungen_gewaehlt()[1]
 
     def _weg_in_diesem_bild(self, fahrzeug, dt: float) -> float:
         """Wieviel Weg ein Fahrzeug in diesem Bild zurueckgelegt hat, in Metern.

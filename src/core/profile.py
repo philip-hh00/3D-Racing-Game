@@ -55,9 +55,7 @@ class Profile:
                  announcements_seeded: bool = False,
                  grafik: dict | None = None,
                  kamera_ansichten: dict | None = None,
-                 fahrhilfen: dict | None = None,
-                 tageszeit: str = "Tag",
-                 wetter: str = "Trocken") -> None:
+                 fahrhilfen: dict | None = None) -> None:
         self.username = username
         self.best_laps: dict[str, float] = best_laps or {}
         self.menu_volume = menu_volume
@@ -110,16 +108,9 @@ class Profile:
         #: ``linie`` (Ideallinie) als Wahrheitswerte, ``vibration`` 0..3. Fehlende
         #: Schluessel gelten als Standard (alle Hilfen aus), siehe ``FAHRHILFEN_STANDARD``.
         self.fahrhilfen: dict = dict(fahrhilfen) if isinstance(fahrhilfen, dict) else {}
-
-        #: Zuletzt gewählte Tageszeit des Rennens ("Tag", "Abend", "Nacht").
-        #: Ein Profil von vor 1.1.0 kennt das Feld nicht: dann Tag. Unbekanntes
-        #: (von Hand verbogen) wird ebenfalls zu Tag.
-        from src.render3d import tageszeit as _tz
-        self.tageszeit: str = _tz.normiere(tageszeit)
-        #: Zuletzt gewähltes Wetter des Rennens ("Trocken", "Regen"). Fehlt das
-        #: Feld (Profil von vor 1.1.0) oder ist es verbogen: Trocken.
-        from src.render3d import wetter as _wt
-        self.wetter: str = _wt.normiere(wetter)
+        # Tageszeit und Wetter stehen nicht mehr im Profil: seit 1.1.0 werden sie je
+        # Rennen gewuerfelt (core.rennbedingungen). Alte Profile mit den Feldern
+        # "tageszeit"/"wetter" laden ohne Fehler; beim naechsten Speichern fallen sie weg.
 
     # -- Fahrhilfen und Vibration -----------------------------------------
     def fahrhilfe(self, name: str):
@@ -175,8 +166,6 @@ class Profile:
                 data.get("grafik"),
                 kamera_ansichten=data.get("kamera_ansichten"),
                 fahrhilfen=data.get("fahrhilfen"),
-                tageszeit=data.get("tageszeit", "Tag"),
-                wetter=data.get("wetter", "Trocken"),
             )
         except Exception:
             return cls()
@@ -210,8 +199,6 @@ class Profile:
                 "grafik": self.grafik,
                 "kamera_ansichten": self.kamera_ansichten,
                 "fahrhilfen": self.fahrhilfen,
-                "tageszeit": self.tageszeit,
-                "wetter": self.wetter,
             }, indent=2, ensure_ascii=False))
         except Exception:
             pass
@@ -277,21 +264,6 @@ class Profile:
             return
         self.kamera_ansichten[str(slot)] = ansicht
         self.save()
-    def set_tageszeit(self, name: str) -> None:
-        """Die gewählte Tageszeit merken (Lobby); speichert nur bei Änderung."""
-        from src.render3d import tageszeit as _tz
-        name = _tz.normiere(name)
-        if name != self.tageszeit:
-            self.tageszeit = name
-            self.save()
-
-    def set_wetter(self, name: str) -> None:
-        """Das gewählte Wetter merken (Lobby); speichert nur bei Änderung."""
-        from src.render3d import wetter as _wt
-        name = _wt.normiere(name)
-        if name != self.wetter:
-            self.wetter = name
-            self.save()
 
     # -- Lackierungen ----------------------------------------------------
     def paint(self, vehicle_key: str) -> str:

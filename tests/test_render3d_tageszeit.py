@@ -490,7 +490,6 @@ def test_gast_liest_die_tageszeit_des_hosts(aufbau_sauber, wert):
     seite = _online_seite(ist_host=False)
     seite._on_net(_lobbyzustand({"laps": 3, "tageszeit": wert}))
     assert seite._selected_tageszeit == wert
-    assert tageszeit.NAMEN[seite._tageszeit_stepper.index] == wert
     from src.core import race_setup
     assert race_setup.current().time_of_day == wert
 
@@ -528,19 +527,23 @@ def test_rennaufbau_kennt_die_tageszeit():
     assert race_setup.RaceSetup().time_of_day == "Tag"
 
 
-def test_rennstart_nimmt_die_tageszeit_aus_der_lobbywahl_oder_dem_aufrufer(monkeypatch):
+def test_rennstart_nimmt_die_tageszeit_vom_aufrufer_oder_aus_dem_rennaufbau(monkeypatch):
     from src.core import race_setup
     from src.states.race_state import RaceState
     setup = race_setup.RaceSetup()
     monkeypatch.setattr(race_setup, "_current", setup)
-    selbst = types.SimpleNamespace(_enter_kwargs={})
+
+    def selbst(**kwargs):
+        s = object.__new__(RaceState)
+        s._enter_kwargs = kwargs
+        return s
+
     setup.time_of_day = "Nacht"
-    assert RaceState._tageszeit_waehlen(selbst) == "Nacht"
-    # der Aufrufer sticht die Lobbywahl (die Probefahrt im Editor fährt bei Tag)
-    selbst = types.SimpleNamespace(_enter_kwargs={"tageszeit": "Tag"})
-    assert RaceState._tageszeit_waehlen(selbst) == "Tag"
+    assert selbst()._tageszeit_waehlen() == "Nacht"
+    # der Aufrufer sticht den Rennaufbau (die Probefahrt im Editor fährt bei Tag)
+    assert selbst(tageszeit="Tag")._tageszeit_waehlen() == "Tag"
     setup.time_of_day = "Quatsch"
-    assert RaceState._tageszeit_waehlen(types.SimpleNamespace(_enter_kwargs={})) == "Tag"
+    assert selbst()._tageszeit_waehlen() == "Tag"
 
 
 # ---------------------------------------------------------------------------
@@ -560,52 +563,29 @@ def profil_pfad(tmp_path, monkeypatch):
     monkeypatch.setattr(profile, "_current", None)
 
 
-def test_profil_merkt_die_letzte_tageszeit(profil_pfad):
+def test_altes_profil_mit_tageszeit_laedt_ohne_fehler_und_verliert_das_feld(profil_pfad):
+    """Seit 1.1.0 wird die Tageszeit gewürfelt und nicht mehr im Profil gemerkt."""
     from src.core import profile
-    p = profile.Profile(username="Tester")
-    assert p.tageszeit == "Tag"
-    p.set_tageszeit("Nacht")
-    geladen = profile.Profile.load()
-    assert geladen.tageszeit == "Nacht"
-    geladen.set_tageszeit("Abend")
-    assert profile.Profile.load().tageszeit == "Abend"
+    for alt in ("Nacht", "Dämmerung", 12, None):
+        profil_pfad.write_text(json.dumps({"username": "Alt", "tageszeit": alt}), encoding="utf-8")
+        p = profile.Profile.load()
+        assert p.username == "Alt"
+        assert not hasattr(p, "tageszeit") and not hasattr(p, "set_tageszeit")
+    p.save()
+    assert "tageszeit" not in json.loads(profil_pfad.read_text(encoding="utf-8"))
 
 
-def test_profil_ohne_feld_und_mit_muell_laedt_als_tag(profil_pfad):
-    from src.core import profile
-    profil_pfad.write_text(json.dumps({"username": "Alt"}), encoding="utf-8")
-    assert profile.Profile.load().tageszeit == "Tag"
-    profil_pfad.write_text(json.dumps({"username": "Alt", "tageszeit": "Dämmerung"}), encoding="utf-8")
-    assert profile.Profile.load().tageszeit == "Tag"
-    profil_pfad.write_text(json.dumps({"username": "Alt", "tageszeit": 12}), encoding="utf-8")
-    assert profile.Profile.load().tageszeit == "Tag"
-
-
-def test_set_tageszeit_ohne_aenderung_schreibt_nicht(profil_pfad):
-    from src.core import profile
-    p = profile.Profile(username="Tester")
-    p.set_tageszeit("Tag")
-    assert not profil_pfad.exists(), "unverändert heißt: keine Datei anfassen"
-
-
-def test_einzelspieler_lobby_nimmt_die_wahl_aus_dem_profil_und_gibt_sie_zurueck(profil_pfad, monkeypatch):
-    from src.core import profile, race_setup
+def test_einzelspieler_lobby_hat_keinen_tageszeit_stepper(profil_pfad, monkeypatch):
     from src.states.menu.lobby_page import LobbyPage
     from tests import spielhilfe
     from tests.test_layout_regeln import _ShellAttrappe
     spielhilfe.aufbau_bewahren(monkeypatch)
     from src.entities.vehicle_factory import VehicleFactory
     VehicleFactory.load_all_configs()
-    profile.current().set_tageszeit("Abend")
     seite = LobbyPage()
     seite.enter(_ShellAttrappe())
-    assert tageszeit.NAMEN[seite.tageszeit.index] == "Abend"
-    assert race_setup.current().time_of_day == "Abend"
-    seite.tageszeit.index = tageszeit.NAMEN.index("Nacht")
-    seite._tageszeit_uebernehmen()
-    assert race_setup.current().time_of_day == "Nacht"
-    assert profile.Profile.load().tageszeit == "Nacht"
-    assert seite.tageszeit in seite.group.widgets
+    assert not hasattr(seite, "tageszeit") and not hasattr(seite, "wetter")
+    assert all(getattr(w, "label", "") not in ("Tageszeit", "Wetter") for w in seite.group.widgets)
 
 
 # ---------------------------------------------------------------------------
