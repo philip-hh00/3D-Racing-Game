@@ -198,12 +198,15 @@ def nadelwinkel(wert: float, maximum: float, winkel_grad: tuple[float, float]) -
 def lenkradwinkel(lenkwinkel_rad: float, uebersetzung: float) -> float:
     """Drehung des Lenkrads um die lokale X-Achse in Radiant.
 
-    Der sichtbare Radeinschlag mal Übersetzung. Aus Fahrersicht (Blick entlang
-    +X) ist eine positive Drehung um +X im Uhrzeigersinn; links (positiver
-    Lenkwinkel) soll gegen den Uhrzeigersinn drehen, daher das Minus. Bei den
-    Nadeln gilt dagegen die Drehung wie angegeben: mehr Tempo = im Uhrzeigersinn.
+    Der sichtbare Radeinschlag mal Übersetzung. Die lokale +X-Achse des
+    Lenkrads zeigt entlang der Säule **zum Fahrer hin** (siehe
+    ``tools/blender/teile_cockpit.py``). Eine positive Drehung um eine Achse,
+    die auf den Betrachter zeigt, läuft für ihn gegen den Uhrzeigersinn: der
+    Kranz oben wandert nach links, und das ist ein positiver Lenkwinkel
+    (links, +Y). Also ohne Vorzeichenwechsel. Bei den Nadeln zeigt +X dagegen
+    vom Fahrer weg ins Instrument: mehr Tempo = im Uhrzeigersinn.
     """
-    return -float(lenkwinkel_rad) * float(uebersetzung)
+    return float(lenkwinkel_rad) * float(uebersetzung)
 
 
 def aufbau_aus_neigung(nick_rad: float, wank_rad: float, radradius_m: float) -> np.ndarray | None:

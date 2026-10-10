@@ -270,20 +270,33 @@ class LobbyBrowser:
         """Text unter der Liste und seine Farbe."""
         if self.meldung:
             return self.meldung, theme.DANGER
-        srv = self.liste.server()
         if not self.liste.geladen:
             return tr("Lade Lobbys …"), theme.TEXT_DIM
         if self.liste.alle_fehlgeschlagen():
+            if not self.liste.ausgefallen():
+                return tr("Die Server sind zu alt für die Lobbyliste. Erstelle eine Lobby oder tritt per Code bei."), theme.ACCENT
+            if self.liste.zu_alt():
+                return self._fehlerzeile(), theme.DANGER
             return tr("Keine Verbindung zu den Servern."), theme.DANGER
         if not self._ansicht:
             if self.nur_beitretbare:
                 return tr("Keine beitretbare Lobby. Erstelle eine oder stelle den Filter um."), theme.TEXT_DIM
             return tr("Gerade ist keine Lobby offen. Erstelle eine oder tritt per Code bei."), theme.TEXT_DIM
-        ausgefallen = [tr(s.label) for s in srv if self.liste.fehler.get(s.id)]
-        if ausgefallen:
-            return tr("Nicht erreichbar: {s}").format(s=", ".join(ausgefallen)), theme.ACCENT
+        if self.liste.zu_alt() or self.liste.ausgefallen():
+            return self._fehlerzeile(), theme.ACCENT
         offen = sum(1 for e in self._ansicht if e.beitretbar)
         return tr("{n} von {m} Lobbys beitretbar").format(n=offen, m=len(self._ansicht)), theme.TEXT_DIM
+
+    def _fehlerzeile(self) -> str:
+        """Welche Server ausgefallen und welche nur zu alt für die Lobbyliste sind."""
+        teile = []
+        aus = [tr(s.label) for s in self.liste.ausgefallen()]
+        alt = [tr(s.label) for s in self.liste.zu_alt()]
+        if aus:
+            teile.append(tr("Nicht erreichbar: {s}").format(s=", ".join(aus)))
+        if alt:
+            teile.append(tr("Zu alt für die Lobbyliste: {s}").format(s=", ".join(alt)))
+        return "  ·  ".join(teile)
 
     def draw(self, screen: pygame.Surface, area: pygame.Rect) -> None:
         kopf_y = _LIST_Y - 30

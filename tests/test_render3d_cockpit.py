@@ -69,14 +69,40 @@ def test_nadel_schlaegt_nicht_ueber_den_anschlag():
     assert vehicle_node.nadelwinkel(10.0, 0.0, (-135.0, 135.0)) == pytest.approx(math.radians(-135))
 
 
-def test_lenkrad_dreht_mit_der_uebersetzung_und_links_gegen_den_uhrzeigersinn():
+def test_lenkrad_dreht_mit_der_uebersetzung():
     # 5 Grad Radeinschlag links, Übersetzung 12 -> 60 Grad am Lenkrad.
     w = vehicle_node.lenkradwinkel(math.radians(5.0), 12.0)
-    assert abs(w) == pytest.approx(math.radians(60.0))
-    # Aus Fahrersicht (Blick entlang +X) ist +Winkel um X im Uhrzeigersinn: links = negativ.
-    assert w < 0.0
-    assert vehicle_node.lenkradwinkel(-math.radians(5.0), 12.0) > 0.0
+    assert w == pytest.approx(math.radians(60.0))
+    assert vehicle_node.lenkradwinkel(-math.radians(5.0), 12.0) == pytest.approx(-math.radians(60.0))
     assert vehicle_node.lenkradwinkel(0.0, 12.0) == 0.0
+
+
+def _lenkrad_achsen(neigung_grad: float = 22.0) -> np.ndarray:
+    """Ausrichtung des Lenkrad-Knotens wie im Generator: +X zeigt zum Fahrer hin (nach hinten oben)."""
+    w = math.radians(neigung_grad)
+    x = np.array([-math.cos(w), 0.0, math.sin(w)])       # Säulenachse zum Fahrer
+    z = np.array([0.0, 0.0, 1.0]) - x * x[2]
+    z /= np.linalg.norm(z)                               # "oben" am Rad
+    y = np.cross(z, x)
+    return np.column_stack([x, y, z])
+
+
+@pytest.mark.parametrize("neigung", [0.0, 22.0])
+def test_lenkrad_dreht_beim_lenken_nach_links_oben_nach_links(neigung):
+    """Links lenken: der Kranz oben wandert nach links (+Y), unten nach rechts; rechts umgekehrt."""
+    achsen = _lenkrad_achsen(neigung)
+    oben = achsen[:, 2] * 0.17                           # Punkt oben am Kranz, relativ zum Ursprung
+    k = _knoten(achsen={"lenkrad": achsen})
+    k.lenken(math.radians(5.0))                          # links
+    m = k.matrizen((0.0, 0.0, 0.0), 0.0)["lenkrad"]
+    neu = (m @ np.append(oben, 1.0))[:3] - LENKRAD
+    assert neu[1] > 0.02, "links lenken: oben am Kranz geht nach links (+Y)"
+    unten = (m @ np.append(-oben, 1.0))[:3] - LENKRAD
+    assert unten[1] < -0.02
+    k.lenken(-math.radians(5.0))                         # rechts
+    m = k.matrizen((0.0, 0.0, 0.0), 0.0)["lenkrad"]
+    neu = (m @ np.append(oben, 1.0))[:3] - LENKRAD
+    assert neu[1] < -0.02
 
 
 # ---------------------------------------------------------------------------

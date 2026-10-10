@@ -243,6 +243,54 @@ def test_einstellungsseite_hat_einen_regler_fuer_den_spiegel():
     assert [w for w, _a in regler["spiegel"]] == [0, 1, 2]
 
 
+class _Spur:
+    """Nimmt Aufrufe auf: Reihenfolge, in der der Puffer an die Grafikkarte geht."""
+
+    def __init__(self, protokoll, name):
+        self._p, self._n = protokoll, name
+
+    def use(self, *args):
+        self._p.append((self._n, args))
+
+    def clear(self, *args, **kw):
+        self._p.append((self._n + ".clear", ()))
+
+
+def test_spiegelpuffer_legt_vor_dem_zeichnen_eine_neutrale_textur_auf_den_spiegelplatz():
+    """Regression (Blinken): Auf dem Platz ``EINHEIT`` liegt vom Hauptbild her das Bild eines
+    Spiegels, das Programm liest ihn. Wird genau diese Textur gerade beschrieben, entsteht eine
+    Rückkopplung (Apple: schwarz). Also vorher einen Platzhalter darauflegen."""
+    protokoll: list = []
+    ctx = SimpleNamespace(scissor=1, viewport=None, enable=lambda *a: None, disable=lambda *a: None)
+    puffer = spiegel.Spiegelpuffer.__new__(spiegel.Spiegelpuffer)
+    puffer.ctx = ctx
+    puffer.groesse = (112, 48)
+    puffer.fbo_ms = None
+    puffer.neutral = _Spur(protokoll, "neutral")
+    puffer.fbo = _Spur(protokoll, "fbo")
+    puffer.beginnen()
+    namen = [n for n, _a in protokoll]
+    assert namen[0] == "neutral"
+    assert protokoll[0][1] == (spiegel.EINHEIT,)
+    assert namen.index("fbo") > namen.index("neutral")
+
+
+def test_spiegelspeicher_gibt_jedem_puffer_denselben_platzhalter():
+    class Ctx:
+        def texture(self, *a, **kw):
+            return SimpleNamespace(release=lambda: None, filter=None, repeat_x=None, repeat_y=None)
+
+        def depth_renderbuffer(self, *a, **kw):
+            return SimpleNamespace(release=lambda: None)
+
+        def framebuffer(self, **kw):
+            return SimpleNamespace(release=lambda: None)
+
+    speicher = spiegel.Spiegelspeicher(Ctx())
+    satz = speicher.satz(1, 2)
+    assert all(p.neutral is speicher.neutral for p in satz.values())
+
+
 # ---------------------------------------------------------------------------
 # Durch OpenGL
 # ---------------------------------------------------------------------------
