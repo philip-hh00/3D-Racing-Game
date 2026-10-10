@@ -207,8 +207,10 @@ def jetzt_dran(stufe: int, bild: int, index: int) -> bool:
 class Spiegelpuffer:
     """Ein kleines Bild: Fließkommatextur mit Tiefe, bei Bedarf mit Mehrfachproben."""
 
-    def __init__(self, ctx, groesse: tuple[int, int], msaa: bool) -> None:
+    def __init__(self, ctx, groesse: tuple[int, int], msaa: bool, neutral=None) -> None:
         self.ctx = ctx
+        #: Platzhalter für den Texturplatz des Spiegelbildes, solange hier gezeichnet wird.
+        self.neutral = neutral
         self.groesse = (int(groesse[0]), int(groesse[1]))
         #: Ob der Inhalt zu einem Bild gehört, das noch stimmt (nach Unsichtbarkeit: nein).
         self.gueltig = False
@@ -230,8 +232,18 @@ class Spiegelpuffer:
             self._dinge += [self.fbo, tiefe]
 
     def beginnen(self) -> None:
-        """Binden, Ausschnitt setzen, leeren."""
+        """Binden, Ausschnitt setzen, leeren.
+
+        Vorher kommt eine neutrale Textur auf den Platz :data:`EINHEIT`. Dort
+        liegt vom Hauptbild her noch das Bild eines Spiegels, und das Programm
+        liest diesen Platz (``spiegel_karte``): wäre es dieselbe Textur, in die
+        gerade gezeichnet wird, entstünde eine Rückkopplung — auf manchen
+        Treibern (Apple) kommt dann Schwarz heraus, und weil der Spiegel nur
+        jedes zweite Bild neu gezeichnet wird, blinkt er.
+        """
         ctx = self.ctx
+        if self.neutral is not None:
+            self.neutral.use(EINHEIT)
         (self.fbo_ms or self.fbo).use()
         ctx.scissor = None
         ctx.viewport = (0, 0, *self.groesse)
@@ -262,6 +274,14 @@ class Spiegelspeicher:
         self.ctx = ctx
         self._saetze: dict[int, tuple[int, dict]] = {}
         self._takte: dict[int, int] = {}
+        self._neutral = None
+
+    @property
+    def neutral(self):
+        """Eine schwarze 1×1-Textur als Platzhalter (siehe :meth:`Spiegelpuffer.beginnen`)."""
+        if self._neutral is None:
+            self._neutral = self.ctx.texture((1, 1), 4, data=bytes(8), dtype="f2")
+        return self._neutral
 
     def takt(self, kennung: int) -> int:
         """Zählt die Bilder dieses Menschen (nicht die der Szene: im Splitscreen
@@ -279,7 +299,8 @@ class Spiegelspeicher:
         if eintrag is not None:
             for puffer in eintrag[1].values():
                 puffer.freigeben()
-        puffer = {name: Spiegelpuffer(self.ctx, ARTEN[name].groesse(stufe), msaa=MSAA and stufe >= 2)
+        puffer = {name: Spiegelpuffer(self.ctx, ARTEN[name].groesse(stufe), msaa=MSAA and stufe >= 2,
+                                neutral=self.neutral)
                   for name in NAMEN}
         self._saetze[kennung] = (stufe, puffer)
         return puffer
@@ -290,3 +311,9 @@ class Spiegelspeicher:
                 p.freigeben()
         self._saetze = {}
         self._takte = {}
+        if self._neutral is not None:
+            try:
+                self._neutral.release()
+            except Exception:                        # pragma: no cover - Treiber
+                pass
+            self._neutral = None
