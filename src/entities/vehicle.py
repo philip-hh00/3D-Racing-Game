@@ -231,6 +231,10 @@ class Vehicle:
 
     is_takeover: bool = False   # online: AI inherited this car from a player that left
     fahrhilfen = None           # ABS / Traktionskontrolle, siehe __init__
+    #: Wetter, bei dem dieses Auto fährt ("Trocken" oder "Regen", render3d.wetter).
+    #: Gesetzt vom Rennzustand, bevor das Rennen läuft; ``wirk_config`` hängt daran.
+    wetter: str = "Trocken"
+    _wirk_config = None
 
     def __init__(
         self,
@@ -318,6 +322,27 @@ class Vehicle:
         self.in_slipstream: bool = False
 
     # ---- Properties ----
+
+    @property
+    def wirk_config(self) -> VehicleConfig:
+        """Die Fahrzeugwerte, mit denen bei diesem Wetter gefahren wird.
+
+        Trocken: ``self.config`` selbst. Regen: eine Kopie mit weniger Haftung
+        und Bremskraft (``wetter.wirksame_config``); Physik und KI lesen sie.
+        """
+        gemerkt = self._wirk_config
+        if gemerkt is not None and gemerkt[0] is self.config and gemerkt[1] == self.wetter:
+            return gemerkt[2]
+        from src.render3d import wetter as wetter_modul
+        wirk = wetter_modul.wirksame_config(self.config, self.wetter)
+        self._wirk_config = (self.config, self.wetter, wirk)
+        return wirk
+
+    def wetter_setzen(self, name) -> None:
+        """Das Wetter dieses Autos festlegen (vor dem Start; die Bremse folgt mit)."""
+        from src.render3d import wetter as wetter_modul
+        self.wetter = wetter_modul.normiere(name)
+        self.brakes = Brakes(self.wirk_config.brake_force)
 
     @property
     def body(self) -> pymunk.Body:
@@ -440,7 +465,7 @@ class Vehicle:
         self.physics.apply_drive_force(
             force=drive_force,
             drive_type=getattr(self.config, "drive_type", "rwd"),
-            grip=self.config.grip,
+            grip=self.wirk_config.grip,
             handbrake=self.handbrake,
             weight_transfer=weight_transfer
         )
@@ -455,7 +480,7 @@ class Vehicle:
         # Eingabe -1..1 für Tastatur und Achse; die Grenze kommt aus der Haftung
         # (PhysicsBody.max_einschlag), beim Beschleunigen etwas weniger.
         self.physics.apply_steering(self.steer_input * steer_scale, dt,
-                                    is_analog=is_analog, grip=self.config.grip,
+                                    is_analog=is_analog, grip=self.wirk_config.grip,
                                     handbremse=bool(self.handbrake))
 
         # Drag (with potential slipstream reduction)
@@ -466,7 +491,7 @@ class Vehicle:
 
         # Lateral friction (grip)
         # Apply axle-based lateral friction taking handbrake and dynamic weight transfer into account
-        self.physics.apply_lateral_friction(self.config.grip, self.handbrake, weight_transfer, dt)
+        self.physics.apply_lateral_friction(self.wirk_config.grip, self.handbrake, weight_transfer, dt)
 
     # ---- Render ----
 

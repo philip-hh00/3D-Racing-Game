@@ -28,6 +28,7 @@ from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
 from src.render3d import tageszeit as tz
+from src.render3d import wetter as wt
 from src.states.menu.gp_overview import GPOverview
 from src.ui import zeichnen, leinwand
 
@@ -164,6 +165,10 @@ class OnlineLobbyPage(Page):
         from src.core import profile as _profil
         self._selected_tageszeit  = tz.normiere(_profil.current().tageszeit)
         s.time_of_day             = self._selected_tageszeit
+        # Wetter ebenso: der Host wählt, der Gast liest es aus den
+        # Lobbyeinstellungen; fehlt das Feld (älterer Host), ist es Trocken.
+        self._selected_wetter     = wt.normiere(_profil.current().wetter)
+        s.weather                 = self._selected_wetter
 
         self._roster_size    = _ROSTER_SIZE
         self._selected_mode  = "Rennen"        # "Rennen" | "Team-Zeitfahren"
@@ -308,6 +313,10 @@ class OnlineLobbyPage(Page):
         self._tageszeit_stepper = Stepper(
             pygame.Rect(0, 0, w, h), tr("Tageszeit"), [tr(n) for n in tz.NAMEN],
             tz.NAMEN.index(self._selected_tageszeit), action="set_tageszeit",
+        )
+        self._wetter_stepper = Stepper(
+            pygame.Rect(0, 0, w, h), tr("Wetter"), [tr(n) for n in wt.NAMEN],
+            wt.NAMEN.index(self._selected_wetter), action="set_wetter",
         )
         self._diff_stepper = Stepper(
             pygame.Rect(0, 0, w, h), "KI-Schwierigkeit",
@@ -779,6 +788,7 @@ class OnlineLobbyPage(Page):
                     self._laps_stepper.index = max(0, min(9, self._selected_laps - 1))
                 # Fehlt das Feld (Host mit älterem Spiel), ist es Tag.
                 self._tageszeit_setzen(srv.get("tageszeit"))
+                self._wetter_setzen(srv.get("wetter"))
                 if "ai_difficulty" in srv:
                     self._selected_difficulty = srv.get("ai_difficulty", "medium")
                     if self._selected_difficulty in _DIFF_KEYS:
@@ -1086,6 +1096,7 @@ class OnlineLobbyPage(Page):
         if gp_mode and self._gp_races_stepper.focusable:
             reihe.append(self._gp_races_stepper)
         reihe.append(self._tageszeit_stepper)
+        reihe.append(self._wetter_stepper)
         # Der Schalter fuer Streckenvorschlaege stand hier bis zum 05.08.2026.
         # Er sitzt jetzt in der Grand-Prix-Uebersicht, „eine Seite später":
         # dort liegt die Liste, auf die er sich bezieht, und dort kann der Host
@@ -1138,6 +1149,8 @@ class OnlineLobbyPage(Page):
             self._laps_stepper.focusable = True
             self._tageszeit_stepper.enabled   = True
             self._tageszeit_stepper.focusable = True
+            self._wetter_stepper.enabled   = True
+            self._wetter_stepper.focusable = True
             self._mode_stepper.enabled   = True
             self._mode_stepper.focusable = True
             self._class_stepper.enabled  = True
@@ -1171,6 +1184,8 @@ class OnlineLobbyPage(Page):
             self._laps_stepper.focusable = False
             self._tageszeit_stepper.enabled   = False
             self._tageszeit_stepper.focusable = False
+            self._wetter_stepper.enabled   = False
+            self._wetter_stepper.focusable = False
             self._mode_stepper.enabled   = False
             self._mode_stepper.focusable = False
             self._size_stepper.enabled   = False
@@ -1400,6 +1415,13 @@ class OnlineLobbyPage(Page):
         from src.core import race_setup
         race_setup.current().time_of_day = self._selected_tageszeit
 
+    def _wetter_setzen(self, name) -> None:
+        """Das Wetter übernehmen (Gast: vom Host; Host: eigene Wahl) und in den Rennaufbau legen."""
+        self._selected_wetter = wt.normiere(name)
+        self._wetter_stepper.index = wt.NAMEN.index(self._selected_wetter)
+        from src.core import race_setup
+        race_setup.current().weather = self._selected_wetter
+
     def _push_settings(self) -> None:
         from src.net import session
         net = session.get()
@@ -1415,6 +1437,7 @@ class OnlineLobbyPage(Page):
             "track_name":    _track_name_from_path(self._selected_track_path),
             "laps":          self._selected_laps,
             "tageszeit":     self._selected_tageszeit,
+            "wetter":        self._selected_wetter,
             "ai_difficulty": self._selected_difficulty,
             "ai_roster":     self._ai_roster_payload(),
             # Serienlaenge reist immer mit, auch bevor die Serie laeuft - sonst
@@ -1824,6 +1847,7 @@ class OnlineLobbyPage(Page):
         s.track_path     = resolved
         s.laps           = self._selected_laps
         s.time_of_day    = self._selected_tageszeit
+        s.weather        = self._selected_wetter
         s.player_vehicle = self._selected_vehicle
         s.ai_difficulty  = self._selected_difficulty
         s.vehicle_class  = self._selected_class
@@ -2586,6 +2610,7 @@ class OnlineLobbyPage(Page):
 
         old_laps  = self._laps_stepper.index
         old_tz    = self._tageszeit_stepper.index
+        old_wetter = self._wetter_stepper.index
         old_mode  = self._mode_stepper.index
         old_size  = self._size_stepper.index
         old_class = self._class_stepper.index
@@ -2661,6 +2686,11 @@ class OnlineLobbyPage(Page):
             self._tageszeit_setzen(tz.NAMEN[self._tageszeit_stepper.index])
             from src.core import profile as _profil
             _profil.current().set_tageszeit(self._selected_tageszeit)
+        wetter_changed = self._is_host and self._wetter_stepper.index != old_wetter
+        if wetter_changed:
+            self._wetter_setzen(wt.NAMEN[self._wetter_stepper.index])
+            from src.core import profile as _profil
+            _profil.current().set_wetter(self._selected_wetter)
 
         if mode_changed:
             self._selected_mode = _MODE_KEYS[self._mode_stepper.index]
@@ -2698,7 +2728,7 @@ class OnlineLobbyPage(Page):
             self._rebuild_roster_widgets()
             self._refresh_focus_group()
 
-        if laps_changed or tz_changed or mode_changed or size_changed or class_changed:
+        if laps_changed or tz_changed or wetter_changed or mode_changed or size_changed or class_changed:
             self._push_settings()
 
     # ── Draw ─────────────────────────────────────────────────────────────────
@@ -2884,6 +2914,7 @@ class OnlineLobbyPage(Page):
             lines.append((tr("Strecke:"), tn))
             lines.append((tr("Runden:"), str(self._selected_laps)))
             lines.append((tr("Tageszeit:"), tr(self._selected_tageszeit)))
+            lines.append((tr("Wetter:"), tr(self._selected_wetter)))
 
             ly = 192
             for label, value in lines:

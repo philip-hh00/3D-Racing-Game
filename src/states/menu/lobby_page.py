@@ -5,6 +5,7 @@ import pygame
 from src.states.menu.page import Page
 from src.core import race_setup
 from src.render3d import tageszeit as tz
+from src.render3d import wetter as wt
 from src.ui import theme
 from src.ui.widgets import Stepper, Button
 from src.ui.focus import FocusGroup
@@ -66,7 +67,11 @@ class LobbyPage(Page):
         s.time_of_day = profile.current().tageszeit
         self.tageszeit = Stepper(pygame.Rect(x, y + 4 * (h + gap), w, h), tr("Tageszeit"),
                                  [tr(n) for n in tz.NAMEN], tz.NAMEN.index(tz.normiere(s.time_of_day)))
-        self.next = Button(pygame.Rect(x + w - 300, y + 5 * (h + gap) + 20, 300, 68),
+        # Wetter des Rennens (Trocken/Regen); auch der letzte Wert steht im Profil.
+        s.weather = profile.current().wetter
+        self.wetter = Stepper(pygame.Rect(x, y + 5 * (h + gap), w, h), tr("Wetter"),
+                              [tr(n) for n in wt.NAMEN], wt.NAMEN.index(wt.normiere(s.weather)))
+        self.next = Button(pygame.Rect(x + w - 300, y + 6 * (h + gap) + 20, 300, 68),
                            tr("WEITER  ›"), "next")
 
         self.ai_widgets: list[Stepper] = []
@@ -99,18 +104,24 @@ class LobbyPage(Page):
                 self.count.index = max(0, min(len(alle) - 1,
                                               s.vehicle_count - race_setup.FELD_MIN))
 
-        col = theme.Column(80, 210, gap=20)
+        # Enger gesetzt als vorher (64/20): mit dem Wetter-Stepper kommt eine Zeile
+        # dazu, und der Weiter-Knopf soll nicht unter dem Modusfeld verschwinden.
+        for widget in (self.mode, self.count, self.klass, self.laps, self.gp_races, self.gp_laps,
+                       self.diff, self.tageszeit, self.wetter):
+            widget.rect.height = 56
+        col = theme.Column(80, 210, gap=12)
         col.add(self.mode)
 
         if self.mode.value == "Zeitfahren":
             col.add(self.klass)
             col.add(self.tageszeit)
+            col.add(self.wetter)
             col.skip(40)
             col.add(self.next)
             self.next.rect.x = 80 + 800 - 300
             s.vehicle_count = 1
             s.laps = 1
-            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.next], keep_focus=True)
+            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.wetter, self.next], keep_focus=True)
             return
 
         col.add(self.count)
@@ -122,6 +133,7 @@ class LobbyPage(Page):
         else:
             col.add(self.laps)
         col.add(self.tageszeit)
+        col.add(self.wetter)
 
         col.skip(20)
         col.add(self.next)
@@ -188,9 +200,9 @@ class LobbyPage(Page):
 
         if is_gp_mode:
             left_side_widgets = [self.mode, self.count, self.klass, self.gp_races, self.gp_laps,
-                                 self.tageszeit]
+                                 self.tageszeit, self.wetter]
         else:
-            left_side_widgets = [self.mode, self.count, self.klass, self.laps, self.tageszeit]
+            left_side_widgets = [self.mode, self.count, self.klass, self.laps, self.tageszeit, self.wetter]
 
         self.group.set_widgets(left_side_widgets + self.ai_widgets + [self.next], keep_focus=True)
 
@@ -247,6 +259,8 @@ class LobbyPage(Page):
         s = race_setup.current()
         s.time_of_day = tz.NAMEN[max(0, min(len(tz.NAMEN) - 1, self.tageszeit.index))]
         profile.current().set_tageszeit(s.time_of_day)
+        s.weather = wt.NAMEN[max(0, min(len(wt.NAMEN) - 1, self.wetter.index))]
+        profile.current().set_wetter(s.weather)
 
     def _commit_and_advance(self) -> None:
         s = race_setup.current()
@@ -344,7 +358,7 @@ class LobbyPage(Page):
         self.group.draw(screen)
 
         # Draw Modus-Erklärung box on the left
-        desc_y = 550 if s.mode == "Zeitfahren" else 750
+        desc_y = self.next.rect.bottom + 16        # unter dem Weiter-Knopf, gleich welcher Modus
         desc_rect = pygame.Rect(80, desc_y, 800, 160)
         zeichnen.rect(screen, (30, 32, 40), desc_rect, border_radius=8)
         zeichnen.rect(screen, theme.BORDER, desc_rect, 1, border_radius=8)

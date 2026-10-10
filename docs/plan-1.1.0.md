@@ -109,8 +109,9 @@ Nur in der Cockpitansicht und nur für Spiegel im Bild. Kosten auf `gp` im
 Cockpit: etwa +1,2 ms Median auf Hoch (Niedrig +0,9) (Messung abwechselnd je Bild).
 
 **Offen, Welle 2:**
-1. Wetter: Regen (nasse Fahrbahn, weniger Grip, Gischt).
-2. Strecken online austauschen (Server-Änderung).
+1. ~~Funktionierende Spiegel.~~ Erledigt (`src/render3d/spiegel.py`).
+2. ~~Wetter: Regen.~~ Erledigt (`src/render3d/wetter.py`, `regen.py`).
+3. ~~Strecken online austauschen.~~ Erledigt (`src/net/strecken_client.py`, Server `TRACK_*`).
 
 **Offen, sonst:**
 - Augpunkt im Kompaktwagen: Der Dachhimmel nimmt oben fast 40 % des Bildes
@@ -122,3 +123,21 @@ Cockpit: etwa +1,2 ms Median auf Hoch (Niedrig +0,9) (Messung abwechselnd je Bil
   übernehmen. Danach Version 1.1.0 für beide Spiele und neu deployen.
 - 2D-Spiel: Fahrhilfen und Vibration ließen sich übertragen. Kameras, Movie
   und Tageszeit sind 3D-only.
+
+## Wetter (Regen)
+
+Trocken / Regen je Rennen, Wahl in allen Lobbys neben der Tageszeit
+(`wetter`-Stepper, Profilfeld `wetter`, Lobbyschlüssel `wetter`, fehlt = Trocken;
+`server/server.py`: `SETTINGS_KEYS` und `WETTER`). Der Server aus dem 2D-Repo
+braucht dieselbe Änderung, dann Version 1.1.0 für beide Spiele.
+
+- Zahlen und Namen: `src/render3d/wetter.py`; Regen und Gischt: `src/render3d/regen.py`.
+- Physik: `Vehicle.wirk_config` (Haftung x0,8, Bremse x0,82) für Menschen und KI;
+  die KI baut ihren Fahrplan damit und bremst früher. `data/vehicles/*.json`
+  bleiben unberührt.
+- Rauschen: `sfx_rennen.regenrauschen()` (gefiltertes Rauschen, nichts aufgenommen).
+- Messen: `tools/ki_messung.py --wetter Regen`, `tools/rennen_probe.py --wetter Regen`,
+  `tools/szene_foto.py --wetter Regen`.
+- Nicht gemacht: Tropfen auf der Frontscheibe im Cockpit.
+- Gefunden: `ctx.depth_mask = …` ist in moderngl wirkungslos (siehe `VEREINBARUNGEN.md`).
+

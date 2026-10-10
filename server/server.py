@@ -135,6 +135,8 @@ SETTINGS_KEYS = frozenset({
     # Tageszeit des Rennens (1.1.0): der Host legt sie fest. Fehlt das Feld, gilt
     # Tag; ein Host mit älterem Spiel schickt es gar nicht.
     "tageszeit",
+    # Wetter des Rennens (1.1.0): ebenso, fehlt es, gilt Trocken.
+    "wetter",
     # Grand Prix: Serienzustand reist im selben Block mit (§3 D/G-Entwurf).
     "gp_tracks", "gp_track_key", "gp_active", "gp_phase", "gp_finished",
     "gp_locked", "gp_members", "gp_race", "gp_total", "gp_points", "gp_raced",
@@ -146,6 +148,9 @@ SETTINGS_KEYS = frozenset({
 
 #: Gültige Werte für ``settings["tageszeit"]``; alles andere wird zu "Tag".
 TAGESZEITEN = frozenset({"Tag", "Abend", "Nacht"})
+
+#: Gültige Werte für ``settings["wetter"]``; alles andere wird zu "Trocken".
+WETTER = frozenset({"Trocken", "Regen"})
 
 #: Zeichen, die in einem Spielernamen zusaetzlich zu Buchstaben und Ziffern
 #: erlaubt sind (H2.13).
@@ -963,6 +968,9 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                 if "tageszeit" in bekannt and not (isinstance(bekannt["tageszeit"], str)
                                                    and bekannt["tageszeit"] in TAGESZEITEN):
                     bekannt["tageszeit"] = "Tag"
+                if "wetter" in bekannt and not (isinstance(bekannt["wetter"], str)
+                                                and bekannt["wetter"] in WETTER):
+                    bekannt["wetter"] = "Trocken"
                 unbekannt = len(payload) - len(bekannt)
                 if unbekannt:
                     log.warning(f"Lobby {lobby.lobby_id}: {unbekannt} unbekannte "

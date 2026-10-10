@@ -93,6 +93,9 @@ class RaceSetup:
     #: Tageszeit des Rennens: "Tag", "Abend" oder "Nacht" (render3d.tageszeit).
     #: Die Lobbys setzen es; der letzte Wert steht im Profil (``tageszeit``).
     time_of_day: str = "Tag"
+    #: Wetter des Rennens: "Trocken" oder "Regen" (render3d.wetter). Die Lobbys
+    #: setzen es; der letzte Wert steht im Profil (``wetter``).
+    weather: str = "Trocken"
     ai_difficulty: str = "medium"
     player_vehicle: str = "rookie"
     track_path: str = "data/tracks/oval.json"

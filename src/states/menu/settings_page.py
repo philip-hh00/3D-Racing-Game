@@ -61,6 +61,10 @@ def _grafik_regler() -> list[tuple[str, str, list[tuple[object, str]]]]:
         ("strecken_details", tr("Streckendetails"), [(0, aus), (1, tr("Einige")), (2, tr("Alle"))]),
         ("reifenspuren", tr("Reifenspuren"), [(False, aus), (True, an)]),
         ("spiegel", tr("Spiegel (Cockpit)"), [(0, aus), (1, tr("Niedrig")), (2, tr("Hoch"))]),
+        ("regen_tropfen", tr("Regen"),
+         [(0, aus), (900, tr("Wenige")), (1600, tr("Einige")), (2400, tr("Viele")), (3600, tr("Alle"))]),
+        ("gischt_teilchen", tr("Gischt"),
+         [(0, aus), (240, tr("Wenige")), (480, tr("Einige")), (800, tr("Viele")), (1400, tr("Alle"))]),
         ("fahrzeug_lod_m", tr("Autos vereinfacht ab"),
          [(v, f"{int(v)} m") for v in (20.0, 35.0, 60.0, 120.0, 250.0)]),
     ]
@@ -102,7 +106,7 @@ def _grafik_stufe_erkennen(werte: dict) -> str:
 
 
 class _AdvancedGraphicsView:
-    """Overlay for detailed graphics settings (13 individual sliders)."""
+    """Overlay for detailed graphics settings (16 individual sliders)."""
 
     def __init__(self, parent_page: SettingsPage) -> None:
         self.parent = parent_page
@@ -129,7 +133,7 @@ class _AdvancedGraphicsView:
             stepper = Stepper(pygame.Rect(0, 0, 380, 42), beschriftung,
                              [a for _w, a in optionen], index, action="grafik_" + feld)
 
-            if idx < 7:
+            if idx < 8:
                 col1_widgets.append(stepper)
             else:
                 col2_widgets.append(stepper)

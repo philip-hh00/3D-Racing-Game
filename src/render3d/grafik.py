@@ -64,6 +64,10 @@ class Grafik:
     #: (halbe Auflösung, jedes zweite Bild), 2 hoch (volle Auflösung, der
     #: Innenspiegel jedes Bild, die Außenspiegel jedes zweite). Siehe ``spiegel.py``.
     spiegel: int = 2
+    #: Regen (``wetter.py``): so viele Streifen je Bild und so viele Gischtteilchen
+    #: höchstens; 0 schaltet ab. Ohne Regen kostet beides nichts.
+    regen_tropfen: int = 2400
+    gischt_teilchen: int = 800
 
 
 STUFEN: dict[str, Grafik] = {
@@ -71,15 +75,17 @@ STUFEN: dict[str, Grafik] = {
                       bloom=False, kantenglaettung="fxaa", deko_dichte=0.4,
                       sichtweite_m=700.0, gras=0, gelaende_detail=0,
                       strecken_details=0, reifenspuren=False,
-                      fahrzeug_lod_m=20.0, gelaende_schatten=1, lichter_max=6, spiegel=0),
+                      fahrzeug_lod_m=20.0, gelaende_schatten=1, lichter_max=6, spiegel=0,
+                      regen_tropfen=900, gischt_teilchen=240),
     "mittel": Grafik(stufe="mittel", aufloesung_skala=1.0, schatten_px=2048, ssao=0,
                      bloom=True, kantenglaettung="fxaa", deko_dichte=0.7,
                      sichtweite_m=1100.0, gras=1, gelaende_detail=1,
                      strecken_details=1, reifenspuren=True,
-                     fahrzeug_lod_m=35.0, gelaende_schatten=2, lichter_max=12, spiegel=1),
+                     fahrzeug_lod_m=35.0, gelaende_schatten=2, lichter_max=12, spiegel=1,
+                     regen_tropfen=1600, gischt_teilchen=480),
     "hoch": Grafik(),
     "ultra": Grafik(stufe="ultra", ssao=2, deko_dichte=1.0, sichtweite_m=2400.0,
-                    fahrzeug_lod_m=120.0),
+                    fahrzeug_lod_m=120.0, regen_tropfen=3600, gischt_teilchen=1400),
 }
 
 _aktuell: Grafik = STUFEN["hoch"]

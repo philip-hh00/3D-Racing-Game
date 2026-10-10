@@ -30,7 +30,7 @@ class Bahnregler:
         self.fz = fahrzeug
         xs = [v.x for v in fahrzeug.physics.shape.get_vertices()]
         self.radstand = (max(xs) - min(xs)) * float(fahrzeug.physics.wheelbase_ratio)
-        self.grip = float(fahrzeug.config.grip)
+        self.grip = float(getattr(fahrzeug, "wirk_config", fahrzeug.config).grip)
         self.vorschau: tuple[float, float] = (0.0, 0.0)
 
     def _vorschaupunkt(self, bahn: np.ndarray, pos: np.ndarray, v: float) -> np.ndarray:

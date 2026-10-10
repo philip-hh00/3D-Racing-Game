@@ -2,6 +2,9 @@
 
     .venv/Scripts/python.exe tools/ki_messung.py --strecken oval,gp,city --auto rookie --runden 3
     .venv/Scripts/python.exe tools/ki_messung.py --feld --eigene
+    .venv/Scripts/python.exe tools/ki_messung.py --strecken oval,gp,city --wetter Regen
+
+``--wetter Regen`` fährt mit der Haftung des Regens (``render3d.wetter``).
 
 Solo: je Stufe beste Runde (ab Runde 2, fliegend) und Abstand zu Meister.
 Feld: gemischtes Feld je Stufe — Überholungen, Kontakte, Hänger, Zieleinläufe.
@@ -39,7 +42,7 @@ def _welt(pfad):
     return welt, track, bus
 
 
-def _autos(welt, track, keys, stufe_key):
+def _autos(welt, track, keys, stufe_key, wetter="Trocken"):
     from src.ai.stufen import stufe
     from src.entities.vehicle_factory import VehicleFactory
     starts = track.get_start_positions()
@@ -49,6 +52,7 @@ def _autos(welt, track, keys, stufe_key):
         ai = VehicleFactory.create_ai_vehicle(key, i + 1, sp.pos, math.radians(sp.angle),
                                               welt.space, track, stufe(stufe_key))
         ai.ai_active = True
+        ai.wetter_setzen(wetter)
         feld.append(ai)
     for ai in feld:
         ai.controller.opponents = feld
@@ -56,9 +60,9 @@ def _autos(welt, track, keys, stufe_key):
     return feld
 
 
-def solo(pfad, auto, stufe_key, runden=3, zeitlimit=400.0):
+def solo(pfad, auto, stufe_key, runden=3, zeitlimit=400.0, wetter="Trocken"):
     welt, track, bus = _welt(pfad)
-    (ai,) = _autos(welt, track, [auto], stufe_key)
+    (ai,) = _autos(welt, track, [auto], stufe_key, wetter)
     st = ai.controller.fahrplan.strecke
     wand = [0]
     koerper = id(ai.physics.body)
@@ -92,9 +96,9 @@ def _ueberholungen(alt: list[int], neu: list[int]) -> int:
                if (pos_alt[a] < pos_alt[b]) != (pos_neu[a] < pos_neu[b]))
 
 
-def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0):
+def feld(pfad, stufe_key, autos, runden=2, zeitlimit=400.0, wetter="Trocken"):
     welt, track, bus = _welt(pfad)
-    wagen = _autos(welt, track, autos, stufe_key)
+    wagen = _autos(welt, track, autos, stufe_key, wetter)
     st = wagen[0].controller.fahrplan.strecke
     zaehler = {"wand": 0, "auto": 0}
     koerper = {id(a.physics.body): i for i, a in enumerate(wagen)}
@@ -180,6 +184,7 @@ def main() -> None:
     ap.add_argument("--runden", type=int, default=3)
     ap.add_argument("--feld", action="store_true")
     ap.add_argument("--eigene", action="store_true")
+    ap.add_argument("--wetter", default="Trocken", help="Trocken oder Regen")
     a = ap.parse_args()
     pfade = [os.path.join(WURZEL, "data", "tracks", f"{n}.json") for n in a.strecken.split(",") if n]
     if a.eigene:
@@ -187,7 +192,7 @@ def main() -> None:
         pfade += eigene_strecken(tempfile.mkdtemp(prefix="ki_messung_"))
     for pfad in pfade:
         name = os.path.splitext(os.path.basename(pfad))[0]
-        ergebnisse = {k: solo(pfad, a.auto, k, a.runden) for k in REIHE}
+        ergebnisse = {k: solo(pfad, a.auto, k, a.runden, wetter=a.wetter) for k in REIHE}
         meister = ergebnisse["expert"]["beste"]
         for k in REIHE:
             e = ergebnisse[k]
@@ -196,7 +201,7 @@ def main() -> None:
                   f"{prozent:+6.1f}%  Wand {e['wand']:3d}  {'ok' if e['fertig'] else 'NICHT FERTIG'}")
         if a.feld:
             for k in REIHE:
-                f = feld(pfad, k, FELD_AUTOS)
+                f = feld(pfad, k, FELD_AUTOS, wetter=a.wetter)
                 print(f"{name:18s} {STUFEN[k].name:16s} Feld: {f}")
 
 

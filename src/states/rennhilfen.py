@@ -92,7 +92,7 @@ class RennHilfen:
         try:
             from src.ai import ideallinie as daten
             from src.render3d.ideallinie import Ideallinie3D
-            linie = Ideallinie3D(ctx, daten.fuer_fahrzeug(r.track, hp.config))
+            linie = Ideallinie3D(ctx, daten.fuer_fahrzeug(r.track, getattr(hp, "wirk_config", hp.config)))
         except Exception as fehler:
             print(f"[RennHilfen] Ideallinie nicht aufgebaut: {fehler}")
             return None

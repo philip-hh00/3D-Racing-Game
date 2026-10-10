@@ -57,6 +57,7 @@ def main() -> int:
     ap.add_argument("--stufe", default="hoch",
                     help="Grafikstufe: niedrig, mittel, hoch, ultra")
     ap.add_argument("--tageszeit", default="Tag", help="Tag, Abend oder Nacht")
+    ap.add_argument("--wetter", default="Trocken", help="Trocken oder Regen")
     ap.add_argument("--lichter", type=int, default=None,
                     help="grafik.lichter_max erzwingen (0: keine lokalen Lichter)")
     ap.add_argument("--bremse", type=float, default=0.0,
@@ -85,7 +86,7 @@ def main() -> int:
         ctx, netz, args.modelle, thema=th,
         texturordner=WURZEL / "assets" / "texturen", himmelordner=WURZEL / "assets" / "himmel",
         umgebungsordner=WURZEL / "assets" / "umgebung", platzierungen=orte, fahrzeuge=fahrzeuge,
-        tageszeit=args.tageszeit)
+        tageszeit=args.tageszeit, wetter=args.wetter)
     ladezeit = time.perf_counter() - t0
 
     # Wie das Spiel: die Plaetze des Netzes (bis FELD_MAX, aus der Mittellinie
@@ -123,7 +124,7 @@ def main() -> int:
     from PIL import Image
     roh = fbo.read(components=3)
     Image.frombytes("RGB", (args.breite, args.hoehe), roh).transpose(Image.FLIP_TOP_BOTTOM).save(args.ziel)
-    print(f"{pfad.stem} ({args.stufe}, {args.tageszeit}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
+    print(f"{pfad.stem} ({args.stufe}, {args.tageszeit}, {args.wetter}): {len(orte)} Objekte, Laden {ladezeit:.2f} s, "
           f"Bild {np.median(zeiten[1:]) * 1000:.1f} ms (Median)")
     szene.freigeben()
     return 0

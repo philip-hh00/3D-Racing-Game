@@ -235,10 +235,10 @@ def test_erweitert_knopf_oeffnet_die_grafik_regler(seite):
     assert seite._advanced_graphics._content_group is not None, "Advanced view should have a focus group"
     
     # Verify that all the individual sliders are in the advanced view
-    # 15 individual sliders (not grafikstufe) + 1 back button = 16 widgets
+    # 17 individual sliders (not grafikstufe) + 1 back button = 18 widgets
     grafik_regler_count = len([w for w in seite._advanced_graphics._content_group.widgets
                                if getattr(w, "action", "").startswith("grafik_")])
-    assert grafik_regler_count == 16, f"Should have 16 grafik widgets (15 sliders + back button), found {grafik_regler_count}"
+    assert grafik_regler_count == 18, f"Should have 18 grafik widgets (17 sliders + back button), found {grafik_regler_count}"
     
     # Verify there's a back button
     back_btn = seite._advanced_graphics._back_button

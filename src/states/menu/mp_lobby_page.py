@@ -12,6 +12,7 @@ import pygame
 from src.states.menu.page import Page
 from src.core import race_setup, profile, gamepad
 from src.render3d import tageszeit as tz
+from src.render3d import wetter as wt
 from src.ui import theme
 from src.ui.widgets import Stepper, Button
 from src.ui.focus import FocusGroup
@@ -70,10 +71,14 @@ class MPLobbyPage(Page):
         s.time_of_day = profile.current().tageszeit
         self.tageszeit = Stepper(row(4), tr("Tageszeit"), [tr(n) for n in tz.NAMEN],
                                  tz.NAMEN.index(tz.normiere(s.time_of_day)))
-        self._p1_row = row(5)
-        self._p2_row = row(6)
+        # Wetter des Rennens (Trocken/Regen); der letzte Wert steht im Profil.
+        s.weather = profile.current().wetter
+        self.wetter = Stepper(row(5), tr("Wetter"), [tr(n) for n in wt.NAMEN],
+                              wt.NAMEN.index(wt.normiere(s.weather)))
+        self._p1_row = row(6)
+        self._p2_row = row(7)
         self._build_input_steppers(self._p1_row, self._p2_row)
-        self.next = Button(pygame.Rect(x + w - 300, y + 7 * (h + gap) + 8, 300, 62), tr("WEITER  ›"), "next")
+        self.next = Button(pygame.Rect(x + w - 300, y + 8 * (h + gap) + 8, 300, 62), tr("WEITER  ›"), "next")
 
         self.ai_widgets: list[Stepper] = []
         self.group = FocusGroup([])
@@ -106,7 +111,7 @@ class MPLobbyPage(Page):
         if is_gp_mode or is_team_mode:
             h, gap = 46, 8
         else:
-            h, gap = 56, 12
+            h, gap = 50, 10         # eine Zeile mehr (Wetter): enger, damit „Weiter" frei bleibt
 
         def row(i):
             return pygame.Rect(x, 170 + i * (h + gap), w, h)
@@ -127,7 +132,7 @@ class MPLobbyPage(Page):
                                               s.vehicle_count - race_setup.FELD_MIN))
 
         for widget in (self.mode, self.count, self.klass, self.laps, self.gp_races, self.gp_laps, self.diff,
-                       self.tageszeit, self.p1in, self.p2in):
+                       self.tageszeit, self.wetter, self.p1in, self.p2in):
             widget.rect.height = h
 
         col = theme.Column(x, 170, gap=gap)
@@ -136,6 +141,7 @@ class MPLobbyPage(Page):
         if is_zf_mode:
             col.add(self.klass)
             col.add(self.tageszeit)
+            col.add(self.wetter)
             col.add(self.p1in)
             col.add(self.p2in)
             col.skip(8)
@@ -144,7 +150,7 @@ class MPLobbyPage(Page):
             self.next.rect.x = x + w - 300
             s.vehicle_count = 2
             s.laps = 1
-            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.p1in, self.p2in, self.next],
+            self.group.set_widgets([self.mode, self.klass, self.tageszeit, self.wetter, self.p1in, self.p2in, self.next],
                                    keep_focus=True)
             return
 
@@ -158,6 +164,7 @@ class MPLobbyPage(Page):
             col.add(self.klass)
             col.add(self.laps)
         col.add(self.tageszeit)
+        col.add(self.wetter)
 
         col.add(self.p1in)
         col.add(self.p2in)
@@ -232,12 +239,12 @@ class MPLobbyPage(Page):
         if is_gp_mode:
             left_side_widgets = [
                 self.mode, self.count, self.klass, self.gp_races, self.gp_laps,
-                self.tageszeit, self.p1in, self.p2in
+                self.tageszeit, self.wetter, self.p1in, self.p2in
             ]
         else:
             left_side_widgets = [
                 self.mode, self.count, self.klass, self.laps,
-                self.tageszeit, self.p1in, self.p2in
+                self.tageszeit, self.wetter, self.p1in, self.p2in
             ]
 
         self.group.set_widgets(left_side_widgets + self.ai_widgets + [self.next], keep_focus=True)
@@ -311,6 +318,8 @@ class MPLobbyPage(Page):
         s = race_setup.current()
         s.time_of_day = tz.NAMEN[max(0, min(len(tz.NAMEN) - 1, self.tageszeit.index))]
         profile.current().set_tageszeit(s.time_of_day)
+        s.weather = wt.NAMEN[max(0, min(len(wt.NAMEN) - 1, self.wetter.index))]
+        profile.current().set_wetter(s.weather)
 
     def _advance(self) -> None:
         s = race_setup.current()
@@ -438,7 +447,7 @@ class MPLobbyPage(Page):
         self.group.draw(screen)
 
         # Draw Modus-Erklärung box on the left
-        desc_y = 550 if s.mode == "Zeitfahren" else 750
+        desc_y = self.next.rect.bottom + 16        # unter dem Weiter-Knopf, gleich welcher Modus
         desc_rect = pygame.Rect(80, desc_y, 800, 160)
         zeichnen.rect(screen, (30, 32, 40), desc_rect, border_radius=8)
         zeichnen.rect(screen, theme.BORDER, desc_rect, 1, border_radius=8)

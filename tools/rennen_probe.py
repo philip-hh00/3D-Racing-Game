@@ -31,6 +31,7 @@ def main() -> int:
     ap.add_argument("--ansicht", default="",
                     help="Kameraansicht des Menschen erzwingen: verfolger_fern, verfolger_nah, "
                          "motorhaube oder cockpit (mit Spiegeln)")
+    ap.add_argument("--wetter", default="Trocken", help="Trocken oder Regen")
     ap.add_argument("--setzen", action="append", default=[],
                     help="Einzelwert nach der Stufe, z. B. --setzen ssao=0 (mehrfach)")
     args = ap.parse_args()
@@ -61,7 +62,7 @@ def main() -> int:
     import spielhilfe
     t0 = time.perf_counter()
     rennen, _sm = spielhilfe.rennen_bauen(args.strecke, feld=args.feld, runden=3,
-                                         tageszeit=args.tageszeit)
+                                         tageszeit=args.tageszeit, wetter=args.wetter)
     print(f"Aufbau mit Laden: {time.perf_counter() - t0:.2f} s, "
           f"Szene: {'ja' if rennen.szene is not None else 'NEIN'}")
 
@@ -99,7 +100,7 @@ def main() -> int:
                 del fotos[zeitpunkt]
     z = np.array(zeiten[30:]) * 1000
     from src.render3d import grafik
-    print(f"{args.strecke} ({grafik.aktuell().stufe}, {args.tageszeit}): {len(zeiten)} Bilder, Median {np.median(z):.1f} ms, "
+    print(f"{args.strecke} ({grafik.aktuell().stufe}, {args.tageszeit}, {args.wetter}): {len(zeiten)} Bilder, Median {np.median(z):.1f} ms, "
           f"95. Perzentil {np.percentile(z, 95):.1f} ms, Zustand {rennen.race_manager.state}")
     spielhilfe.alles_schliessen()
     pygame.quit()
