@@ -165,23 +165,56 @@ def test_tafel_ergibt_dieselbe_farbe_wie_die_gewoehnliche_mischung():
         leinwand.skala_setzen(alt)
 
 
-def test_menueschale_oeffnet_das_video_auch_in_skalierter_flaeche(skala15):
-    """Regression: ein Fehler beim Aufbau des Randueberzugs (surfarray kennt die
-    Rastergroesse der Flaeche nicht) wurde still geschluckt, das Menue fiel auf
-    den Verlauf zurueck — nur bei Skala != 1, also nur im Vollbild."""
+def test_menueschale_nimmt_ohne_videoebene_das_standbild(skala15):
+    """Ohne OpenGL (Testlauf) gibt es keine Videoebene: kein Faden, kein Fehler."""
     import os
     from src.core.state_machine import StateMachine
     from src.states.menu_shell_state import MenuShellState
     if not os.path.isfile(os.path.join("data", "menu", "Einzelspieler.mp4")):
         pytest.skip("Menuevideo fehlt")
     ms = MenuShellState(StateMachine())
-    ms.tab = 0
     ms._ensure_video("Einzelspieler")
-    try:
-        assert ms._video is not None
-        assert ms._ueberzug_wunsch()[0] == "rand"
-    finally:
-        ms.exit()
+    assert ms._video is None
+    ms.exit()
+
+
+def test_menueschale_oeffnet_das_video_als_strom_und_schliesst_es(skala15, monkeypatch):
+    """Mit Videoebene: ein VideoStrom (Faden), der Aufruf kehrt sofort zurueck;
+    ``exit`` und Tabwechsel halten den Faden an."""
+    import os
+    from src.core import display
+    from src.core.state_machine import StateMachine
+    from src.states.menu_shell_state import MenuShellState
+    from src.ui.video_ebene import VideoStrom
+    if not os.path.isfile(os.path.join("data", "menu", "Einzelspieler.mp4")):
+        pytest.skip("Menuevideo fehlt")
+
+    class Ebene:
+        def zeigen(self, *a, **k):
+            self.gezeigt = (a, k)
+
+    ebene = Ebene()
+    monkeypatch.setattr(display, "video_ebene", lambda: ebene)
+    ms = MenuShellState(StateMachine())
+    t0 = time.perf_counter()
+    ms._ensure_video("Einzelspieler")
+    assert time.perf_counter() - t0 < 0.05                 # oeffnet im Faden
+    erster = ms._video
+    assert isinstance(erster, VideoStrom)
+    ms._ensure_video("Profil")                             # Tabwechsel: alter Faden endet
+    assert ms._video is not erster
+    for _ in range(100):
+        if not erster.lebt:
+            break
+        time.sleep(0.02)
+    assert not erster.lebt
+    zweiter = ms._video
+    ms.exit()
+    for _ in range(100):
+        if not zweiter.lebt:
+            break
+        time.sleep(0.02)
+    assert not zweiter.lebt and ms._video is None
 
 
 class _Wackelkapsel:

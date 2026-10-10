@@ -146,7 +146,7 @@ class GameManager:
                     if display.handle_window_event(event):
                         break
 
-                # Remap mouse coordinates from window-space to virtual 1920x1080 space.
+                # Remap mouse coordinates from window-space to the safe 1920x1080 area.
                 events = display.remap_mouse_events(events)
 
                 # Normalize numpad Enter to regular Enter so every menu/dialog
@@ -188,9 +188,8 @@ class GameManager:
                 # die virtuelle Flaeche. bild_abschliessen legt sie als Textur
                 # darueber und zeigt das Bild.
                 display.bild_beginnen()
-                virt = display.virtual_surface()
-                self.state_machine.render(virt)
-                gamepad.draw_notifications(virt, dt)
+                display.zustand_zeichnen(self.state_machine)
+                gamepad.draw_notifications(display.sicherer_bereich(), dt)
                 display.bild_abschliessen()
 
         except Exception:
@@ -211,6 +210,13 @@ class GameManager:
         if getattr(self, "_quit_done", False):
             return
         self._quit_done = True
+        # Videofaeden des Menuehintergrunds anhalten und abwarten: sie halten
+        # eine offene Aufnahme, die vor dem Ende des Prozesses frei sein muss.
+        try:
+            from src.ui import video_ebene
+            video_ebene.alle_beenden()
+        except Exception:
+            pass
         # Erst den Audiofaden, dann pygame: der Faden blendet aus und schliesst
         # das Geraet. Bliebe er offen, haenge ein nicht angehaltener Strom am
         # beendeten Prozess — unter Windows ein haengendes Fenster beim Beenden.

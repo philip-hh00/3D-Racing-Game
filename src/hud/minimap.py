@@ -32,6 +32,11 @@ class Minimap:
     def __init__(self, track, screen_h: int = SCREEN_HEIGHT) -> None:
         self.track = track
         self.pos = (20, SCREEN_HEIGHT - self.PANEL_H - 20)   # bottom-left corner
+        #: Woran das Panel am Bildrand haengt: "links" (unten links) oder
+        #: "mitte" (unten mittig, Splitscreen). Gerechnet wird beim Zeichnen
+        #: aus der echten Groesse der Flaeche (:meth:`platz`) — die ist breiter
+        #: oder hoeher als 1920x1080, wenn das Fenster nicht 16:9 ist.
+        self.anker = "links"
         self._bg_cache: pygame.Surface | None = None
         self._scale = 1.0
         self._min_x = 0.0
@@ -151,6 +156,13 @@ class Minimap:
         )
 
     # ------------------------------------------------------------------
+    def platz(self, breite: int, hoehe: int) -> tuple[int, int]:
+        """Obere linke Ecke des Panels auf einer Flaeche der Groesse ``breite`` x ``hoehe``."""
+        y = hoehe - self.PANEL_H - 20
+        if self.anker == "mitte":
+            return ((breite - self.PANEL_W) // 2, y)
+        return (20, y)
+
     def render(
         self,
         screen: pygame.Surface,
@@ -188,4 +200,5 @@ class Minimap:
                     color = tuple(color[:3])
                 zeichnen.circle(panel, color, (mx, my), 4)
                 zeichnen.circle(panel, (0, 0, 0), (mx, my), 4, 1)
+        self.pos = self.platz(*screen.get_size())
         screen.blit(panel, self.pos)

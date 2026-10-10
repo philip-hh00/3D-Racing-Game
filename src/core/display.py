@@ -2,10 +2,14 @@
 
 Architecture
 ------------
-* The game always renders into a fixed 1920×1080 **virtual surface** so that
-  all states, HUDs and menus can use absolute pixel coordinates without change.
+* The game renders into a **virtual surface** whose grid is at least 1920×1080
+  (see :func:`raster_groesse`). In a 16:9 window it is exactly 1920×1080; in any
+  other window it grows on one axis so that it covers the **whole** window.
+* Menus and states with absolute coordinates draw into the **safe area**, a
+  centered 1920×1080 part of that surface (:func:`sicherer_bereich`). The race
+  gets the whole surface and anchors its HUD to the real screen edges.
 * Mouse coordinates from pygame events are in *window* space; ``scale_pos()``
-  converts them to *virtual* (1920×1080) space so that all existing
+  converts them to *safe-area* (1920×1080) space so that all existing
   ``collidepoint`` checks keep working.
 
 Der Weg über OpenGL
@@ -24,10 +28,11 @@ Drei Folgen, die den Aufbau hier bestimmen:
    und mit ihm jedes hochgeladene Netz, jede Textur, jeden Shader — bei 600 000
    Dreiecken je Fahrzeug ein Aussetzer von Sekunden. Auflösung und Vollbild
    schalten deshalb über ``pygame.window.Window`` um.
-3. **Briefkasten statt Zerren.** ``SCALED`` verträgt sich nicht mit OpenGL und
-   ist entfallen. Passt das Fenster nicht zu 16:9, sitzt das Ansichtsfenster
-   mittig darin und der Rand bleibt schwarz; ``scale_pos`` rechnet den Versatz
-   wieder heraus.
+3. **Füllen statt Balken.** ``SCALED`` verträgt sich nicht mit OpenGL und
+   ist entfallen. Passt das Fenster nicht zu 16:9, gab es bis 1.0.1 einen
+   schwarzen Briefkasten. Jetzt füllen Welt, Menühintergrund-Video und HUD das
+   ganze Fenster; Menüs bleiben ein mittiger 16:9-Bereich (der „sichere
+   Bereich"), und ``scale_pos`` rechnet den Versatz heraus.
 
 Ohne OpenGL — im Testlauf, wo der SDL-Treiber ``dummy`` ist — liefert
 :func:`kontext` ``None``. Dann wird keine Welt gezeichnet. Das ist **kein**
@@ -51,6 +56,7 @@ Usage in game.py
 """
 from __future__ import annotations
 
+import math
 import sys
 
 import pygame
@@ -135,6 +141,7 @@ _opengl_fenster: bool = False
 _kontext = None
 _kontext_versucht: bool = False
 _ansicht3d = None
+_video_ebene = None
 _fensterobjekt = None
 
 # Set while handle_window_event() is restoring the configured window size
@@ -162,23 +169,101 @@ def set_window_icon() -> None:
         pass
 
 
+def raster_groesse(fenstergroesse: tuple[int, int] | None = None) -> tuple[int, int]:
+    """Das Raster der virtuellen Fläche für ein Fenster: mindestens 1920×1080.
+
+    Das Fenster-Seitenverhältnis bestimmt, welche Achse wächst: ein breiteres
+    Fenster (21:9) behält 1080 Zeilen und bekommt mehr Spalten, ein höheres
+    (16:10, 5:4) behält 1920 Spalten und bekommt mehr Zeilen. Bei 16:9 ist es
+    genau 1920×1080 — dann ändert sich gegenüber 1.0.1 nichts.
+    """
+    fb, fh = fenstergroesse if fenstergroesse is not None else _fenstergroesse()
+    fb, fh = max(1, int(fb)), max(1, int(fh))
+    if fb < 16 or fh < 16:                          # minimiert: kein Seitenverhaeltnis
+        return (VIRT_W, VIRT_H)
+    if fb * VIRT_H >= fh * VIRT_W:                  # breiter (oder gleich) als 16:9
+        return (max(VIRT_W, round(VIRT_H * fb / fh)), VIRT_H)
+    return (VIRT_W, max(VIRT_H, round(VIRT_W * fh / fb)))
+
+
+def sicherer_rand(raster: tuple[int, int] | None = None) -> pygame.Rect:
+    """Der mittige 1920×1080-Bereich im Raster — dort leben die Menüs."""
+    rb, rh = raster if raster is not None else raster_groesse()
+    return pygame.Rect((rb - VIRT_W) // 2, (rh - VIRT_H) // 2, VIRT_W, VIRT_H)
+
+
 def virtual_surface() -> pygame.Surface:
-    """Die feste Fläche von 1920×1080, auf die jeder Zustand zeichnet.
+    """Die virtuelle Fläche, mindestens 1920×1080 groß (siehe :func:`raster_groesse`).
 
     **Mit Alphakanal.** Ohne ihn deckte sie die 3D-Szene lückenlos zu; wo
     nichts gezeichnet wird, muss die Welt darunter durchscheinen.
+
+    Zustände, die in absoluten 1920×1080-Koordinaten zeichnen, bekommen nicht
+    sie, sondern :func:`sicherer_bereich`.
     """
     global _virtual
     from src.ui import leinwand
     s = _ui_skala()
-    if _virtual is None or getattr(_virtual, "skala", 1.0) != s:
-        # Gerechnet wird immer in VIRT_W × VIRT_H, gezeichnet in der echten
-        # Größe des Bildausschnitts (src/ui/leinwand.py) — sonst ist die
-        # Oberfläche in 1440p oder 4K nur hochgezogen und weich.
+    raster = _flaechen_raster()
+    if (_virtual is None or getattr(_virtual, "skala", 1.0) != s
+            or tuple(_virtual.get_size()) != raster):
+        # Gerechnet wird im Raster, gezeichnet in der echten Größe des
+        # Fensters (src/ui/leinwand.py) — sonst ist die Oberfläche in 1440p
+        # oder 4K nur hochgezogen und weich.
         leinwand.skala_setzen(s)
-        _virtual = leinwand.Flaeche((VIRT_W, VIRT_H), pygame.SRCALPHA, s)
+        _virtual = leinwand.Flaeche(raster, pygame.SRCALPHA, s)
         _virtual.schmutz_verfolgen()
     return _virtual
+
+
+def _flaechen_raster() -> tuple[int, int]:
+    """Raster der virtuellen Fläche. Ohne OpenGL-Fenster (Tests): 1920×1080."""
+    if _kontext is None or not _opengl_fenster:
+        return (VIRT_W, VIRT_H)
+    return raster_groesse(_fenstergroesse())
+
+
+_sicher = None          # (eltern, ausschnitt)
+
+
+def sicherer_bereich(flaeche: pygame.Surface | None = None) -> pygame.Surface:
+    """Der mittige 1920×1080-Ausschnitt der virtuellen Fläche.
+
+    Eine **Sicht** auf dieselben Bildpunkte (``Flaeche.subsurface``): was
+    hineingezeichnet wird, steht in der Fläche und wird mit hochgeladen. Hat
+    die Fläche genau 1920×1080, ist es die Fläche selbst — dann ist alles wie
+    vor 1.1.0.
+    """
+    global _sicher
+    voll = flaeche if flaeche is not None else virtual_surface()
+    rb, rh = voll.get_size()
+    if (rb, rh) == (VIRT_W, VIRT_H):
+        return voll
+    if _sicher is not None and _sicher[0] is voll:
+        return _sicher[1]
+    ausschnitt = voll.subsurface(sicherer_rand((rb, rh)))
+    _sicher = (voll, ausschnitt)
+    return ausschnitt
+
+
+def zustand_zeichnen(zustandsautomat) -> None:
+    """Den aktuellen Zustand zeichnen — die **eine** Stelle für den Bildaufbau.
+
+    Zustände mit ``volle_flaeche = True`` (das Rennen) bekommen die ganze
+    Fläche und verankern ihr HUD an den Fensterrändern. Alle anderen zeichnen
+    in den sicheren 16:9-Bereich; der Rest daneben wird danach aus dessen
+    äußerster Pixelreihe fortgesetzt, damit dort kein Balken steht (ein
+    Menühintergrund-Video liegt ohnehin schon als OpenGL-Ebene darunter).
+    """
+    voll = virtual_surface()
+    zustand = getattr(zustandsautomat, "current", None)
+    if getattr(zustand, "volle_flaeche", False):
+        zustandsautomat.render(voll)
+        return
+    sicher = sicherer_bereich(voll)
+    zustandsautomat.render(sicher)
+    if sicher is not voll and hasattr(voll, "rand_fortsetzen"):
+        voll.rand_fortsetzen(sicherer_rand(voll.get_size()))
 
 
 def _ui_skala() -> float:
@@ -189,8 +274,9 @@ def _ui_skala() -> float:
     """
     if _kontext is None or not _opengl_fenster:
         return 1.0
-    _x, _y, b, _h = ansichtsfenster(_fenstergroesse())
-    return round(max(0.5, min(3.0, b / VIRT_W)), 2)
+    fb, fh = _fenstergroesse()
+    rb, rh = raster_groesse((fb, fh))
+    return round(max(0.5, min(3.0, max(fb / rb, fh / rh))), 2)
 
 
 # ---------------------------------------------------------------------------
@@ -259,12 +345,12 @@ def _ueberlagerung():
 
 
 def ansichtsfenster(fenstergroesse: tuple[int, int]) -> tuple[int, int, int, int]:
-    """Der 16:9-Ausschnitt im Fenster, als ``(x, y, breite, hoehe)``.
+    """Der **sichere Bereich** im Fenster: der mittige 16:9-Ausschnitt in Bildpunkten.
 
-    Bis zur Portierung erledigte das ``pygame.SCALED``. Mit OpenGL gibt es das
-    nicht mehr, also wird gerechnet: das Bild sitzt mittig, der Rest bleibt
-    schwarz. Ohne diese Rechnung würde ein Fenster von 16:10 das Bild in die
-    Höhe ziehen.
+    Bis 1.0.1 war das der ganze Bildbereich und der Rest blieb schwarz
+    (Briefkasten). Seit 1.1.0 füllen Welt und Video das ganze Fenster
+    (:func:`vollbild`); dieser Ausschnitt ist, wo die Menüs sitzen und worauf
+    ``scale_pos`` die Maus abbildet.
 
     Nie kleiner als ein Bildpunkt: ein minimiertes Fenster meldet 0×0, und ein
     Ansichtsfenster der Breite 0 ist für OpenGL ein Fehler.
@@ -278,12 +364,22 @@ def ansichtsfenster(fenstergroesse: tuple[int, int]) -> tuple[int, int, int, int
     return (0, (hoehe - h) // 2, breite, h)
 
 
+def vollbild(fenstergroesse: tuple[int, int] | None = None) -> tuple[int, int, int, int]:
+    """Das ganze Fenster als Ansichtsfenster ``(0, 0, breite, hoehe)``.
+
+    Hier zeichnen die 3D-Welt, die Videoebene und die Überlagerung. Nie
+    kleiner als ein Bildpunkt (siehe :func:`ansichtsfenster`).
+    """
+    fb, fh = fenstergroesse if fenstergroesse is not None else _fenstergroesse()
+    return (0, 0, max(1, int(fb)), max(1, int(fh)))
+
+
 def bild_beginnen(himmel: tuple[float, float, float] | None = None) -> None:
     """Ein neues Bild anfangen: Fläche leeren, Puffer leeren, Tiefentest an.
 
     Die virtuelle Fläche wird **durchsichtig** geleert, nicht schwarz — sonst
-    verdeckt sie die Welt. Der Rand des Briefkastens wird schwarz geleert, der
-    Bildbereich mit der Himmelsfarbe.
+    verdeckt sie die Welt. Das ganze Fenster wird mit der Himmelsfarbe
+    geleert; es gibt keinen Rand mehr.
     """
     v = virtual_surface()
     if not hasattr(v, "schmutz_loeschen"):
@@ -294,14 +390,12 @@ def bild_beginnen(himmel: tuple[float, float, float] | None = None) -> None:
     if ctx is None:
         return
     bild = _ueberlagerung()
-    fw, fh = _fenstergroesse()
-    x, y, b, h = ansichtsfenster((fw, fh))
+    ausschnitt = vollbild()
     ctx.screen.use()
     ctx.scissor = None
-    ctx.viewport = (0, 0, max(1, fw), max(1, fh))
+    ctx.viewport = ausschnitt
     ctx.clear(0.0, 0.0, 0.0, 1.0)
-    ctx.viewport = (x, y, b, h)
-    ctx.scissor = (x, y, b, h)
+    ctx.scissor = ausschnitt
     if himmel is None:
         from src.render3d import shader
         himmel = shader.HIMMEL_HORIZONT
@@ -309,18 +403,32 @@ def bild_beginnen(himmel: tuple[float, float, float] | None = None) -> None:
 
 
 def bild_abschliessen() -> None:
-    """Die virtuelle Fläche über die Szene legen und das Bild zeigen."""
+    """Videoebene und virtuelle Fläche über die Szene legen und das Bild zeigen."""
     bild = _ueberlagerung()
     if bild is not None:
         ctx = kontext()
         # Ansichtsfenster **und** Schere zuruecksetzen: der Splitscreen hat
         # beide auf eine Bildhaelfte verengt, und das HUD gehoert ueber das
         # ganze Bild.
-        ausschnitt = ansichtsfenster(_fenstergroesse())
+        ausschnitt = vollbild()
         ctx.viewport = ausschnitt
         ctx.scissor = ausschnitt
+        if _video_ebene is not None:
+            _video_ebene.zeichnen(ausschnitt[2:], raster_groesse(ausschnitt[2:]))
         bild.hud_zeichnen(virtual_surface())
     pygame.display.flip()
+
+
+def video_ebene():
+    """Die Videoebene hinter der Oberfläche (src/ui/video_ebene.py), oder ``None`` ohne OpenGL."""
+    global _video_ebene
+    if _video_ebene is None:
+        ctx = kontext()
+        if ctx is None:
+            return None
+        from src.ui.video_ebene import VideoEbene
+        _video_ebene = VideoEbene(ctx)
+    return _video_ebene
 
 
 # ---------------------------------------------------------------------------
@@ -533,29 +641,41 @@ def handle_window_event(event) -> bool:
 # Mauskoordinaten
 # ---------------------------------------------------------------------------
 
-def _abbildung() -> tuple[int, int, float, float] | None:
-    """Versatz und Maßstab vom Fenster in die virtuelle Fläche.
+def _abbildung() -> tuple[float, float, float, float] | None:
+    """Maßstab und Versatz vom Fenster in den sicheren Bereich: ``(sx, sy, ox, oy)``.
+
+    Ein Fensterpunkt ``p`` liegt im sicheren Bereich bei ``p * s - o``. Der
+    Maßstab bringt das Fenster auf das Raster (:func:`raster_groesse`), der
+    Versatz zieht den Rand neben dem sicheren Bereich ab — auch negative Werte
+    und solche über 1920/1080 kommen vor: die Maus steht dann neben den Menüs.
 
     ``None``, wenn das Fenster genau die virtuelle Auflösung hat — dann ist
     nichts zu rechnen.
     """
-    x, y, b, h = ansichtsfenster(_fenstergroesse())
-    if (x, y, b, h) == (0, 0, VIRT_W, VIRT_H):
+    fb, fh = _fenstergroesse()
+    rb, rh = raster_groesse((fb, fh))
+    if (fb, fh) == (rb, rh) == (VIRT_W, VIRT_H):
         return None
-    return (x, y, VIRT_W / b, VIRT_H / h)
+    sicher = sicherer_rand((rb, rh))
+    return (rb / max(1, fb), rh / max(1, fh), sicher.x, sicher.y)
+
+
+def _boden(wert: float) -> int:
+    """Abrunden (nicht Richtung null): -0,5 gehört links neben die Fläche, nicht auf Spalte 0."""
+    return math.floor(wert + 1e-9)
 
 
 def scale_pos(pos: tuple[int, int]) -> tuple[int, int]:
-    """Convert window-space coordinates to virtual (1920×1080) coordinates."""
+    """Convert window-space coordinates to safe-area (1920×1080) coordinates."""
     abb = _abbildung()
     if abb is None:
         return pos
-    x, y, sx, sy = abb
-    return (int((pos[0] - x) * sx), int((pos[1] - y) * sy))
+    sx, sy, ox, oy = abb
+    return (_boden(pos[0] * sx - ox), _boden(pos[1] * sy - oy))
 
 
 def mouse_pos() -> tuple[int, int]:
-    """Current mouse position in virtual (1920×1080) coordinates.
+    """Current mouse position in safe-area (1920×1080) coordinates.
 
     Use this instead of pygame.mouse.get_pos() everywhere — raw get_pos()
     returns window coordinates, which are wrong whenever the window is
@@ -564,7 +684,7 @@ def mouse_pos() -> tuple[int, int]:
 
 
 def remap_mouse_events(events: list[pygame.event.Event]) -> list[pygame.event.Event]:
-    """Return a new event list where all mouse positions are in virtual coords.
+    """Return a new event list where all mouse positions are in safe-area coords.
 
     Only MOUSEBUTTONDOWN, MOUSEBUTTONUP and MOUSEMOTION are remapped; all
     others (e.g. MOUSEWHEEL, which carries no position) are returned unchanged.
@@ -572,12 +692,12 @@ def remap_mouse_events(events: list[pygame.event.Event]) -> list[pygame.event.Ev
     abb = _abbildung()
     if abb is None:
         return events
-    x, y, sx, sy = abb
+    sx, sy, ox, oy = abb
 
     out: list[pygame.event.Event] = []
     for e in events:
         if e.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
-            vpos = (int((e.pos[0] - x) * sx), int((e.pos[1] - y) * sy))
+            vpos = (_boden(e.pos[0] * sx - ox), _boden(e.pos[1] * sy - oy))
             attrs = {k: getattr(e, k) for k in e.__dict__ if k != "pos"}
             attrs["pos"] = vpos
             if e.type == pygame.MOUSEMOTION:

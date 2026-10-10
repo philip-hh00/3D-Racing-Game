@@ -34,11 +34,10 @@ if TYPE_CHECKING:
 TAB_H = 108
 
 # (display label, background image stem, kind)
-#: Schluessel der Ueberzuege, die das Video schon im Entschluesselungsfaden
-#: bekommt (src/ui/video_player.py, ``abdunkeln_setzen``).
-_UEBERZUG_SEITE = "seite"
-_UEBERZUG_RAND = "rand"
+#: Abdunklung hinter einer offenen Seite (0-255) und Staerke der Randabdunklung
+#: der Tafelansicht. Beide rechnet die Videoebene im Shader (src/ui/video_ebene.py).
 _SEITE_DECKKRAFT = 150
+_RAND_STAERKE = 120
 
 _TABS = [
     ("EINZELSPIELER",      "Einzelspieler",       "single"),
@@ -171,7 +170,6 @@ class MenuShellState(BaseState):
         self._video_stem: str | None = None
         self._fade_from: pygame.Surface | None = None
         self._seiten_deckel = None          # (skala, flaeche)
-        self._rand_alpha = None             # Alphawerte der Randabdunklung
 
         self._announcement: dict | None = None
         self._ann_ok_rect: pygame.Rect | None = None
@@ -288,7 +286,13 @@ class MenuShellState(BaseState):
     # Background handling
     # ------------------------------------------------------------------
     def _ensure_video(self, stem: str) -> None:
-        """Open the video for *stem* (closing the previous one)."""
+        """Open the video for *stem* (closing the previous one).
+
+        Das Video ist ein :class:`~src.ui.video_ebene.VideoStrom`: ein Faden
+        oeffnet die Datei und entschluesselt, die Videoebene des Fensters
+        zeigt das Bild (``display.video_ebene``). Der Aufruf kehrt sofort
+        zurueck — ein Tabwechsel haelt das Menue nicht an.
+        """
         if stem == self._video_stem:
             return
         if self._video is not None:
@@ -296,35 +300,29 @@ class MenuShellState(BaseState):
             self._video = None
         self._video_stem = stem
         path = os.path.join("data", "menu", f"{stem}.mp4")
-        if os.path.isfile(path):
+        if os.path.isfile(path) and display.video_ebene() is not None:
             # cv2 (opencv) may be unavailable (e.g. missing VC++ runtime on a
-            # clean system). A failure here must never break the menu: fall back
-            # to the PNG/gradient background so the tab bar still renders.
+            # clean system), and without OpenGL (tests) there is no layer. A
+            # failure here must never break the menu: fall back to the
+            # PNG/gradient background so the tab bar still renders.
             try:
-                from src.ui.video_player import VideoPlayer
-                self._video = VideoPlayer(path, (SCREEN_WIDTH, SCREEN_HEIGHT),
-                                          abdunkeln=self._ueberzug_wunsch())
-                if not self._video.ok:
-                    self._video = None
+                from src.ui.video_ebene import VideoStrom
+                self._video = VideoStrom(path)
             except Exception:
                 self._video = None
 
     def _current_frame(self, stem: str) -> pygame.Surface | None:
-        """Live video frame if available, else the still image."""
-        if stem == self._video_stem and self._video is not None:
-            try:
-                surf = self._video.get_surface()
-            except Exception:
-                surf = None
-                self._video = None
-            if surf is not None:
-                return surf
+        """Das Standbild (PNG) des Tabs; das Video zeigt die Videoebene."""
         return self._bg(stem)
 
     def _goto_tab(self, i: int) -> None:
-        """Switch to tab *i* with a crossfade from the current frame."""
+        """Switch to tab *i* with a crossfade from the current frame.
+
+        Mit Video blendet die Videoebene selbst ueber (altes Bild bleibt
+        stehen, bis das neue Video sein erstes Bild hat).
+        """
         cur_stem = _TABS[self.tab][1]
-        frame = self._current_frame(cur_stem)
+        frame = None if self._video is not None else self._current_frame(cur_stem)
         self._fade_from = frame.copy() if frame is not None else None
         self._prev_tab = self.tab
         self.tab = i
@@ -361,8 +359,20 @@ class MenuShellState(BaseState):
     def _draw_tab_background(self, screen: pygame.Surface) -> None:
         stem = _TABS[self.tab][1]
         self._ensure_video(stem)
-        frame = self._current_frame(stem)
         in_page = bool(self.page_stack)
+
+        if self._video is not None and self._video.fehler:
+            self._video = None                       # Datei unlesbar: Standbild
+        ebene = display.video_ebene() if self._video is not None else None
+        if ebene is not None:
+            # Das Video liegt als OpenGL-Ebene ueber das ganze Fenster hinter
+            # dieser Flaeche; hier bleibt alles durchsichtig.
+            ebene.zeigen(self._video,
+                         abdunkeln=_SEITE_DECKKRAFT / 255.0 if in_page else 0.0,
+                         vignette=0.0 if in_page else _RAND_STAERKE / 255.0)
+            return
+
+        frame = self._current_frame(stem)
 
         if frame is None:
             # Gradient fallback (no video, no PNG).
@@ -374,11 +384,9 @@ class MenuShellState(BaseState):
                            (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2), center=True)
             return
 
-        schluessel = self._video_ueberzug(stem)
         if in_page:
             screen.blit(frame, (0, 0))
-            if schluessel != _UEBERZUG_SEITE:
-                screen.blit(self._seitenueberzug(), (0, 0))
+            screen.blit(self._seitenueberzug(), (0, 0))
             return
 
         # Top level: full frame with a crossfade from the snapshot.
@@ -389,8 +397,7 @@ class MenuShellState(BaseState):
             screen.blit(fc, (0, 0))
         else:
             screen.blit(frame, (0, 0))
-        if schluessel != _UEBERZUG_RAND:
-            screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120), (0, 0))
+        screen.blit(theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), _RAND_STAERKE), (0, 0))
 
     def _seitenueberzug(self) -> pygame.Surface:
         """Der Abdunkler hinter einer Seite — einmal angelegt, nicht je Bild.
@@ -404,28 +411,6 @@ class MenuShellState(BaseState):
             dark.fill((0, 0, 0, _SEITE_DECKKRAFT))
             self._seiten_deckel = (s, dark)
         return self._seiten_deckel[1]
-
-    def _ueberzug_wunsch(self):
-        """``(schluessel, deckkraft)`` fuer das Video: Seite offen = flach dunkel,
-        sonst die Randabdunklung der Tafelansicht."""
-        if self.page_stack:
-            return (_UEBERZUG_SEITE, _SEITE_DECKKRAFT)
-        if self._rand_alpha is None:
-            v = theme.vignette((SCREEN_WIDTH, SCREEN_HEIGHT), 120)
-            # Auf eine gewoehnliche Flaeche kopieren: ``Flaeche.get_size``
-            # meldet das Raster, surfarray braucht die Bildpunkte.
-            roh = pygame.Surface(pygame.Surface.get_size(v), pygame.SRCALPHA)
-            pygame.Surface.blit(roh, v, (0, 0), None, pygame.BLEND_RGBA_ADD)
-            self._rand_alpha = pygame.surfarray.array_alpha(roh).T.copy()
-        return (_UEBERZUG_RAND, self._rand_alpha)
-
-    def _video_ueberzug(self, stem: str):
-        """Dem Videofaden den passenden Ueberzug auftragen; liefert, welcher im
-        aktuellen Bild schon steckt (``None``: keiner, oder kein Video)."""
-        if stem != self._video_stem or self._video is None:
-            return None
-        self._video.abdunkeln_setzen(*self._ueberzug_wunsch())
-        return self._video.bild_schluessel
 
     # ------------------------------------------------------------------
     # Tab bar
@@ -647,8 +632,6 @@ class MenuShellState(BaseState):
         self._time += dt
         if self._fade < 1.0:
             self._fade = min(1.0, self._fade + dt / 0.25)
-        if self._video is not None:
-            self._video.update(dt)
         if self.page_stack:
             self.page_stack[-1].update(dt)
         elif self._quit_dialog is None and self._announcement is None:
