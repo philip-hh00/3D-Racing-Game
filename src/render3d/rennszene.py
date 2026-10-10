@@ -33,6 +33,7 @@ Durchscheinende (Scheiben, Ghosts).
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -40,6 +41,7 @@ import numpy as np
 
 from . import begrenzung, grafik, matrix, mesh, schatten, shader, tageszeit, track_mesh, vehicle_node
 from . import tageszeit as tageszeit_modul   # der Parameter ``tageszeit`` der Szene verdeckt den Namen
+from . import wetter as wetter_modul         # ebenso ``wetter``
 from .nachbearbeitung import Nachbearbeitung
 from .reifenspuren import ERSATZRAEDER, Reifenspuren
 from .deko import Dekozeichner, material_setzen
@@ -629,10 +631,17 @@ class Rennszene:
                  himmelordner: str | Path | None = None,
                  umgebungsordner: str | Path | None = None,
                  platzierungen=None, fahrzeuge=(), schattenwurf: bool = True,
-                 sofort: bool = True, tageszeit: str = tageszeit.STANDARD) -> None:
+                 sofort: bool = True, tageszeit: str = tageszeit.STANDARD,
+                 wetter: str = wetter_modul.STANDARD) -> None:
         self.ctx = ctx
         #: Tag, Abend oder Nacht (``tageszeit.py``); fehlt oder ist unbekannt: Tag.
         self.tageszeit = tageszeit_modul.vorgabe(tageszeit)
+        #: Trocken oder Regen (``wetter.py``); fehlt oder ist unbekannt: Trocken.
+        #: Trocken ist die Welt von 1.0.x unverändert, Regen kommt dazu.
+        self.wetter = wetter_modul.vorgabe(wetter)
+        #: Regenstreifen und Gischt (``regen.py``); nur bei Regen.
+        self.regen = None
+        self._regen_uhr = None
         self.netz = streckennetz
         self.modellordner = Path(modellordner)
         self.thema = thema
@@ -706,7 +715,10 @@ class Rennszene:
         # Die Sonne der Tageszeit steht in ``himmel.sonne``, vor Schattenkarte
         # und Geländeschatten: beide lesen sie dort. Der Tag lässt sie, wie das
         # Himmelsbild sie hat.
-        self.himmel = licht.Himmel(ctx, self.himmelordner or ".", name, self.tageszeit)
+        self.himmel = licht.Himmel(ctx, self.himmelordner or ".", name, self.tageszeit, self.wetter)
+        if self.wetter.aktiv and self.wetter.regen > 0.0:
+            from . import regen as regen_modul
+            self.regen = regen_modul.Regen(ctx, self.wetter)
         self._umgebung_setzen()
 
         yield 0.08, "Gelände"
@@ -739,6 +751,7 @@ class Rennszene:
     def _umgebung_setzen(self) -> None:
         t = self.thema
         tz = self.tageszeit
+        wt = self.wetter
         werte = None
         if t is not None:
             werte = dict(
@@ -746,13 +759,14 @@ class Rennszene:
                 nebel_farbe=tuple(t.nebel_farbe), nebel_dichte=float(t.nebel_dichte),
                 boden_farbe=tuple(t.boden_farbe), himmel_zenit=tuple(t.himmel_zenit),
                 himmel_horizont=tuple(t.himmel_horizont), belichtung=float(t.belichtung))
-        elif tz.aktiv:
+        elif tz.aktiv or wt.aktiv:
             werte = dict(
                 sonne_farbe=shader.SONNE_FARBE, himmel_helligkeit=1.0, nebel_farbe=shader.HIMMEL_HORIZONT,
                 nebel_dichte=0.0, boden_farbe=shader.BODEN_FARBE, himmel_zenit=shader.HIMMEL_ZENIT,
                 himmel_horizont=shader.HIMMEL_HORIZONT, belichtung=1.0)
         if werte is not None:
             werte = tageszeit_modul.umgebung_werte(tz, werte)
+            werte = wetter_modul.umgebung_werte(wt, werte)
         schalter = tageszeit_modul.himmel_schalter(tz)
         for p in (self.programm, self.programm_instanz, self.himmel.programm):
             sonne = tuple(float(c) for c in self.himmel.sonne)
@@ -776,6 +790,18 @@ class Rennszene:
                 shader.setzen(p, "tz_glut", tz.glut)
                 shader.setzen(p, "tz_scheibe", tz.scheibe)
                 shader.setzen(p, "schatten_bias", tz.schatten_bias)
+            if wt.aktiv:
+                nass, pfuetze = wetter_modul.nass_werte(wt)
+                shader.setzen(p, "wetter_nass", nass)
+                shader.setzen(p, "wetter_pfuetze", pfuetze)
+                shader.setzen(p, "wetter_himmel", 0.0)        # bedeckt: keine Sonne, kein Mond, keine Sterne
+        if self.regen is not None and werte is not None:
+            dunst = np.asarray(werte["nebel_farbe"], dtype=float)
+            # Nachts ist Regen nur im Licht zu sehen: die Streifen selbst bleiben dunkel,
+            # in den Kegeln der Scheinwerfer leuchten sie auf (``regen.py``).
+            dunkel = 0.3 if tz.lichter else 1.0
+            self.regen.regen_farbe = tuple(float(c) for c in dunst * 1.5 * dunkel)
+            self.regen.gischt_farbe = tuple(float(c) for c in dunst * 1.35)
         if self.reifenspuren is not None:
             # Rauch ist hell und matt: grob Sonne von schräg plus Himmel.
             sonne = np.asarray(werte["sonne_farbe"] if werte is not None else shader.SONNE_FARBE, dtype=float)
@@ -1025,6 +1051,15 @@ class Rennszene:
         """
         self.knotenspeicher.fortschreiben(staende)
         self._linienzeit += min(max(dt or 0.0, 0.0), 0.1)
+        if self.regen is not None:
+            if dt is None:
+                jetzt = time.perf_counter()
+                regen_dt = 0.0 if self._regen_uhr is None else jetzt - self._regen_uhr
+                self._regen_uhr = jetzt
+            else:
+                regen_dt = dt
+            self.regen.fortschreiben(staende, self._raeder_von, regen_dt,
+                                     limit=grafik.aktuell().gischt_teilchen)
         if self.reifenspuren is not None:
             if grafik.aktuell().reifenspuren:
                 self.reifenspuren.fortschreiben(staende, self._raeder_von, dt)
@@ -1056,6 +1091,8 @@ class Rennszene:
         fokus = kamera_position if fokus is None else fokus
         self._bild_nummer = getattr(self, "_bild_nummer", 0) + 1
         einstellung = grafik.aktuell()
+        # Regen: je Ausschnitt (Vollbild, Splitscreen-Hälfte) eine eigene Kamerageschwindigkeit.
+        ausschnitt = tuple(self.ctx.viewport) if self.regen is not None else None
 
         # Schattenkarte: Größe nach der Grafikstufe, 0 heißt ohne.
         karte = self.schattenkarte if einstellung.schatten_px > 0 else None
@@ -1119,6 +1156,11 @@ class Rennszene:
         if self.ideallinie_aktiv is not None:
             self.ideallinie_aktiv.zeichnen(mvp, kamera_position, self._linienzeit)
         self._schatten_zeichnen(mvp, staende)
+        if self.regen is not None:
+            # Regenstreifen vor dem Glas der Autos: sie liegen hinter der Scheibe.
+            self.regen.streifen_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position,
+                                         self.nachbearbeitung.groesse, schluessel=ausschnitt,
+                                         tropfen=einstellung.regen_tropfen)
         # Durchscheinendes zuletzt, von hinten nach vorn.
         reihe = list(reversed(nach_abstand))
         for stand in reihe:
@@ -1132,6 +1174,10 @@ class Rennszene:
             _farbe, tiefe = self.nachbearbeitung.aufloesen()
             self.reifenspuren.rauch_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position,
                                              tiefe, self.nachbearbeitung.groesse)
+        if self.regen is not None:
+            _farbe, tiefe = self.nachbearbeitung.aufloesen()
+            self.regen.gischt_zeichnen(self.nachbearbeitung.vp_relativ, kamera_position, tiefe,
+                                       self.nachbearbeitung.groesse)
         self.nachbearbeitung.abschliessen(self.belichtung)
 
     # -- Nacht: Lampen, Masten, Lichterliste ---------------------------------
@@ -1170,6 +1216,7 @@ class Rennszene:
         """Die wichtigsten Lichter dieses Bildes in die Shader hochladen."""
         n_max = max(0, min(int(einstellung.lichter_max), shader.MAX_LICHTER))
         anzahl = 0
+        pos = farbe = richtung = None
         if n_max > 0:
             kandidaten = tageszeit_modul.lichter_sammeln(staende, fokus, self._leuchtpunkte_von,
                                                          self._lampen)
@@ -1181,6 +1228,8 @@ class Rennszene:
                 shader.feld_setzen(p, "lichter_pos", pos)
                 shader.feld_setzen(p, "lichter_farbe", farbe)
                 shader.feld_setzen(p, "lichter_richtung", richtung)
+        if self.regen is not None:
+            self.regen.lichter_setzen(pos, farbe, richtung, anzahl)
 
     def _schattenkarte_zeichnen(self, staende, fokus) -> None:
         karte = self.schattenkarte
@@ -1392,6 +1441,9 @@ class Rennszene:
         if getattr(self, "reifenspuren", None) is not None:
             self.reifenspuren.freigeben()
             self.reifenspuren = None
+        if getattr(self, "regen", None) is not None:
+            self.regen.freigeben()
+            self.regen = None
         for ding in (getattr(self, "programm", None), getattr(self, "programm_instanz", None),
                      getattr(self, "_leere_tiefe", None)):
             if ding is not None:

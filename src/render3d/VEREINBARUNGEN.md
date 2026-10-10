@@ -228,3 +228,33 @@ in den `tz_*`-/`lichter_*`-Uniforms von `shader.py`.
   `lichter_*` weg und gibt lineares HDR aus — dann bleibt es nachts dunkler als
   der Rest, aber nicht falsch. Wer die Lichter mitrechnen will, nimmt die
   Schleife aus `FRAGMENT` (Block „Lokale Lichter“).
+
+## Wetter (ab 1.1.0)
+
+`Rennszene(…, wetter="Trocken"|"Regen")`; fehlt der Wert oder ist er unbekannt,
+ist es **Trocken**, und Trocken ist die Welt von 1.0.x unverändert (kein
+Teilchen, kein Shaderzweig, kein Pixel anders). Zahlen und Namen stehen in
+`wetter.py`, die Zeichnung von Regen und Gischt in `regen.py`.
+
+* **Himmel:** bei Regen wird das Himmelsbild beim Laden zu einer grauen
+  Wolkendecke gewandelt (`wetter.himmel_bild`, nach der Tageszeit), die Sonne
+  steht höchstens 32° hoch und `wetter_himmel` im Himmelsshader blendet Sonnen-
+  und Mondscheibe sowie Sterne aus. Sonnenfarbe, Nebel, Belichtung kommen aus
+  `wetter.umgebung_werte` (hinter der der Tageszeit).
+* **Nasse Fahrbahn:** `wetter_nass` / `wetter_pfuetze` im Weltshader. Nur wo
+  `wetter_nass.x > 0` rechnet der Shader mehr: Fahrbahn dunkler, glatter,
+  Pfützen (Rauschen in Streckenkoordinaten), kräftigere Spiegelung; Gelände und
+  Deko nur etwas dunkler. Lack und Glas der Autos bleiben.
+* **Regenstreifen** (`regen.Regen.streifen_zeichnen`): Instanzen auf der
+  Grafikkarte, Tropfen stehen in der Welt, der Strich ist die Bahn relativ zur
+  Kamera. Gezeichnet **vor dem Glas** der Autos in den Zwischenpuffer, mit
+  Tiefentest. Nachts leuchten Streifen in den Lichtkegeln.
+* **Gischt** (`regen.Regen.gischt_zeichnen`): Billboards hinter den Rädern, in das
+  aufgelöste HDR-Bild wie der Reifenrauch.
+* **Grafikstufen:** `grafik.regen_tropfen` und `grafik.gischt_teilchen`.
+* **Physik gehört nicht hierher:** der Faktor auf die Haftung steht in
+  `wetter.GRIFF_FAKTOR`, angewendet über `Vehicle.wirk_config`.
+* **Achtung, moderngl:** `ctx.depth_mask = …` gibt es nicht — es setzt ein
+  Attribut und tut nichts. Die Tiefenmaske gehört dem Framebuffer
+  (`ctx.fbo.depth_mask`). Der Regen setzt sie so; die älteren Stellen im Code
+  (Glas, Himmel, Schatten) schreiben deshalb in Wahrheit Tiefe.

@@ -53,7 +53,7 @@ class Himmel:
     Richtung der Sonne im Bild des Themas.
     """
 
-    def __init__(self, ctx, ordner: str | Path, name: str, tageszeit=None) -> None:
+    def __init__(self, ctx, ordner: str | Path, name: str, tageszeit=None, wetter=None) -> None:
         self.ctx = ctx
         self.textur = None
         self.sonne = np.asarray(shader.SONNE_RICHTUNG, dtype=np.float64)
@@ -71,15 +71,20 @@ class Himmel:
                 pass
         self.sonne_bild = np.array(self.sonne, dtype=np.float64)
         aktiv = tageszeit is not None and tageszeit.aktiv
+        nass = wetter is not None and wetter.aktiv
         if aktiv:
             from . import tageszeit as tz_modul
             self.sonne = tz_modul.sonne_richtung(tageszeit, self.sonne_bild)
+        if nass:
+            # Bedeckt: die Sonne steht nie hoch (Schatten fallen länger, aber schwach).
+            from . import wetter as wetter_modul
+            self.sonne = wetter_modul.sonne_gedrueckt(self.sonne, wetter)
         if name and bild_pfad.is_file():
             from PIL import Image
             from .mesh import textur_hochladen
             bild = Image.open(bild_pfad)
-            if aktiv:
-                self.textur = self._graden(bild, tageszeit)
+            if aktiv or nass:
+                self.textur = self._graden(bild, tageszeit if aktiv else None, wetter if nass else None)
             else:
                 self.textur = textur_hochladen(ctx, bild, wiederholen=True)
             self.textur.repeat_y = False
@@ -89,11 +94,17 @@ class Himmel:
         self._puffer = ctx.buffer(ecken.tobytes())
         self.vao = ctx.vertex_array(self.programm, [(self._puffer, "2f", "in_ecke")])
 
-    def _graden(self, bild, tageszeit):
-        """Das Himmelsbild der Tageszeit als Fließkommatextur (RGBA16F) mit Mipmaps."""
+    def _graden(self, bild, tageszeit, wetter=None):
+        """Das Himmelsbild von Tageszeit und Wetter als Fließkommatextur (RGBA16F) mit Mipmaps."""
         from . import tageszeit as tz_modul
         roh = np.asarray(bild.convert("RGB"), dtype=np.uint8)
-        graded = tz_modul.himmel_bild(roh, tageszeit, self.sonne_bild)
+        if tageszeit is not None:
+            graded = tz_modul.himmel_bild(roh, tageszeit, self.sonne_bild)
+        else:
+            graded = (roh.astype(np.float32) / 255.0)       # dieselbe Kodierung, unverändert
+        if wetter is not None:
+            from . import wetter as wetter_modul
+            graded = wetter_modul.himmel_bild(graded, wetter)
         rgba = np.ones((*graded.shape[:2], 4), dtype=np.float16)
         rgba[..., :3] = np.minimum(graded, 60000.0)
         rgba = np.ascontiguousarray(rgba[::-1])      # GL: v = 0 ist die Unterkante

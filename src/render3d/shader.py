@@ -159,6 +159,11 @@ uniform vec3  nebel_farbe;
 uniform float nebel_dichte;
 uniform float nebel_faktor;      // Kulisse: weniger Dunst, sonst verschwinden die Berge
 
+/* Wetter (wetter.py): Trocken laeuft an allem hier vorbei (wetter_nass.x = 0). */
+uniform vec4  wetter_nass;       // Staerke 0..1, Farbfaktor, groesste Rauheit, Spiegelfaktor (nur Fahrbahn)
+uniform vec4  wetter_pfuetze;    // Anteil der Pfuetzen auf der Fahrbahn, -, -, -
+float g_pfuetze = 0.0;           // 0..1 in diesem Pixel (asphalt_details)
+
 /* Tageszeit (tageszeit.py): Tag laeuft an allem hier vorbei (tz_himmel.x = 0). */
 uniform vec4  tz_himmel;         // an (0/1), -, -, Sterne 0..1. Das Himmelsbild selbst ist beim Laden
                                  // verbogen und getoent (licht.Himmel), hier nur der Farbverlauf ohne Bild
@@ -397,6 +402,22 @@ void asphalt_details(inout vec3 basis, inout float rauheit) {
     farbe *= (0.8 + 0.2 * rauschen(m * vec2(2.0, 0.5))) * (1.0 - 0.6 * gummi);
     basis = mix(basis, lack, farbe);
     rauheit = mix(rauheit, 0.55, farbe);
+    if (wetter_nass.x > 0.0) {
+        // Nasse Fahrbahn: dunkler, glatter, mit Pfuetzen in einzelnen Abschnitten.
+        float feld = smoothstep(0.35, 0.75, rauschen(m / vec2(24.0, 70.0) + 19.0));
+        float t = 0.7 * rauschen(m / vec2(5.5, 14.0) + 71.0) + 0.3 * rauschen(m / vec2(1.6, 3.4) + 5.0)
+                + 0.28 * feld - 0.14;
+        float schwelle = 0.9 - 0.22 * wetter_pfuetze.x;
+        float pf = smoothstep(schwelle, schwelle + 0.06, t) * step(0.001, wetter_pfuetze.x);
+        float var = 0.85 + 0.3 * rauschen(m / vec2(3.0, 9.0) + 33.0);
+        // Farbe der Linien bleibt besser sichtbar als der nasse Asphalt.
+        float auf_linie = max(max(farbe, ziel), 0.0);
+        basis *= mix(mix(1.0, wetter_nass.y, wetter_nass.x), mix(1.0, 0.82, wetter_nass.x), auf_linie);
+        basis *= 1.0 - 0.35 * pf;
+        rauheit = mix(rauheit, wetter_nass.z * var, wetter_nass.x * 0.92);
+        rauheit = mix(rauheit, 0.035, pf);
+        g_pfuetze = pf;
+    }
 }
 /* === Strang S: Asphalt der Fahrbahn (Ende) ============================== */
 
@@ -657,6 +678,18 @@ void main() {
     float rauheit  = clamp(mix(1.0, mr.x, hat_metallic_rauheit) * rauheit_faktor, 0.04, 1.0);
     float metallic = clamp(mix(1.0, mr.y, hat_metallic_rauheit) * metallic_faktor, 0.0, 1.0);
     if (asphalt > 0.0) asphalt_details(basis, rauheit);   // Strang S
+    // Wetter: ausserhalb der Fahrbahn nur etwas dunkler und glatter (Gelaende,
+    // Bordsteine, Deko); Lack und Glas der Autos bleiben, wie sie sind.
+    float spiegel_f = 1.0;
+    if (wetter_nass.x > 0.0) {
+        if (asphalt > 0.0) {
+            spiegel_f = mix(1.0, wetter_nass.w, wetter_nass.x) * mix(1.0, 1.3, g_pfuetze);
+        } else if (klarlack <= 0.0 && lack_effekt.z < 0.5) {
+            float ng = wetter_nass.x * (gelaende > 0.5 ? 0.5 : 0.3);
+            basis *= mix(1.0, mix(1.0, wetter_nass.y, 0.7), ng);
+            if (metallic < 0.3) rauheit = mix(rauheit, min(rauheit, 0.55), ng);   // Blech glaenzt schon
+        }
+    }
 
     vec3 N = normalize(welt_normale);
     vec3 V = normalize(kamera_position - welt_position);
@@ -712,6 +745,7 @@ void main() {
     vec3 fr = fresnel_rauh(n_dot_v, f0, rauheit);
     // Spiegelungen nach unten zeigen den Boden, nicht den Himmel; dunkler.
     umgebung_spiegelnd *= mix(0.35, 1.0, smoothstep(-0.15, 0.1, R.z));
+    umgebung_spiegelnd *= spiegel_f;                     // Wetter: nasse Fahrbahn spiegelt kraeftiger
     vec3 umgebung = umgebung_streuend * (vec3(1.0) - fr) + umgebung_spiegelnd * fr;
     if (hat_verdeckung > 0.5) umgebung *= texture(verdeckungskarte, tuv).r;
 
@@ -756,6 +790,7 @@ void main() {
         }
     }
 
+    if (wetter_nass.x > 0.0 && asphalt > 0.0) lok_spieg *= 0.4;      // Wetter: Glanz der Lampen auf nassem Asphalt, gedaempft
     vec3 farbe = licht + umgebung + lok_streu + lok_spieg;
 
     /* Strang L: Scheibe. Die Spiegelung liegt auf dem Glas, sie wird nicht
@@ -878,6 +913,7 @@ uniform vec3  tz_tint_oben;
 uniform vec3  tz_tint_horizont;
 uniform vec2  tz_glut;
 uniform vec4  tz_scheibe;        // Sonnen-/Mondscheibe: rgb, Staerke
+uniform float wetter_himmel;     // 1: Sonne, Mond und Sterne sichtbar, 0: bedeckt (Regen)
 in vec2 ndc;
 out vec4 ausgabe;
 
@@ -924,7 +960,7 @@ void main() {
         if (tz_himmel.x > 0.5) farbe *= tz_himmel_ton(d);
     }
     if (tz_himmel.w > 0.0) farbe += vec3(0.85, 0.92, 1.0) * tz_sterne(d) * tz_himmel.w
-                                    * smoothstep(0.03, 0.3, d.z);
+                                    * smoothstep(0.03, 0.3, d.z) * wetter_himmel;
     // Zum Horizont hin in den Dunst der Welt uebergehen.
     float dunst = 1.0 - smoothstep(0.0, 0.12, d.z);
     farbe = mix(farbe, nebel_farbe, dunst * 0.8);
@@ -932,9 +968,10 @@ void main() {
     // Die Sonne selbst: im LDR-Bild abgeschnitten, hier zurueckgegeben.
     float s = max(dot(d, normalize(sonne_richtung)), 0.0);
     if (tz_himmel.x > 0.5) {
-        farbe += tz_scheibe.rgb * tz_scheibe.w * (pow(s, 2500.0) * 40.0 + pow(s, 60.0) * 0.4 + pow(s, 7.0) * 0.12);
+        farbe += tz_scheibe.rgb * tz_scheibe.w * (pow(s, 2500.0) * 40.0 + pow(s, 60.0) * 0.4 + pow(s, 7.0) * 0.12)
+                 * wetter_himmel;
     } else {
-        farbe += vec3(1.0, 0.95, 0.85) * (pow(s, 2000.0) * 40.0 + pow(s, 60.0) * 0.4);
+        farbe += vec3(1.0, 0.95, 0.85) * (pow(s, 2000.0) * 40.0 + pow(s, 60.0) * 0.4) * wetter_himmel;
     }
     ausgabe = vec4(farbe, 1.0);
 }
@@ -1085,6 +1122,8 @@ def _vorgaben(p) -> None:
         ("tz_tint_horizont", (1.0, 1.0, 1.0)), ("tz_glut", (1.0, 1.0)),
         ("tz_scheibe", (1.0, 0.95, 0.85, 1.0)),
         ("schatten_bias", (0.0006, 0.0025)), ("lichter_anzahl", 0),
+        ("wetter_nass", (0.0, 1.0, 1.0, 1.0)), ("wetter_pfuetze", (0.0, 0.0, 0.0, 0.0)),   # Wetter
+        ("wetter_himmel", 1.0),
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

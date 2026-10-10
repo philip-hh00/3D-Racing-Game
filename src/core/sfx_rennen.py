@@ -447,6 +447,66 @@ class _Stimme:
         self._gestartet = False
 
 
+# ── Regenrauschen ───────────────────────────────────────────────────────────
+
+#: Länge der Schleife (Sekunden) und Grundlautstärke des Regens (vor dem Regler
+#: „Effekte"). Leise: er soll den Motor nicht überdecken.
+REGEN_SCHLEIFE_S = 4.0
+REGEN_PEGEL = 0.16
+
+
+def regenrauschen(sekunden: float = REGEN_SCHLEIFE_S, rate: int = sfx.SR, saat: int = 7) -> np.ndarray:
+    """Eine nahtlose Schleife Regenrauschen, ``(n, 2)`` float32 in -1..1.
+
+    Nichts davon ist aufgenommen: gefiltertes Rauschen, im Frequenzraum
+    geformt (so ist die Schleife von selbst periodisch, ohne Naht). Zwei
+    Schichten: ein breites Rauschen zwischen etwa 600 Hz und 9 kHz, das zu den
+    Höhen hin abfällt (das Prasseln auf Blech und Asphalt), und vereinzelte
+    kurze Tropfenschläge. Links und rechts sind unabhängig, das gibt Breite.
+    """
+    n = max(1024, int(sekunden * rate))
+    rng = np.random.default_rng(saat)
+    frequenzen = np.fft.rfftfreq(n, 1.0 / rate)
+    # Durchlasskurve: unten ab ~600 Hz, oben ab ~7 kHz weich abfallend.
+    form = np.clip(frequenzen / 600.0, 0.0, 1.0) ** 2 / (1.0 + (frequenzen / 7000.0) ** 3)
+    form[0] = 0.0
+    kanaele = []
+    for _ in range(2):
+        weiss = rng.standard_normal(n)
+        breit = np.fft.irfft(np.fft.rfft(weiss) * form, n)
+        breit /= max(float(np.max(np.abs(breit))), 1e-9)
+        # Tropfen: seltene Impulse, durch eine kurze, helle Hülle geformt
+        # (zyklisch gefaltet, damit die Naht erhalten bleibt).
+        impulse = np.zeros(n)
+        orte = rng.integers(0, n, size=int(sekunden * 90))
+        impulse[orte] = rng.random(len(orte)) ** 2
+        huelle = np.exp(-np.arange(256) / (0.0025 * rate))
+        huelle_f = np.zeros(n)
+        huelle_f[:256] = huelle
+        hell = np.fft.irfft(np.fft.rfft(impulse) * np.fft.rfft(huelle_f) * (frequenzen > 1500.0), n)
+        hell /= max(float(np.max(np.abs(hell))), 1e-9)
+        # Langsame Schwankung der Dichte (Schauer), ebenfalls periodisch.
+        t = np.arange(n) / n
+        schauer = 0.88 + 0.12 * np.sin(2.0 * np.pi * (2.0 * t + 0.3)) * np.sin(2.0 * np.pi * 3.0 * t + 1.1)
+        kanaele.append((0.62 * breit + 0.38 * hell) * schauer)
+    aus = np.stack(kanaele, axis=1)
+    aus /= max(float(np.max(np.abs(aus))), 1e-9)
+    return (aus * 0.9).astype(np.float32)
+
+
+_regen_klang = None
+
+
+def _regen_sound():
+    """Die Schleife als pygame-Klang, einmal je Prozess gerechnet."""
+    global _regen_klang
+    if _regen_klang is None:
+        import pygame
+        daten = (regenrauschen() * 32767.0).astype(np.int16)
+        _regen_klang = pygame.sndarray.make_sound(np.ascontiguousarray(daten))
+    return _regen_klang
+
+
 class Rennklang:
     """Hält die Motorstimmen eines Rennens und stößt Einzelklänge an."""
 
@@ -455,6 +515,8 @@ class Rennklang:
         self._schluessel: dict[tuple, str] = {}
         self._freie_kanaele: list[int] = []
         self._reifen_kanal: int | None = None
+        #: Mixerkanal des Regenrauschens (nur bei Regen).
+        self._regen_kanal: int | None = None
         #: Welcher der beiden Reifenklaenge als naechstes an der Reihe ist.
         self._reifen_naechster = 0
         self._aktiv = False
@@ -480,9 +542,33 @@ class Rennklang:
         for fahrzeug in fahrzeuge:
             self._stimme_fuer(fahrzeug)
 
+    def regen_starten(self, staerke: float = 1.0) -> None:
+        """Regenrauschen als Schleife auf einem freien Kanal (leise, unter dem Motor)."""
+        if staerke <= 0.0 or not _mixer_bereit() or self._regen_kanal is not None:
+            return
+        if not self._freie_kanaele:
+            return
+        try:
+            import pygame
+            nummer = self._freie_kanaele.pop(0)
+            kanal = pygame.mixer.Channel(nummer)
+            lautstaerke = min(1.0, REGEN_PEGEL * float(staerke) * sfx.effekt_lautstaerke(sfx.RENNEN))
+            kanal.set_volume(lautstaerke, lautstaerke)
+            kanal.play(_regen_sound(), loops=-1)
+            self._regen_kanal = nummer
+        except Exception as fehler:                  # Beiwerk: kein Ton ist kein Abbruch
+            print(f"[sfx_rennen] Regenrauschen nicht gestartet: {fehler}")
+
     def beenden(self) -> None:
         if self._aktiv:
             _ton_protokoll(neu=False)
+        if self._regen_kanal is not None and _mixer_bereit():
+            try:
+                import pygame
+                pygame.mixer.Channel(self._regen_kanal).fadeout(250)
+            except Exception:
+                pass
+        self._regen_kanal = None
         for stimme in self._stimmen.values():
             stimme.beenden()
         self._stimmen.clear()
