@@ -156,10 +156,12 @@ Wie der Renderer die Knoten bewegt (`vehicle_node.Fahrzeugknoten`):
 * Jeder Netzknoten, der nicht `karosserie`, `rad_*` oder `sattel_*` heißt,
   hängt starr am Aufbau (Nicken/Wanken inklusive), mit seinem Ursprung aus
   der GLB — Innenraum- und Spiegelteile brauchen also nichts weiter.
-* `lenkrad`: Drehung um die X-Achse durch den Knotenursprung, Winkel
-  `-sichtbarer_lenkwinkel · lenkrad_uebersetzung`. Aus Fahrersicht (Blick
-  entlang +X) ist ein positiver Winkel um +X im Uhrzeigersinn; links
-  (positiver Lenkwinkel) dreht das Lenkrad deshalb gegen den Uhrzeigersinn.
+* `lenkrad`: Drehung um die lokale X-Achse durch den Knotenursprung, Winkel
+  `+sichtbarer_lenkwinkel · lenkrad_uebersetzung`. Die lokale +X-Achse des
+  Lenkrads zeigt entlang der Säule **zum Fahrer hin**; eine positive Drehung
+  um eine Achse, die auf den Betrachter zeigt, läuft für ihn gegen den
+  Uhrzeigersinn. Links (positiver Lenkwinkel) wandert der Kranz oben also nach
+  links (+Y im Fahrzeugsystem).
 * Nadeln: Winkel um die X-Achse wie in `teile.json` angegeben, linear nach
   Tempo (km/h) bzw. Drehzahl, an den Anschlägen gehalten. Positiv =
   Uhrzeigersinn aus Fahrersicht, also „mehr Tempo = nach rechts“.
