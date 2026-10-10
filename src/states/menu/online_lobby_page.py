@@ -27,7 +27,7 @@ import pygame
 
 from src.states.menu.page import Page
 from src.ui import theme
-from src.ui.widgets import Button, Stepper, TextInput, OnScreenKeyboard, ServerRow
+from src.ui.widgets import Button, Stepper, TextInput, OnScreenKeyboard, ServerRow, ZahnradKnopf
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
@@ -90,6 +90,7 @@ _ROSTER_SIZE = 4    # total vehicle slots (host + remote players + AI) — modul
                     # default for self._roster_size, which is the live instance
                     # state fed from LOBBY_STATE (see §1 of online_team_tt_plan.md)
 _RX          = 960  # right panel x origin
+_GEAR_SIZE   = 44   # Zahnradknopf fuer Sichtbarkeit & Name (Host)
 # Row layout constants (derived from right-panel header geometry)
 _ROW_H       = 56
 _ROW_GAP     = 12
@@ -354,8 +355,11 @@ class OnlineLobbyPage(Page):
                                    tr("Strecke wählen") + "  ›", "pick_track")
         self._btn_vehicle = Button(pygame.Rect(0, 0, w, h),
                                    tr("Fahrzeug wählen") + "  ›", "pick_vehicle")
-        self._btn_lobbyinfo = Button(pygame.Rect(0, 0, w, h),
-                                     tr("Sichtbarkeit & Name") + "  ›", "lobby_info")
+        # Zahnrad neben den Lobbyangaben oben rechts (nur Host), nicht in der
+        # Spalte der Rennoptionen: es aendert die Lobby, nicht das Rennen.
+        self._btn_lobbyinfo = ZahnradKnopf(
+            pygame.Rect(_RX + 850 - _GEAR_SIZE, 155 + 36, _GEAR_SIZE, _GEAR_SIZE),
+            "Sichtbarkeit & Name", "lobby_info")
         self._btn_ready   = Button(pygame.Rect(0, 0, w, h),
                                    tr("Bereit"), "toggle_ready")
         self._btn_start   = Button(pygame.Rect(0, 0, w, h),
@@ -1155,7 +1159,6 @@ class OnlineLobbyPage(Page):
         if not gp_mode:
             reihe.append(self._btn_track)
         reihe.append(self._btn_vehicle)
-        reihe.append(self._btn_lobbyinfo)
         return reihe
 
     def _layout_host_column(self) -> None:
@@ -1224,6 +1227,7 @@ class OnlineLobbyPage(Page):
             self._lobby_group.set_widgets([
                 *self._host_column_widgets(),
                 self._btn_ready, self._btn_start,
+                self._btn_lobbyinfo,        # rechts oben, nach dem Lobby-Code
                 *flat_ai,
                 *own_team_widget,
             ], keep_focus=True)
@@ -3227,12 +3231,16 @@ class OnlineLobbyPage(Page):
             theme.text(screen, srv_txt, theme.LABEL, theme.TEXT_DIM,
                        (rx + 850, ry + 4), topright=True)
         # Name und Sichtbarkeit der Lobby (Host und Gaeste, aus LOBBY_STATE).
+        # Der Host hat das Zahnrad ganz rechts; der Text rueckt davor.
+        text_rechts = rx + 850 - (_GEAR_SIZE + 12 if self._is_host else 0)
         if self._lobby_name:
             theme.text(screen, self._lobby_name, theme.BODY, theme.TEXT,
-                       (rx + 850, ry + 38), topright=True, max_w=470)
+                       (text_rechts, ry + 38), topright=True, max_w=470)
         sicht = sichtbarkeit_text(self._lobby_sicht)
-        theme.text(screen, sicht, theme.LABEL, theme.TEXT_DIM, (rx + 850, ry + 78),
+        theme.text(screen, sicht, theme.LABEL, theme.TEXT_DIM, (text_rechts, ry + 78),
                    topright=True)
+        if self._is_host:
+            self._btn_lobbyinfo.draw(screen, focused is self._btn_lobbyinfo)
         zeichnen.line(screen, theme.BORDER, (rx, ry + 110), (rx + 850, ry + 110), 1)
 
         # Roster header
@@ -3396,6 +3404,12 @@ class OnlineLobbyPage(Page):
             theme.text(screen, tr("Kein Netzwerk"), theme.BODY, theme.DANGER, (rx, ping_y))
 
         self._draw_gp_standings(screen, rx + 560, ping_y - 30)
+
+        # Hinweis zum Zahnrad zuletzt, damit er ueber dem Kader liegt. Unter dem
+        # Trennstrich, wo nichts anderes steht.
+        if self._is_host:
+            self._btn_lobbyinfo.hinweis_zeichnen(
+                screen, focused is self._btn_lobbyinfo, rechts=rx + 850, oben=ry + 118)
 
     def _draw_gp_standings(self, screen: pygame.Surface, x: int, y: int) -> None:
         """Zwischenstand der Serie.

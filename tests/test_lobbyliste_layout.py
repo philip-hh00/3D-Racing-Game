@@ -60,3 +60,36 @@ def test_layout_der_neuen_ansichten(ansicht, sprache, seite, monkeypatch):  # no
     assert schlimm == [], "\n".join(schlimm)
     raus = [z.text for z in mit.zuege if z.tinte.left < 0 or z.tinte.right > 1920]
     assert raus == []
+
+
+@pytest.mark.parametrize("sprache", ["de", "en"])
+def test_zahnrad_sitzt_neben_den_lobbyangaben(sprache, seite, monkeypatch):  # noqa: F811
+    """Sichtbarkeit & Name ist ein Zahnrad oben rechts, nicht mehr ein Knopf in
+    der Spalte der Rennoptionen; es liegt auf keinem Text und im Bild."""
+    spielhilfe.sprache_setzen(monkeypatch, sprache)
+    mit = spielhilfe.gezeichnete_texte(monkeypatch)
+    _in_lobby(seite, monkeypatch)
+    seite._lobby_name = "Eine recht lange Lobbybezeichnung"
+    seite._lobby_sicht = "password"
+    seite.update(0.016)
+    zahnrad = seite._btn_lobbyinfo
+    assert zahnrad not in seite._host_column_widgets()
+    assert pygame.Rect(0, 0, 1920, 1080).contains(zahnrad.rect)
+    assert zahnrad.rect.w == zahnrad.rect.h <= 56
+    schirm = pygame.Surface((1920, 1080))
+    seite.draw(schirm, pygame.Rect(0, 72, 1920, 1008))
+    ueber = [z.text for z in mit.zuege if z.tinte.colliderect(zahnrad.rect)]
+    assert ueber == []
+    namen = {z.text: z for z in mit.zuege}
+    assert namen["Eine recht lange Lobbybezeichnung"].tinte.right < zahnrad.rect.left
+    # kein Knopf der linken Spalte traegt mehr den Namen der Funktion
+    assert not any(getattr(b, "action", "") == "lobby_info"
+                   for b in seite._host_column_widgets())
+
+
+def test_zahnrad_ist_per_tastatur_erreichbar_nach_dem_start_knopf(seite, monkeypatch):  # noqa: F811
+    _in_lobby(seite, monkeypatch)
+    seite._refresh_focus_group()
+    w = seite._lobby_group.widgets
+    assert w.index(seite._btn_lobbyinfo) == w.index(seite._btn_start) + 1
+    assert seite._btn_lobbyinfo.focusable and seite._btn_lobbyinfo.enabled

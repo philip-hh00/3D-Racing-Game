@@ -114,6 +114,62 @@ class Button(_Base):
                        (self.rect.centerx, self.rect.top - 18), center=True)
 
 
+class ZahnradKnopf(Button):
+    """Kleiner quadratischer Knopf mit Zahnrad — fuer Einstellungen zu etwas, das
+    auf dem Bildschirm schon steht (z. B. Sichtbarkeit und Name der Lobby).
+
+    Das Zahnrad ist aus Formen gezeichnet, nicht aus einer Bilddatei: es folgt
+    damit Farbe und Fokuszustand des Themas und bleibt in jeder Aufloesung
+    scharf. Die Beschriftung *label* erscheint nur als Hinweis beim Zeigen und
+    beim Fokus (``hinweis_zeichnen``), der Knopf selbst traegt keinen Text.
+    """
+
+    ZAEHNE = 8
+
+    def zahnrad_punkte(self, mitte, aussen: float, wurzel: float) -> list:
+        """Umriss: je Zahn zwei Punkte an der Wurzel, zwei am Kopf."""
+        import math
+        pts = []
+        winkel = 2 * math.pi / self.ZAEHNE
+        for i in range(self.ZAEHNE):
+            a = i * winkel
+            for da, r in ((-0.36, wurzel), (-0.20, aussen), (0.20, aussen), (0.36, wurzel)):
+                w = a + da * winkel * 1.25
+                pts.append((mitte[0] + math.cos(w) * r, mitte[1] + math.sin(w) * r))
+        return pts
+
+    def draw(self, screen, focused=False) -> None:
+        hover = self._hover() and self.enabled
+        if not self.enabled:
+            fill, border, ink = (26, 28, 36), theme.DISABLED, theme.DISABLED
+        elif focused or hover:
+            fill, border, ink = (70, 56, 22), theme.ACCENT_HOT, theme.TEXT
+        else:
+            fill, border, ink = (44, 38, 18), theme.ACCENT, theme.ACCENT
+        zeichnen.rect(screen, fill, self.rect, border_radius=8)
+        zeichnen.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
+        mitte = self.rect.center
+        gross = min(self.rect.w, self.rect.h) * 0.5
+        zeichnen.polygon(screen, ink, self.zahnrad_punkte(mitte, gross * 0.62, gross * 0.46))
+        zeichnen.circle(screen, fill, mitte, max(2, int(gross * 0.20)))
+
+    def hinweis_zeichnen(self, screen, focused=False, rechts: int | None = None,
+                         oben: int | None = None) -> None:
+        """Das Etikett unter dem Knopf, solange er fokussiert oder angezeigt (Maus darauf) ist.
+        Zuletzt zeichnen, damit nichts darueber liegt."""
+        if not (self.enabled and (focused or self._hover())):
+            return
+        text = tr(self.label)
+        breite = theme.font(theme.LABEL).size(text)[0] + 20
+        hoehe = theme.font(theme.LABEL).get_linesize() + 8
+        r = pygame.Rect(0, 0, breite, hoehe)
+        r.topright = (self.rect.right if rechts is None else rechts,
+                      self.rect.bottom + 6 if oben is None else oben)
+        zeichnen.rect(screen, theme.PANEL_LIGHT, r, border_radius=6)
+        zeichnen.rect(screen, theme.BORDER_LIGHT, r, 1, border_radius=6)
+        theme.text(screen, text, theme.LABEL, theme.TEXT, r.center, center=True)
+
+
 class ZurueckKnopf(Button):
     """Der Rueckweg als sichtbare Schaltflaeche — auf jedem Bildschirm gleich.
 
