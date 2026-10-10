@@ -166,7 +166,7 @@ def test_eintraege_werden_gesaeubert_und_geprueft():
     a = alle["HAAAAA"]
     assert "\n" not in a.name and "‮" not in a.name and len(a.name) <= 25
     assert "\x00" not in a.host
-    assert alle["HZZZZZ"].name.startswith("Lobby von")
+    assert alle["HZZZZZ"].name.endswith("'s Lobby")
     assert 0 <= alle["HYYYYY"].players <= 6 and alle["HYYYYY"].max <= 6
 
 
@@ -515,7 +515,7 @@ def test_erstellen_standard_ist_oeffentlich_mit_vorgabename(seite):
     assert seite._view == olp._HOST_SERVER
     a = seite._angaben
     assert a.sichtbarkeit == "public" and not a.passwort_sichtbar()
-    assert a.name.startswith("Lobby von ") and len(a.name) <= 24
+    assert a.name.endswith("'s Lobby") and len(a.name) <= 24
     _erstellen_klick(seite)
     assert len(seite.aufrufe) == 1
     kw = seite.aufrufe[0][1]
@@ -568,7 +568,7 @@ def test_leerer_name_gilt_als_vorgabe(seite):
     seite._oeffne_erstellen()
     seite._angaben.name_feld.text = "   "
     _erstellen_klick(seite)
-    assert seite.aufrufe[0][1]["angaben"]["lobby_name"].startswith("Lobby von")
+    assert seite.aufrufe[0][1]["angaben"]["lobby_name"].endswith("'s Lobby")
 
 
 def test_online_strecken_oeffnet_die_streckenseite(seite):
@@ -731,3 +731,12 @@ def test_absage_wird_nicht_vom_getrennt_des_relays_ueberschrieben(seite):
         assert "voll" in seite._msg.lower() and "getrennt" not in seite._msg
     finally:
         session.clear()
+
+
+def test_vorgabename_ist_possessiv_und_passt_in_die_grenze():
+    from src.core import profile
+    assert profile.vorgabe_lobbyname("test") == "test's Lobby"
+    lang = profile.vorgabe_lobbyname("A" * 40)
+    assert len(lang) <= profile.LOBBY_NAME_MAX and lang.endswith("'s Lobby")
+    assert profile.validate_lobby_name(lang)[0]
+    assert profile.validate_lobby_name("test's Lobby")[0]

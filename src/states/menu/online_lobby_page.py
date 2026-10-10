@@ -2237,9 +2237,10 @@ class OnlineLobbyPage(Page):
             self._btn_create.focusable = True
 
     def _vorgabe_lobbyname(self) -> str:
-        """„Lobby von <Name>" — passt in die 24 Zeichen, die der Relay behaelt."""
+        """„<Name>'s Lobby" (in beiden Sprachen gleich) — der Namensteil wird
+        gekuerzt, damit das Ganze in die 24 Zeichen passt, die der Relay behaelt."""
         from src.core import profile
-        return f"Lobby von {self._player_name()}"[:profile.LOBBY_NAME_MAX].strip()
+        return profile.vorgabe_lobbyname(self._player_name())
 
     def _host_gruppe_bauen(self, behalten: bool = False) -> None:
         """Fokusgruppe und Platz der Erstellen-Ansicht. Das Passwortfeld ist nur

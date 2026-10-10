@@ -101,7 +101,7 @@ def eintrag_aus_dict(sd: ServerDef, roh, ping_ms: float | None = None) -> LobbyE
     if not host:
         host = "?"
     if not name:
-        name = f"Lobby von {host}"[:NAME_MAX].strip()
+        name = f"{host[:NAME_MAX - 8]}'s Lobby".strip()
     if _gesperrt(name) or _gesperrt(host):
         return None
     status = IM_RENNEN if roh.get("status") == IM_RENNEN else IN_LOBBY

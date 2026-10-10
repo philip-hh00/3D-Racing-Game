@@ -6,7 +6,7 @@ Host in der Lobby (``_LOBBY_EDIT``). Es besteht aus
 
 * einem Wahlfeld **Sichtbarkeit** (Oeffentlich — Oeffentlich mit Passwort —
   Privat), Vorgabe Oeffentlich,
-* einem Feld **Lobby-Name** (Vorgabe „Lobby von <Host>", hoechstens 24 Zeichen,
+* einem Feld **Lobby-Name** (Vorgabe „<Host>'s Lobby", hoechstens 24 Zeichen,
   geprueft wie Spielernamen samt Sperrliste),
 * einem Feld **Passwort** (4 bis 16 Zeichen), das nur bei „Oeffentlich mit
   Passwort" da ist.

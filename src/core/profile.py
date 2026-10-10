@@ -454,10 +454,17 @@ LOBBY_PW_MIN = 4
 LOBBY_PW_MAX = 16
 
 
+def vorgabe_lobbyname(spieler: str) -> str:
+    """„<Spieler>'s Lobby" — gleich in Deutsch und Englisch, hoechstens
+    LOBBY_NAME_MAX Zeichen (der Namensteil wird gekuerzt)."""
+    rest = "'s Lobby"
+    return f"{str(spieler)[:LOBBY_NAME_MAX - len(rest)]}{rest}".strip()
+
+
 def validate_lobby_name(name: str) -> tuple[bool, str]:
     """Name einer Online-Lobby gegen Zeichenregel und Sperrliste. ``(ok, Grund)``.
 
-    Leer ist erlaubt: dann gilt der Vorgabename („Lobby von <Host>"). Der Name
+    Leer ist erlaubt: dann gilt der Vorgabename („<Host>'s Lobby"). Der Name
     steht in der Lobbyliste vor Fremden, deshalb dieselbe Sperrliste wie bei
     Spieler- und Streckennamen.
     """
