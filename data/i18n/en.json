@@ -883,5 +883,6 @@
   "Die Strecke ist nicht fahrbar: {msg}": "The track is not drivable: {msg}",
   "Name oder Autor …": "Name or author …",
   "Bild hoch/runter": "Page up/down",
-  "Blättern": "Flip pages"
+  "Blättern": "Flip pages",
+  "Spiegel (Cockpit)": "Mirrors (cockpit)"
 }

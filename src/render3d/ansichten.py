@@ -24,11 +24,12 @@ und ``innen``. Wer eine andere Kamera braucht (Zuschauer, Zielkamera),
 baut sich ein anderes Objekt mit derselben Schnittstelle — der Zeichner fragt
 nur diese Eigenschaften ab.
 
-**Für Spiegel (Welle 2):** :meth:`Ansichtskamera.blick_aus` liefert die Lage
+**Für Spiegel:** :meth:`Ansichtskamera.blick_aus` liefert die Lage
 (Auge, Blickrichtung, Oben) einer beliebigen Kamera am Wagen, ohne die gewählte
 Ansicht zu ändern; ein Spiegel braucht den Wagenzustand
 (``pos``, ``gier``, ``aufbau``) und den Punkt seines Knotens
-(``spiegel_innen`` / ``spiegel_l`` / ``spiegel_r``).
+(``spiegel_innen`` / ``spiegel_l`` / ``spiegel_r``). Der Spiegel selbst steht
+in :mod:`src.render3d.spiegel` und ruft :func:`blick_am_wagen`.
 """
 from __future__ import annotations
 
@@ -86,6 +87,23 @@ def naechste(ansicht: str) -> str:
 def starr(ansicht: str) -> bool:
     """Ob die Ansicht starr am Wagen sitzt (Haube und Cockpit)."""
     return ansicht in (MOTORHAUBE, COCKPIT)
+
+
+def blick_am_wagen(punkt, richtung, pos, gier: float, aufbau=None):
+    """Auge, Ziel und Oben einer Kamera, die starr am Wagen sitzt.
+
+    ``punkt`` und ``richtung`` im Fahrzeugsystem (+X vorne, +Y links, +Z oben),
+    ``aufbau`` die gezeichnete Neigung des Aufbaus (oder ``None``). Die Kamera
+    nickt und wankt mit — wie jeder Knoten am Aufbau.
+    """
+    m = matrix.fahrzeug(pos, gier).astype(np.float64)
+    if aufbau is not None:
+        m = m @ np.asarray(aufbau, dtype=np.float64)
+    p = np.asarray(punkt, dtype=np.float64)
+    auge = m @ np.array([p[0], p[1], p[2], 1.0])
+    vorn = m[:3, :3] @ np.asarray(richtung, dtype=np.float64)
+    oben = m[:3, :3] @ np.array([0.0, 0.0, 1.0])
+    return auge[:3], auge[:3] + vorn * _ZIELWEG_M, oben
 
 
 class Ansichtskamera:
@@ -245,32 +263,32 @@ class Ansichtskamera:
         self._auge, self._ziel, self._oben = auge, ziel, oben
 
     def blick_aus(self, ansicht: str, pos, gier: float, aufbau=None,
-                  rueckblick: bool = False):
+                  rueckblick: bool = False, punkt=None, richtung=None):
         """Auge, Ziel und Oben einer starren Ansicht an einem Wagenzustand.
 
         Ändert nichts an der Kamera — das ist die Stelle, die auch ein Spiegel
         nutzen kann. ``aufbau`` ist die gezeichnete Neigung des Aufbaus.
+
+        Mit ``punkt`` (und ``richtung``) im Fahrzeugsystem sitzt die Kamera
+        dort statt am Augpunkt: so rechnet ein Spiegel seine Kamera aus dem
+        Ursprung seines Knotens (:mod:`src.render3d.spiegel`).
         """
-        m = matrix.fahrzeug(pos, gier).astype(np.float64)
-        if aufbau is not None:
-            m = m @ np.asarray(aufbau, dtype=np.float64)
-        punkt = np.asarray(self.masse.augpunkt if ansicht == COCKPIT else self.masse.haube,
-                           dtype=np.float64)
-        richtung = np.array([1.0, 0.0, 0.0])
-        if rueckblick:
-            if ansicht == MOTORHAUBE:
-                # Von der Haube zurück sähe man nur die eigene Frontscheibe:
-                # die Kamera sitzt dann an der Stelle am Heck.
-                punkt = np.array([-punkt[0], punkt[1], punkt[2]])
-            else:
-                # Im Cockpit blickte man dem eigenen Sitz in die Kopfstütze:
-                # der Blick geht von der Wagenmitte aus, wie in den Innenspiegel.
-                punkt = np.array([punkt[0], 0.0, punkt[2]])
-            richtung = -richtung
-        auge = m @ np.array([punkt[0], punkt[1], punkt[2], 1.0])
-        vorn = m[:3, :3] @ richtung
-        oben = m[:3, :3] @ np.array([0.0, 0.0, 1.0])
-        return auge[:3], auge[:3] + vorn * _ZIELWEG_M, oben
+        if punkt is None:
+            punkt = np.asarray(self.masse.augpunkt if ansicht == COCKPIT else self.masse.haube,
+                               dtype=np.float64)
+            richtung = np.array([1.0, 0.0, 0.0])
+            if rueckblick:
+                if ansicht == MOTORHAUBE:
+                    # Von der Haube zurück sähe man nur die eigene Frontscheibe:
+                    # die Kamera sitzt dann an der Stelle am Heck.
+                    punkt = np.array([-punkt[0], punkt[1], punkt[2]])
+                else:
+                    # Im Cockpit blickte man dem eigenen Sitz in die Kopfstütze:
+                    # der Blick geht von der Wagenmitte aus, wie in den Innenspiegel.
+                    punkt = np.array([punkt[0], 0.0, punkt[2]])
+                richtung = -richtung
+        return blick_am_wagen(punkt, richtung if richtung is not None else (1.0, 0.0, 0.0),
+                              pos, gier, aufbau)
 
     # -- Abfragen ------------------------------------------------------------
     @property

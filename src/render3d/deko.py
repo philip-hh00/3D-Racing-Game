@@ -285,6 +285,12 @@ class Dekozeichner:
             return 0
         puffer.orphan(stufe.kapazitaet * 64)
         puffer.write(matrizen[: stufe.kapazitaet].tobytes())
+        if durchgang != "schatten":
+            # Bild und Spiegel teilen sich den Puffer: wer ihn überschreibt,
+            # macht die Merkzettel der anderen ungültig.
+            for anderer in ("farbe", "spiegel"):
+                if anderer != durchgang:
+                    stufe.zuletzt.pop(anderer, None)
         anzahl = min(k, stufe.kapazitaet)
         if maske is not None:
             stufe.zuletzt[durchgang] = (maske.copy(), anzahl)
@@ -320,13 +326,20 @@ class Dekozeichner:
         self._b_schatten = np.concatenate([np.full(len(m.pos), m.schatten) for m in self.modelle])
 
     def zeichnen(self, mvp, kamera_position, durchgang: str = "farbe",
-                 fokus=None) -> None:
-        """``durchgang``: ``"farbe"`` für das Bild, ``"schatten"`` für die Schattenkarte."""
+                 fokus=None, weite_m: float | None = None) -> None:
+        """``durchgang``: ``"farbe"`` für das Bild, ``"schatten"`` für die Schattenkarte,
+        ``"spiegel"`` für ein Spiegelbild (wie ``"farbe"``, mit eigenem Merkzettel).
+
+        ``weite_m``: eine kürzere Sichtweite als die der Grafikstufe (die
+        Spiegel zeichnen nicht so weit); 0 lässt nur die Kulisse stehen.
+        """
         self._buendeln()
         if len(self._b_pos4) == 0:
             return
         auge = np.asarray(kamera_position, dtype=np.float32)[:2]
         sicht = float(getattr(grafik.aktuell(), "sichtweite_m", SICHTWEITE_M))
+        if weite_m is not None:
+            sicht = min(sicht, float(weite_m))
         d2_auge = ((self._b_xy - auge) ** 2).sum(axis=1)
         if durchgang == "schatten":
             f = np.asarray(fokus if fokus is not None else auge, dtype=np.float32)[:2]

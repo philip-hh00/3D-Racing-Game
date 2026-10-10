@@ -169,6 +169,21 @@ Wie der Renderer die Knoten bewegt (`vehicle_node.Fahrzeugknoten`):
 * Fehlt `augpunkt` oder `haube` im Block, schätzt der Renderer sie aus
   `laenge_m`/`breite_m`/`hoehe_m` (`vehicle_node.cockpit_aus_masse`).
 
+**Spiegel** (`spiegel_innen`, `spiegel_l`, `spiegel_r`, Material `spiegel`): in
+der Cockpitansicht rendert die Szene (`rennszene._spiegel_rendern`, Modul
+`spiegel.py`) für jeden **sichtbaren** Spiegel ein kleines Bild nach hinten in
+eine Fließkommatextur (Innen 384×96, außen 224×96; auf Niedrig halb so groß und
+jedes zweite Bild) und legt es auf das Glas. Die Kamera sitzt im Ursprung des
+Knotens (also auf dem nickenden Aufbau), blickt entlang −X, außen 15° nach
+außen. Das Bild ist waagerecht gedreht (Shader: `u → 1 − u`), `v` bleibt, `U`
+läuft wie oben vereinbart nach rechts. Das Glas braucht darum **keine**
+Normale zum Fahrer und keine besondere Ausrichtung — nur die Mitte als Ursprung
+und das Format (Innen ~17×4,4 cm, außen ~16×7 cm; das Bild wird auf 0..1 gestreckt).
+Ohne Bild (Spiegel aus, andere Wagen, Werkstatt) zeichnet der Renderer
+dunkles, spiegelndes Glas statt der Modellfarbe. Im Spiegel fehlen Gras,
+Reifenspuren, Rauch, Scheiben-Durchsicht und die Deko am Rand (nur Kulisse),
+Autos kommen im LOD1 mit den großen Teilen.
+
 **Fahrzeug-LOD1** (`assets/vehicles/<key>_lod1.glb`, neben `<key>.glb`):
 dieselben Knoten mit denselben Ursprüngen und dieselben Materialnamen
 (`lack`, `lack2`, `glas` …), nur mit weniger Dreiecken und ohne Kleinteile.

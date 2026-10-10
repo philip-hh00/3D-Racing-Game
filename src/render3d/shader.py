@@ -175,6 +175,12 @@ uniform vec4  lichter_richtung[@MAX_LICHTER@];  // xyz zeigt vom Licht weg, w: c
 uniform float entfaerbung;
 uniform float deckkraft;
 
+/* Spiegel im Cockpit (spiegel.py): das Glas zeigt das Bild der Spiegelkamera,
+   lineares HDR wie die Welt. Keine Beleuchtung, kein Nebel (der steckt schon
+   im Bild); waagerecht gedreht, weil die Kamera nach hinten blickt. */
+uniform float spiegel_modus;     // 1: Glas zeigt spiegel_karte, 0: normales Material
+uniform sampler2D spiegel_karte;
+
 in vec3 welt_position;
 in vec3 welt_normale;
 in vec2 uv;
@@ -634,6 +640,12 @@ vec3 l_flakes(vec3 N, vec3 H, vec3 basis, float fuss, float abstand) {
 /* === Strang L: Autolack und Scheiben (Ende) ============================= */
 
 void main() {
+    if (spiegel_modus > 0.5) {
+        // Etwas dunkel und kuehl: getoenter Spiegel, nicht das Fenster selbst.
+        vec3 bild = texture(spiegel_karte, vec2(1.0 - uv.x, uv.y)).rgb;
+        ausgabe = vec4(bild * vec3(0.84, 0.87, 0.9), 1.0);
+        return;
+    }
     vec2 tuv = uv * uv_skala;
     vec4 textur = texture(basisfarbe, tuv);
     vec3 basis = nach_linear(mix(grundton, textur.rgb, hat_basisfarbe)) * farbton;
@@ -1085,6 +1097,7 @@ def _vorgaben(p) -> None:
         ("tz_tint_horizont", (1.0, 1.0, 1.0)), ("tz_glut", (1.0, 1.0)),
         ("tz_scheibe", (1.0, 0.95, 0.85, 1.0)),
         ("schatten_bias", (0.0006, 0.0025)), ("lichter_anzahl", 0),
+        ("spiegel_modus", 0.0), ("spiegel_karte", 14),               # Spiegel (spiegel.EINHEIT)
     ):
         setzen(p, name, wert)
     matrix_setzen(p, "licht_mvp", np.eye(4))

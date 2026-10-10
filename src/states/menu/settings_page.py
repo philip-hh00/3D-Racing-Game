@@ -60,6 +60,7 @@ def _grafik_regler() -> list[tuple[str, str, list[tuple[object, str]]]]:
          [(0, aus), (6, tr("Wenige")), (12, tr("Einige")), (24, tr("Alle"))]),
         ("strecken_details", tr("Streckendetails"), [(0, aus), (1, tr("Einige")), (2, tr("Alle"))]),
         ("reifenspuren", tr("Reifenspuren"), [(False, aus), (True, an)]),
+        ("spiegel", tr("Spiegel (Cockpit)"), [(0, aus), (1, tr("Niedrig")), (2, tr("Hoch"))]),
         ("fahrzeug_lod_m", tr("Autos vereinfacht ab"),
          [(v, f"{int(v)} m") for v in (20.0, 35.0, 60.0, 120.0, 250.0)]),
     ]
