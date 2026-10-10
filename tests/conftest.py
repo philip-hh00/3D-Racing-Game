@@ -21,6 +21,11 @@ os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 # Der Motorklang laeuft im Spiel in einem eigenen Prozess (tonprozess). Tests
 # starten keinen; wer ihn pruefen will, setzt ``tonausgabe.PROZESS`` selbst.
 os.environ.setdefault("RACING_TON_PROZESS", "0")
+# Tageszeit und Wetter werden im Spiel gewuerfelt (src/core/rennbedingungen.py).
+# Tests wuerfeln nicht: sonst faehrt ein Vergleichsrennen zu 20 % bei Nacht oder
+# Regen und wird langsamer (so test_ghost_ki am 10.10.2026). Wer das Wuerfeln
+# selbst prueft, entfernt die Variable mit monkeypatch.
+os.environ.setdefault("RACE_BEDINGUNGEN", "Tag/Trocken")
 
 
 @pytest.fixture(scope="session", autouse=True)
