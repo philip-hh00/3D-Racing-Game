@@ -40,6 +40,7 @@ from mathutils import Matrix, Vector
 
 import gemeinsam as g
 import teile as t
+import teile_innen as ti
 
 M_PER_PX = 0.08                    # wie src/core/settings.py
 KMH_PER_PXS = M_PER_PX * 3.6
@@ -153,6 +154,20 @@ def planen(fo, p: dict, L) -> Plan:
     x_e = xs - 0.46
     dach = fo.oben(ms.u(x_e), ys) - 0.02
     z_e = min(z_polster + 0.72, dach - 0.10)
+    # Der Fahrer soll mehr Scheibe sehen als Himmel: die Dachkante der Frontscheibe liegt, vom
+    # Auge aus, mindestens ``DACHKANTE_MIN_GRAD`` über dem Horizont (sonst füllt der Dachhimmel
+    # die oberen 40 % des Bildes). Der Boden liegt dafür tiefer (``teile_innen.Layout``); das
+    # Auge sitzt nie näher als 52 cm über dem Polster
+    # (der Boden kann nicht tiefer als bis zum Unterboden sinken).
+    fs = p["kabine"].get("frontscheibe") or []
+    u_kante = min((a for a, _ in fs), default=0.0)
+    x_kante = ms.x(u_kante)
+    z_kante = fo.G(u_kante, ys) - 0.05
+    if fs and z_kante > 0 and x_kante - x_e > 0.3:
+        z_wunsch = z_kante - (x_kante - x_e) * math.tan(math.radians(ti.DACHKANTE_MIN_GRAD))
+        # Über den Zifferblättern bleiben 18 cm Luft bis zum Auge (Sicht über das Armaturenbrett).
+        z_dial_tief = L.z_a + 0.09 - 0.02 - 0.055
+        z_e = min(z_e, max(z_wunsch, z_polster + 0.52, z_dial_tief + 0.185))
     pl.auge = Vector((x_e, ys, z_e))
     pl.auge_ueber_polster = z_e - z_polster
     # --- Lenkrad -----------------------------------------------------------------

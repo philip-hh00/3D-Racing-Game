@@ -151,6 +151,16 @@ Lenkradwinkel ist der sichtbare Lenkwinkel der Räder mal
 `lenkrad_uebersetzung`. Fehlt ein Knoten oder der Block, zeichnet der
 Renderer ohne (alte GLBs bleiben gültig).
 
+**Sicht aus dem Augpunkt** (geprüft von `tests/test_cockpit_sicht.py`, Strahlen
+gegen die Karosserie): Vom Auge aus sieht man im Innenraum nur Innenraummaterial
+(`innenraum`, `carbon`, `zierteil`, `kunststoff`, `leder`, `anzeige` …) — nie
+`lack`/`lack2` auf dem Armaturenbrett, an der Konsole oder an der Tür. Der
+Bildschirm der Mittelkonsole sitzt in der Rückwand des Armaturenbretts, seine
+Oberkante liegt unter der Armaturenoberkante (hinter ihm liegt kein Glas). Der
+Dachhimmel (`innenraum`) schließt lückenlos, auch unter Schiebe- und Glasdach.
+Die Oberkante der Frontscheibe steht vom Auge aus mindestens 8° über dem
+Horizont, die Kopffreiheit zum Himmel beträgt mindestens 8 cm.
+
 Wie der Renderer die Knoten bewegt (`vehicle_node.Fahrzeugknoten`):
 
 * Jeder Netzknoten, der nicht `karosserie`, `rad_*` oder `sattel_*` heißt,

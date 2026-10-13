@@ -19,6 +19,16 @@ import gemeinsam as g
 import teile as t
 import teile_oberflaeche as to
 
+#: Mindestwinkel der Dachkante (Oberkante der Frontscheibe) über dem Horizont, vom Auge aus.
+DACHKANTE_MIN_GRAD = 11.0
+#: Augenhöhe über dem Sitzpolster, so tief sitzt der Fahrer in Kompakt- und Sportwagen.
+AUGE_UEBER_POLSTER = 0.64
+#: So tief unter die Gürtellinie darf der Innenraumboden höchstens sinken.
+TIEFE_MAX = 0.62
+
+#: Materialien der Außenhaut — nie als Innenraumakzent verwenden.
+KAROSSERIEFARBEN = ("lack", "lack2")
+
 #: Emblemform je Fahrzeugfamilie (Schlüssel vor dem ersten ``_``).
 FAMILIENFORM = {"rookie": "sechseck", "limousine": "oval", "supercar": "delta",
                 "drifter": "spuren", "electric": "ein"}
@@ -262,6 +272,7 @@ class Layout:
         # auf eine Platte in Fensterhöhe. ``tiefe_m`` überschreibt die Schätzung.
         u_m = (u_hinten + u_vorn) / 2
         tiefe = ti.get("tiefe_m")
+        tiefe_vorgabe = tiefe
         if tiefe is None:
             tiefe = min(0.42, max(0.2, 0.92 - (fo.oben(u_m, 0) - fo.zd(u_m))))
         self.tiefe = tiefe
@@ -283,6 +294,8 @@ class Layout:
         self.x_a = ms.x(u_armatur)
         self.z_a = fo.zd(u_armatur)
         self.w_a = armaturbreite(u_armatur)
+        if tiefe_vorgabe is None:
+            self.tiefe = self._tiefe_fuer_dachkante(self.tiefe)
         self.z_b = self.boden(u_armatur)
         # Fahrersitz (links, +Y) der ersten Reihe — dieselbe Rechnung wie in der Sitzschleife.
         self.sitz = None
@@ -301,6 +314,33 @@ class Layout:
     def boden(self, u):
         return max(self.fo.zd(u) - self.tiefe, self.fo.zu(u) + 0.12)
 
+    def _tiefe_fuer_dachkante(self, tiefe: float) -> float:
+        """Boden so tief, dass der Fahrer mehr Scheibe als Dachhimmel sieht.
+
+        Sitzt der Fahrer so hoch, dass seine Augen knapp unter dem Dach liegen, füllt der
+        Dachhimmel die obere Bildhälfte. Das Auge soll darum so tief liegen, dass die
+        Dachkante der Frontscheibe mindestens ``DACHKANTE_MIN_GRAD`` über dem Horizont steht
+        (Auge = Boden + 0,14 + 0,112 + ``AUGE_UEBER_POLSTER``). Der Boden darf dafür bis
+        ``TIEFE_MAX`` unter die Gürtellinie sinken, nie tiefer als 12 cm über den Unterboden.
+        """
+        fo, ms = self.fo, self.fo.ms
+        fs = fo.k.get("frontscheibe") or []
+        xs = self.x_a - 0.56
+        u_s = ms.u(xs - 0.24)
+        if not fs or not (fo.dach_u0 < u_s < fo.dach_u1):
+            return tiefe
+        ys = 0.5 * min(fo.ws(u_s) - 0.08, fo.wg(u_s) - 0.05)
+        u_kante = min(a for a, _ in fs)
+        x_kante = ms.x(u_kante)
+        z_kante = fo.G(u_kante, ys) - 0.05
+        x_e = xs - 0.46
+        if z_kante <= 0 or x_kante - x_e < 0.3:
+            return tiefe
+        z_wunsch = z_kante - (x_kante - x_e) * math.tan(math.radians(DACHKANTE_MIN_GRAD))
+        boden_noetig = z_wunsch - 0.14 - 0.112 - AUGE_UEBER_POLSTER
+        grenze = min(TIEFE_MAX, fo.zd(u_s) - (fo.zu(u_s) + 0.12))
+        return max(tiefe, min(fo.zd(u_s) - boden_noetig, grenze))
+
 
 def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
     """Wanne, Sitze mit Wangen, Armaturenbrett mit Hutze und Bildschirm,
@@ -312,7 +352,12 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
     k = p["kabine"]
     L = getattr(fo, "innen", None) or Layout(fo, p, ti)
     art = L.art
-    akzent = mats[ti.get("akzent_mat", "carbon" if art == "schale" else "innenraum")]
+    akzent_name = ti.get("akzent_mat", "carbon" if art == "schale" else "innenraum")
+    if akzent_name in KAROSSERIEFARBEN:
+        # Zierleisten und Konsolenblende sind Innenraum: in Wagenfarbe gespritzt läse man sie
+        # vom Fahrersitz als Karosserieblech, das durchs Armaturenbrett ragt.
+        akzent_name = "carbon" if art == "schale" else "zierteil"
+    akzent = mats[akzent_name]
     im = mats["innenraum"]
     teile = []
     if not L.ok:
@@ -358,10 +403,26 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
                                       plan.dial_mitte.y + plan.dial_abstand + plan.dial_r + 0.04)
     teile.append(t.kasten("armatur", (x_a - 0.2, 0, (z_a + 0.09 + z_b) / 2), (0.4, w_a * 2, z_a + 0.09 - z_b),
                           im, fase=0.04 if plan is None else 0.02))
+    # Der Bildschirm der Mittelkonsole sitzt **im Armaturenbrett**: bündig in dessen Rückwand,
+    # auf Höhe des Kombiinstruments, seine Oberkante ≥ 2 cm unter der Armaturenoberkante
+    # (``z_a + 0.09``). Aus dem Auge steht er also unter der Linie des Armaturenbretts und
+    # verdeckt nie die Frontscheibe. Die Zierleiste läuft links und rechts an ihm vorbei.
+    sb, sh = 0.23, 0.115                       # Breite, Höhe der Anzeige
+    z_s_oben = z_a + 0.07
+    z_s = z_s_oben - sh / 2
+    if plan is not None:
+        z_s = min(plan.z_c, z_s)                # nicht über der Mitte des Kombiinstruments
+    schirm_y = (-(sb / 2 + 0.03), sb / 2 + 0.03)
     leiste_y = [(-(w_a - 0.04), w_a - 0.04)]
     if frei is not None:
         leiste_y = [(-(w_a - 0.04), frei[0]), (frei[1], w_a - 0.04)]
+    teilstuecke = []
     for y0, y1 in leiste_y:
+        if y0 < schirm_y[1] and y1 > schirm_y[0]:
+            teilstuecke += [(y0, min(y1, schirm_y[0])), (max(y0, schirm_y[1]), y1)]
+        else:
+            teilstuecke.append((y0, y1))
+    for y0, y1 in teilstuecke:
         if y1 - y0 > 0.05:
             teile.append(t.kasten("armaturleiste", (x_a - 0.4, (y0 + y1) / 2, z_a + 0.03),
                                   (0.03, y1 - y0, 0.035), akzent, fase=0.01))
@@ -372,11 +433,13 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
                          mats.get("anzeige", mats["zierteil"]), fase=0.002)
         to.anzeige_uv(instr, 0.5, 1.0)
         teile.append(instr)
-    schirm = t.kasten("bildschirm", (x_a - 0.4, 0, z_a + 0.13), (0.012, 0.24, 0.13),
-                      mats.get("anzeige", mats["zierteil"]), fase=0.004, drehung=(0, math.radians(-12), 0))
+    teile.append(t.kasten("bildschirmrahmen", (x_a - 0.4, 0, z_s), (0.012, sb + 0.024, sh + 0.024),
+                          mats["kunststoff"], fase=0.006))
+    schirm = t.kasten("bildschirm", (x_a - 0.402, 0, z_s), (0.012, sb, sh),
+                      mats.get("anzeige", mats["zierteil"]), fase=0.003)
     to.anzeige_uv(schirm, 0.0, 0.5)
     teile.append(schirm)
-    for y in (-w_a * 0.75, w_a * 0.75, -0.16, 0.16):
+    for y in (-w_a * 0.75, w_a * 0.75, -0.21, 0.21):
         if frei is not None and frei[0] - 0.05 < y < frei[1] + 0.05:
             continue
         teile.append(t.kasten("duese", (x_a - 0.405, y, z_a + 0.06), (0.01, 0.08, 0.035),
@@ -437,7 +500,8 @@ def innenraum(fo, p, ti: dict, mats, cockpit: bool = False):
     return teile
 
 
-def verkleidung(karosserie, fo, erlaubt: set, innen_index: int, dicke: float = 0.012):
+def verkleidung(karosserie, fo, erlaubt: set, innen_index: int, dicke: float = 0.012,
+                glas_index: int | None = None, dachglas_u=()):
     """Dachhimmel und Säulenverkleidung: die Haut des Glashauses (ohne Glas)
     um ``dicke`` nach innen versetzt, umgedreht, in ``innenraum``.
 
@@ -445,13 +509,25 @@ def verkleidung(karosserie, fo, erlaubt: set, innen_index: int, dicke: float = 0
     man die lackierte Rückseite der gegenüberliegenden C-Säule und durch die
     Heckscheibe hinaus, und die Scheibe wirkt schräg geteilt. ``erlaubt``:
     Materialplätze der Haut, die verkleidet werden (Lack, Säulen, Rahmen).
+    ``glas_index`` und ``dachglas_u``: Schiebe- oder Glasdach (Bereiche ``(u0, u1)``) —
+    unter dem flachen Teil (Neigung unter 14°) hängt der Himmel ebenfalls, sonst klafft im
+    Dach ein Loch, durch das der Fahrer in den Himmel sieht. Die Frontscheibe, die bei
+    einem Panoramadach im selben Glas liegt, bleibt frei.
     """
     bm = bmesh.new()
     bm.from_mesh(karosserie.data)
+    bm.normal_update()
     weg = []
     for f in bm.faces:
         c = f.calc_center_median()
-        if f.material_index not in erlaubt or not fo.im_glashaus(c.x, c.y, c.z, rand=0.02):
+        if not fo.im_glashaus(c.x, c.y, c.z, rand=0.02):
+            weg.append(f)
+        elif f.material_index in erlaubt:
+            continue
+        elif (glas_index is not None and f.material_index == glas_index and f.normal.z > 0.97
+              and any(u0 - 0.005 <= fo.ms.u(c.x) <= u1 + 0.005 for u0, u1 in dachglas_u)):
+            continue
+        else:
             weg.append(f)
     bmesh.ops.delete(bm, geom=weg, context="FACES")
     if not bm.faces:

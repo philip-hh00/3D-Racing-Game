@@ -2316,7 +2316,10 @@ def modell_bauen(key: str, p: dict):
     if (p["kabine"].get("verkleidung") or fo.cockpit is not None) and not p.get("_lod"):
         erlaubt = {KAROSSERIE_MATS.index(n) for n in
                    ("lack", "lack2", "zierteil", "carbon", "kunststoff", "chrom")}
-        ob = ti.verkleidung(karosserie, fo, erlaubt, KAROSSERIE_MATS.index("innenraum"))
+        dachglas = [(min(a for a, _ in p["kabine"][dz]), max(a for a, _ in p["kabine"][dz]))
+                    for dz in ("schiebedach", "glasdach") if dz in p["kabine"]]
+        ob = ti.verkleidung(karosserie, fo, erlaubt, KAROSSERIE_MATS.index("innenraum"),
+                            glas_index=KAROSSERIE_MATS.index("glas"), dachglas_u=dachglas)
         if ob is not None:
             lamellen.append(ob)
     anbau = anbauteile(karosserie, fo, p, mats) + radlauf_lippen(karosserie, fo, p, mats)
