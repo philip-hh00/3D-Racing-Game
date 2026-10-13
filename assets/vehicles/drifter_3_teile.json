@@ -69,12 +69,12 @@
     24,
     27
   ],
-  "dreiecke_karosserie": 93402,
+  "dreiecke_karosserie": 94654,
   "cockpit": {
     "augpunkt": [
       -0.1912,
       0.407,
-      1.0827
+      1.0338
     ],
     "haube": [
       1.1847,
