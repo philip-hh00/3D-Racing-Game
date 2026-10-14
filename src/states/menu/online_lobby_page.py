@@ -708,6 +708,9 @@ class OnlineLobbyPage(Page):
             if data.get("code") == "DATA_MISMATCH":
                 self._msg = tr("Deine Spieldateien passen nicht zur Lobby. "
                                "Bitte das Spiel neu installieren.")
+            elif data.get("code") == "BAD_NAME":
+                from src.net import servertext
+                self._msg = servertext.name_absage(data.get("field"))
             elif data.get("code") == "VERSION_MISMATCH":
                 req = data.get("required_version", "?")
                 from src.core.version import VERSION
@@ -970,6 +973,9 @@ class OnlineLobbyPage(Page):
                 # translatable instead of arriving pre-formatted in German.
                 self._msg = tr("Teams nicht ausgeglichen (A: {a}, B: {b}).").format(
                     a=data.get("a", "?"), b=data.get("b", "?"))
+            elif data.get("code") == "BAD_NAME":
+                from src.net import servertext
+                self._msg = servertext.name_absage(data.get("field"))
             else:
                 self._msg = self._servertext(data.get("reason"), "Server-Fehler.")
 

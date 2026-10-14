@@ -85,6 +85,9 @@ _ZUSTAENDE = {
         "naechsten Tippen geleert",
     "_angaben.meldung":
         "Dasselbe fuer Lobbyname/Passwort beim Erstellen einer Lobby",
+    "name_absage":
+        "Absage des Relays wegen eines verbotenen Namens (BAD_NAME). Der "
+        "Spieler muss den Namen aendern; die Meldung bleibt, bis er tippt",
     "ohne Aktivität geschlossen":
         "Der Grund, warum die Lobby weg ist. Er steht auf der Rollenauswahl "
         "und soll dort bleiben, bis der Nutzer etwas tut",
