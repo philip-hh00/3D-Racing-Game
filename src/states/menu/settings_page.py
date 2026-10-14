@@ -300,12 +300,13 @@ class SettingsPage(Page):
             col.add(b1)
             self._content_group = FocusGroup([b1])
         elif name == "Video":
-            from src.core.display import verfuegbare_aufloesungen, resolution_str_to_label
+            from src.core.display import verfuegbare_aufloesungen, aufloesung_waehlen
             # Nur, was als Fenster auf diesen Bildschirm passt (MacBook: 1440×900).
             res_labels = verfuegbare_aufloesungen()
-            cur_res = resolution_str_to_label(self._eff("resolution", profile.current().resolution))
-            res_idx = (res_labels.index(cur_res) if cur_res in res_labels
-                       else len(res_labels) - 1)   # sonst die groesste, die passt
+            # Ein gespeicherter Wert, der hier nicht (mehr) steht, zeigt die
+            # Aufloesung, die das Fenster tatsaechlich bekommt.
+            res_idx = aufloesung_waehlen(self._eff("resolution", profile.current().resolution),
+                                         res_labels)
             fs_opts = [tr("Fenster"), tr("Vollbild")]
             fs_idx = 1 if self._eff("fullscreen", profile.current().fullscreen) else 0
             fps_opts = ["30", "60", "120", "144", "240", tr("Unbegrenzt")]
@@ -351,6 +352,8 @@ class SettingsPage(Page):
             col.add(s_grafik)
             col.add(b_advanced)
             self._content_group = FocusGroup([s1, s2, s3, s4, s5, s_grafik, b_advanced])
+            self._res_fenster = (list(res_labels), res_idx)
+            self._video_abhaengigkeiten()
             self._advanced_graphics = None
         elif name == "Audio":
             menu_pct = int(round(self._eff("menu_volume", profile.current().menu_volume) * 10.0))
@@ -385,6 +388,34 @@ class SettingsPage(Page):
                 col.add(w)
             self._content_group = FocusGroup([s1, s2, s3, s4])
 
+
+    def _video_abhaengigkeiten(self) -> None:
+        """Im Vollbild gilt immer die Aufloesung des Bildschirms.
+
+        ``set_fullscreen(desktop=True)`` laesst die eingestellte Groesse
+        unbeachtet; ein Regler, der dann scheinbar etwas verstellt, taeuschte.
+        Also zeigt er im Vollbild die Bildschirmgroesse („Nativ") und ist
+        gesperrt; zurueck im Fenster steht wieder die Liste.
+        """
+        s_res = self._stepper("change_resolution")
+        s_fs = self._stepper("toggle_fullscreen")
+        if s_res is None or s_fs is None or not hasattr(self, "_res_fenster"):
+            return
+        labels, idx = self._res_fenster
+        native = display.native_aufloesung()
+        if s_fs.index == 1 and native:
+            if s_res.enabled:
+                self._res_fenster = (labels, s_res.index)
+            s_res.options = [f"{native} ({tr('Nativ')})"]
+            s_res.index = 0
+            s_res.enabled = s_res.focusable = False
+        else:
+            if not s_res.enabled:
+                s_res.options = list(labels)
+                s_res.index = max(0, min(idx, len(labels) - 1))
+            s_res.enabled = s_res.focusable = True
+        if self._content_group:
+            self._content_group.fokus_richten()
 
     # -- Grafik ------------------------------------------------------------
     #: Zweite Spalte der Video-Seite: Stufe und je Feld ein Regler. Die
@@ -1024,6 +1055,7 @@ class SettingsPage(Page):
             self.msg = ""
         elif action == "toggle_fullscreen":
             self._pending["fullscreen"] = self._rohwert(action, 1)
+            self._video_abhaengigkeiten()
             self.msg = ""
         elif action == "change_fps":
             self._pending["fps_limit"] = self._rohwert(action, 2)
@@ -1166,7 +1198,7 @@ class SettingsPage(Page):
                     max_widget_bottom = max(max_widget_bottom, w.rect.bottom)
             y = max_widget_bottom + 24  # Add margin below last widget
             for hinweis in (tr("Änderungen werden erst mit SPEICHERN übernommen."),
-                            tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
+                            tr("Texturqualität: Hoch = schärfer in der Ferne, Niedrig = schneller (ab dem nächsten Rennen)."),
                             tr("Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.")):
                 for zeile in _umbrechen(hinweis, theme.HINT, 500):
                     theme.text(screen, zeile, theme.HINT, theme.TEXT_FAINT, (560, y))

@@ -123,6 +123,54 @@ def verfuegbare_aufloesungen(desktop: tuple[int, int] | None = None) -> list[str
                if passende_fenstergroesse(w, h, desktop) == (w, h)]
     return passend or [RESOLUTION_LABELS[0]]
 
+
+def fenstergroesse_fuer(w: int, h: int,
+                        desktop: tuple[int, int] | None = None) -> tuple[int, int]:
+    """Die Fenstergroesse fuer eine gewuenschte Aufloesung — aus der Auswahlliste.
+
+    Passt die Groesse als Fenster auf den Bildschirm, gilt sie unveraendert.
+    Sonst nimmt das Fenster die **groesste angebotene** Aufloesung, die nicht
+    groesser ist (auf einem 1080p-Schirm also 1600×900). Vorher wurde
+    stufenlos verkleinert (1689×950): das Fenster hatte dann eine Groesse,
+    die die Einstellungsseite nirgends anbietet — dort zeigte die Liste
+    „1600×900".
+    """
+    desktop = desktop or _desktop_groesse()
+    fit = passende_fenstergroesse(w, h, desktop)
+    if fit == (w, h) or desktop is None:
+        return fit
+    angeboten = verfuegbare_aufloesungen(desktop)
+    kandidaten = [g for label, g in RESOLUTIONS
+                  if label in angeboten and g[0] * g[1] <= w * h]
+    return max(kandidaten, key=lambda g: g[0] * g[1]) if kandidaten else fit
+
+
+def aufloesung_waehlen(aufloesung: str, labels: list[str]) -> int:
+    """Index in *labels* fuer einen gespeicherten Wert („1920x1080").
+
+    Steht der Wert nicht in der Liste (Profil von einem groesseren Schirm),
+    gilt die groesste Aufloesung darunter — dieselbe, die das Fenster dann
+    tatsaechlich bekommt (:func:`fenstergroesse_fuer`) —, sonst die kleinste.
+    """
+    gesucht = resolution_str_to_label(aufloesung)
+    if gesucht in labels:
+        return labels.index(gesucht)
+    w, h = _aufloesung_lesen(aufloesung)
+    kleiner = [i for i, label in enumerate(labels)
+               if _aufloesung_lesen(label)[0] * _aufloesung_lesen(label)[1] <= w * h]
+    return kleiner[-1] if kleiner else 0
+
+
+def native_aufloesung() -> str | None:
+    """Die Aufloesung des Hauptbildschirms als Anzeige („2560×1440"), oder ``None``.
+
+    Im Vollbild gilt immer sie (``set_fullscreen(desktop=True)``). Auf einem
+    Retina-Mac meldet pygame Punkte (1440×900 statt 2880×1800); die
+    Oberflaeche rechnet im Raster und ist davon nicht beruehrt.
+    """
+    groesse = _desktop_groesse()
+    return f"{groesse[0]}×{groesse[1]}" if groesse else None
+
 # Virtual render dimensions (never change)
 VIRT_W = SCREEN_WIDTH   # 1920
 VIRT_H = SCREEN_HEIGHT  # 1080
@@ -501,10 +549,12 @@ def apply_settings(*, resolution: str = "1920x1080",
     global _current_w, _current_h, _current_fullscreen, _current_vsync
     global _opengl_fenster
 
-    w, h = passende_fenstergroesse(*_aufloesung_lesen(resolution))
+    w, h = fenstergroesse_fuer(*_aufloesung_lesen(resolution))
 
     if _current_w is not None:
         _umschalten(w, h, fullscreen)
+        if vsync != _current_vsync:
+            vsync_setzen(vsync)
         _current_w, _current_h = w, h
         _current_fullscreen, _current_vsync = fullscreen, vsync
         return pygame.display.get_surface()
@@ -548,6 +598,43 @@ def _gl_version_anfordern(plattform: str | None = None) -> bool:
             (pygame.GL_CONTEXT_FLAGS, pygame.GL_CONTEXT_FORWARD_COMPATIBLE_FLAG)):
         pygame.display.gl_set_attribute(attribut, wert)
     return True
+
+
+def _sdl_bibliothek():
+    """Die SDL2-Bibliothek, die pygame mitbringt (bereits geladen), oder ``None``."""
+    import ctypes
+    import glob
+    import os
+    ordner = os.path.dirname(pygame.__file__)
+    for muster in ("SDL2.dll", "SDL2-*.dll", ".dylibs/libSDL2*.dylib",
+                   "libSDL2*.dylib", "*.libs/libSDL2*.so*", "libSDL2*.so*"):
+        for pfad in sorted(glob.glob(os.path.join(ordner, muster))):
+            try:
+                return ctypes.CDLL(pfad)
+            except OSError:
+                continue
+    return None
+
+
+def vsync_setzen(an: bool) -> bool:
+    """V-Sync am laufenden OpenGL-Fenster umschalten. ``True``, wenn es gelang.
+
+    ``pygame.display.set_mode(vsync=...)`` wirkt nur beim Anlegen des Fensters,
+    und ein neues Fenster wuerfe den OpenGL-Kontext weg. Die Einstellung
+    „V-Sync" blieb deshalb bis zum naechsten Start ohne Wirkung. SDL kann den
+    Wechsel am laufenden Fenster (``SDL_GL_SetSwapInterval``); ueber die
+    Bibliothek, die pygame ohnehin geladen hat, ist er erreichbar. Geht das
+    nicht (fremde Bauart), bleibt es beim alten Verhalten: gilt ab dem Start.
+    """
+    if not _opengl_fenster:
+        return False
+    try:
+        sdl = _sdl_bibliothek()
+        if sdl is None:
+            return False
+        return sdl.SDL_GL_SetSwapInterval(1 if an else 0) == 0
+    except Exception:                                # pragma: no cover - Treiber
+        return False
 
 
 def _versuche_modus(size, flags, vsync: bool):
