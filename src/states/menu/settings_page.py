@@ -422,7 +422,10 @@ class SettingsPage(Page):
         return widgets
 
     def _stepper(self, aktion: str):
-        widgets = self._content_group.widgets if self._content_group else []
+        """Der Stepper zu *aktion* — auch im offenen Erweitert-Overlay."""
+        widgets = list(self._content_group.widgets if self._content_group else [])
+        if self._advanced_graphics is not None and self._advanced_graphics._content_group:
+            widgets += self._advanced_graphics._content_group.widgets
         return next((w for w in widgets if getattr(w, "action", None) == aktion), None)
 
     def _grafik_aendern(self, aktion: str) -> None:
@@ -497,25 +500,11 @@ class SettingsPage(Page):
                 self.osk = None
             return True
 
-        # Advanced graphics view overlay
+        # Erweitert-Overlay: ein Ereignis, ein Weg. Die Fokusgruppe wertet den
+        # Klick selbst aus (‹ zurück, › vor). Vorher lief der Klick zusätzlich
+        # noch einmal über ``activate()`` (immer +1): ‹ hob sich damit auf, ›
+        # sprang um zwei — „der linke Pfeil reagiert nicht".
         if self._advanced_graphics is not None:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Forward mouse clicks to the advanced view's focus group
-                if self._advanced_graphics._content_group:
-                    self._advanced_graphics._content_group.handle_event(event)
-                    res = None
-                    # Check which widget was clicked
-                    for w in self._advanced_graphics._content_group.widgets:
-                        if getattr(w, "focusable", False) and w.hit(event.pos):
-                            res = w.activate()
-                            break
-                    if res == "grafik_back":
-                        self._advanced_graphics = None
-                        return True
-                    elif isinstance(res, str) and res.startswith("grafik_"):
-                        self._dispatch(res)
-                return True
-
             res = self._advanced_graphics.handle_event(event)
             if res == "grafik_back":
                 self._advanced_graphics = None
