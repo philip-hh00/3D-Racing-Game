@@ -1,8 +1,9 @@
 """Player profile: username and per-track best lap times.
 
 Stored in data/settings/profile.json. A username validator enforces length and
-character rules and screens against a supplied blacklist
-(data/settings/name_blacklist.json — a JSON array of forbidden substrings).
+character rules and screens against a blacklist
+(data/settings/name_blacklist.json, matched by src/core/namensfilter.py; the
+relay enforces the same list server-side).
 
 Seit dem 02.08.2026 liegt die Datei **verschlüsselt und signiert** ab, mit
 ``profile.bak`` als Sicherung (Releaseplan E4). Wie das geht und warum es
@@ -384,23 +385,23 @@ def _load_blacklist() -> tuple[list[str], list[str]]:
     return _blacklist_cache
 
 
-def _ist_gesperrt(text: str) -> bool:
-    """Ob *text* ein verbotenes Wort enthaelt.
+_filter_cache: tuple | None = None
 
-    ``ganzes_wort`` trifft nur, wenn links und rechts kein Buchstabe steht.
-    Ziffern und Unterstriche zaehlen dabei als Trennung: ``bot99`` und
-    ``x_bot`` sind gesperrt, ``Robotex`` nicht — Anhaengsel sind der uebliche
-    Weg, eine Sperre zu umgehen, eine Silbe mitten im Wort ist es nicht.
+
+def _ist_gesperrt(text: str) -> bool:
+    """Ob *text* gegen die Sperrliste verstoesst.
+
+    Die eigentliche Pruefung (Leetspeak, Umlaute, Trennzeichen, ``enthalten``
+    gegen ``ganzes_wort``) steht in :mod:`src.core.namensfilter` — derselbe
+    Text laeuft auch auf dem Relay, der die Sperre durchsetzt. Hier bleibt nur
+    das Laden der Liste und der Zwischenspeicher der kompilierten Form.
     """
-    low = text.lower()
-    enthalten, ganzes_wort = _load_blacklist()
-    for wort in enthalten:
-        if wort in low:
-            return True
-    for wort in ganzes_wort:
-        if re.search(r"(?<![a-zA-Z])%s(?![a-zA-Z])" % re.escape(wort), low):
-            return True
-    return False
+    global _filter_cache
+    from src.core import namensfilter
+    liste = _load_blacklist()
+    if _filter_cache is None or _filter_cache[0] is not liste:
+        _filter_cache = (liste, namensfilter.nf_kompiliere(*liste))
+    return namensfilter.nf_gesperrt(text, _filter_cache[1])
 
 
 def validate_username(name: str) -> tuple[bool, str]:
