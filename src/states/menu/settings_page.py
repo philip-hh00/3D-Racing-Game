@@ -201,6 +201,9 @@ class SettingsPage(Page):
         self._issues_rect: pygame.Rect | None = None
         self._crash_rect: pygame.Rect | None = None
         self._lizenz_rect: pygame.Rect | None = None
+        #: Welcher der Links unter „Info" der Controller/die Tastatur gewaehlt hat
+        #: (Index in ``_info_links``).
+        self._info_link = 0
         self._advanced_graphics: _AdvancedGraphicsView | None = None
 
     @property
@@ -290,7 +293,10 @@ class SettingsPage(Page):
             # heraus verlassen kann, ohne erst eine Ebene hoch zu muessen.
             quit_btn = Button(pygame.Rect(0, 0, 500, 60), tr("Spiel beenden"), "quit_game")
             col.add(quit_btn)
-            self._content_group = FocusGroup([lang_step, quit_btn])
+            # Das Namensfeld gehoert in die Gruppe: sonst schluckte es jede Taste
+            # und Sprache und Beenden blieben der Maus vorbehalten. Hoch/Runter
+            # verlassen das Feld, Links/Rechts bleiben im Text.
+            self._content_group = FocusGroup([self._name_input, lang_step, quit_btn])
         elif name == "Fahrhilfen":
             from src.states.menu import fahrhilfen_seite
             self._content_group = fahrhilfen_seite.bauen(self)
@@ -300,12 +306,13 @@ class SettingsPage(Page):
             col.add(b1)
             self._content_group = FocusGroup([b1])
         elif name == "Video":
-            from src.core.display import verfuegbare_aufloesungen, resolution_str_to_label
+            from src.core.display import verfuegbare_aufloesungen, aufloesung_waehlen
             # Nur, was als Fenster auf diesen Bildschirm passt (MacBook: 1440×900).
             res_labels = verfuegbare_aufloesungen()
-            cur_res = resolution_str_to_label(self._eff("resolution", profile.current().resolution))
-            res_idx = (res_labels.index(cur_res) if cur_res in res_labels
-                       else len(res_labels) - 1)   # sonst die groesste, die passt
+            # Ein gespeicherter Wert, der hier nicht (mehr) steht, zeigt die
+            # Aufloesung, die das Fenster tatsaechlich bekommt.
+            res_idx = aufloesung_waehlen(self._eff("resolution", profile.current().resolution),
+                                         res_labels)
             fs_opts = [tr("Fenster"), tr("Vollbild")]
             fs_idx = 1 if self._eff("fullscreen", profile.current().fullscreen) else 0
             fps_opts = ["30", "60", "120", "144", "240", tr("Unbegrenzt")]
@@ -351,6 +358,8 @@ class SettingsPage(Page):
             col.add(s_grafik)
             col.add(b_advanced)
             self._content_group = FocusGroup([s1, s2, s3, s4, s5, s_grafik, b_advanced])
+            self._res_fenster = (list(res_labels), res_idx)
+            self._video_abhaengigkeiten()
             self._advanced_graphics = None
         elif name == "Audio":
             menu_pct = int(round(self._eff("menu_volume", profile.current().menu_volume) * 10.0))
@@ -385,6 +394,34 @@ class SettingsPage(Page):
                 col.add(w)
             self._content_group = FocusGroup([s1, s2, s3, s4])
 
+
+    def _video_abhaengigkeiten(self) -> None:
+        """Im Vollbild gilt immer die Aufloesung des Bildschirms.
+
+        ``set_fullscreen(desktop=True)`` laesst die eingestellte Groesse
+        unbeachtet; ein Regler, der dann scheinbar etwas verstellt, taeuschte.
+        Also zeigt er im Vollbild die Bildschirmgroesse („Nativ") und ist
+        gesperrt; zurueck im Fenster steht wieder die Liste.
+        """
+        s_res = self._stepper("change_resolution")
+        s_fs = self._stepper("toggle_fullscreen")
+        if s_res is None or s_fs is None or not hasattr(self, "_res_fenster"):
+            return
+        labels, idx = self._res_fenster
+        native = display.native_aufloesung()
+        if s_fs.index == 1 and native:
+            if s_res.enabled:
+                self._res_fenster = (labels, s_res.index)
+            s_res.options = [f"{native} ({tr('Nativ')})"]
+            s_res.index = 0
+            s_res.enabled = s_res.focusable = False
+        else:
+            if not s_res.enabled:
+                s_res.options = list(labels)
+                s_res.index = max(0, min(idx, len(labels) - 1))
+            s_res.enabled = s_res.focusable = True
+        if self._content_group:
+            self._content_group.fokus_richten()
 
     # -- Grafik ------------------------------------------------------------
     #: Zweite Spalte der Video-Seite: Stufe und je Feld ein Regler. Die
@@ -422,7 +459,10 @@ class SettingsPage(Page):
         return widgets
 
     def _stepper(self, aktion: str):
-        widgets = self._content_group.widgets if self._content_group else []
+        """Der Stepper zu *aktion* — auch im offenen Erweitert-Overlay."""
+        widgets = list(self._content_group.widgets if self._content_group else [])
+        if self._advanced_graphics is not None and self._advanced_graphics._content_group:
+            widgets += self._advanced_graphics._content_group.widgets
         return next((w for w in widgets if getattr(w, "action", None) == aktion), None)
 
     def _grafik_aendern(self, aktion: str) -> None:
@@ -497,25 +537,11 @@ class SettingsPage(Page):
                 self.osk = None
             return True
 
-        # Advanced graphics view overlay
+        # Erweitert-Overlay: ein Ereignis, ein Weg. Die Fokusgruppe wertet den
+        # Klick selbst aus (‹ zurück, › vor). Vorher lief der Klick zusätzlich
+        # noch einmal über ``activate()`` (immer +1): ‹ hob sich damit auf, ›
+        # sprang um zwei — „der linke Pfeil reagiert nicht".
         if self._advanced_graphics is not None:
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                # Forward mouse clicks to the advanced view's focus group
-                if self._advanced_graphics._content_group:
-                    self._advanced_graphics._content_group.handle_event(event)
-                    res = None
-                    # Check which widget was clicked
-                    for w in self._advanced_graphics._content_group.widgets:
-                        if getattr(w, "focusable", False) and w.hit(event.pos):
-                            res = w.activate()
-                            break
-                    if res == "grafik_back":
-                        self._advanced_graphics = None
-                        return True
-                    elif isinstance(res, str) and res.startswith("grafik_"):
-                        self._dispatch(res)
-                return True
-
             res = self._advanced_graphics.handle_event(event)
             if res == "grafik_back":
                 self._advanced_graphics = None
@@ -607,21 +633,11 @@ class SettingsPage(Page):
                 # Die Tab-Leiste gehoert der Shell; die fragt vorher bei
                 # verlassen_erlaubt() nach, ob hier noch etwas offen ist.
                 return None
-            if (self.categories[self.cat] == "Info" and self._issues_rect
-                    and self._issues_rect.collidepoint(event.pos)):
-                import webbrowser
-                webbrowser.open(_ISSUES_URL)
-                return True
-            if (self.categories[self.cat] == "Info" and self._crash_rect
-                    and self._crash_rect.collidepoint(event.pos)):
-                from src.core import absturz
-                absturz.oeffnen()
-                return True
-            if (self.categories[self.cat] == "Info" and self._lizenz_rect
-                    and self._lizenz_rect.collidepoint(event.pos)):
-                from src.core import paths
-                paths.datei_oeffnen(paths.bundle_dir() / "assets" / "LIZENZEN.md")
-                return True
+            if self.categories[self.cat] == "Info":
+                for kennung, rect in self._info_links():
+                    if rect.collidepoint(event.pos):
+                        self._info_link_oeffnen(kennung)
+                        return True
             for i, r in enumerate(self._cat_rects()):
                 if r.collidepoint(event.pos):
                     self.cat = i
@@ -719,17 +735,21 @@ class SettingsPage(Page):
             self._build_content()
 
     def _content_key(self, name: str, event: pygame.event.Event) -> None:
-        if name == "Allgemein" and self._name_input:
-            if event.key == pygame.K_RETURN:
-                # Controller: A opens the on-screen keyboard; keyboard: save.
+        if name == "Allgemein" and self._name_input and self._content_group:
+            gruppe = self._content_group
+            im_feld = gruppe.focused is self._name_input
+            if im_feld and event.key == pygame.K_RETURN:
+                # Controller: A oeffnet die Bildschirmtastatur; Tastatur: speichern.
                 if gamepad.using_pad() and self.osk is None:
                     self.osk = OnScreenKeyboard(self._name_input, on_done=self._save_name)
                 else:
                     self._save_name()
+                return
+            aktion = gruppe.handle_event(event)
+            if aktion == "edit" and im_feld:
+                self._save_name()
             else:
-                self._name_input.handle_key(event.key, getattr(event, "unicode", ""))
-                self._pending["username"] = self._name_input.text
-                self.msg = ""
+                self._dispatch(aktion)
         elif name == "Steuerung":
             rows = self._steuerung_rows
             if event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
@@ -756,11 +776,40 @@ class SettingsPage(Page):
             elif event.key in (pygame.K_DOWN, pygame.K_s, kb.get("brake")):
                 self._info_scroll = min(getattr(self, "_info_max_scroll", 0),
                                         self._info_scroll + _INFO_SCROLL_STEP)
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # Die Links unter dem Kasten waehlen — vorher gab es am Controller
+                # nur den ersten (Bugs melden); Absturzbericht und Lizenzen
+                # erreichte nur die Maus.
+                links = self._info_links()
+                if links:
+                    d = -1 if event.key == pygame.K_LEFT else 1
+                    self._info_link = (self._info_link + d) % len(links)
             elif event.key == pygame.K_RETURN:
-                import webbrowser
-                webbrowser.open(_ISSUES_URL)
+                links = self._info_links()
+                if links:
+                    self._info_link_oeffnen(links[self._info_link % len(links)][0])
         elif self._content_group:
             self._dispatch(self._content_group.handle_event(event))
+
+    def _info_links(self) -> list[tuple[str, pygame.Rect]]:
+        """Die Links unter „Info", die gerade da sind, in Zeichenreihenfolge."""
+        aus = []
+        for kennung, rect in (("issues", self._issues_rect), ("crash", self._crash_rect),
+                              ("lizenz", self._lizenz_rect)):
+            if rect is not None:
+                aus.append((kennung, rect))
+        return aus
+
+    def _info_link_oeffnen(self, kennung: str) -> None:
+        if kennung == "issues":
+            import webbrowser
+            webbrowser.open(_ISSUES_URL)
+        elif kennung == "crash":
+            from src.core import absturz
+            absturz.oeffnen()
+        elif kennung == "lizenz":
+            from src.core import paths
+            paths.datei_oeffnen(paths.bundle_dir() / "assets" / "LIZENZEN.md")
 
     def _draw_info(self, screen: pygame.Surface) -> None:
         from src.core import version as ver
@@ -930,6 +979,12 @@ class SettingsPage(Page):
         else:
             self._lizenz_rect = None
 
+        # Fokusrahmen um den gewaehlten Link (Tastatur/Controller).
+        links = self._info_links()
+        if self._focus_content and links:
+            rect = links[self._info_link % len(links)][1]
+            zeichnen.rect(screen, theme.ACCENT_HOT, rect.inflate(12, 4), 2, border_radius=6)
+
     def _draw_controller_info(self, screen: pygame.Surface) -> None:
         """Two controller slots (pad0/pad1) with a vibration identify action."""
         x, y = 1320, 168
@@ -980,7 +1035,11 @@ class SettingsPage(Page):
     def _save_name(self) -> None:
         # Buffer the edited name; the "Ungespeicherte Änderungen" hint above the
         # Save button already signals the pending state, so no extra message.
-        self._pending["username"] = self._name_input.text
+        # Steht wieder der gespeicherte Name im Feld, ist nichts mehr offen.
+        if self._name_input.text == profile.current().username:
+            self._pending.pop("username", None)
+        else:
+            self._pending["username"] = self._name_input.text
         self.msg = ""
 
     def _dispatch(self, action) -> None:
@@ -1035,6 +1094,7 @@ class SettingsPage(Page):
             self.msg = ""
         elif action == "toggle_fullscreen":
             self._pending["fullscreen"] = self._rohwert(action, 1)
+            self._video_abhaengigkeiten()
             self.msg = ""
         elif action == "change_fps":
             self._pending["fps_limit"] = self._rohwert(action, 2)
@@ -1144,11 +1204,9 @@ class SettingsPage(Page):
         name = self.categories[self.cat]
         if name == "Allgemein":
             theme.text(screen, tr("Benutzername"), theme.BODY, theme.TEXT_DIM, (560, 210))
-            self._name_input.draw(screen, focused=self._focus_content)
+            self._content_group.draw(screen, focused=self._focus_content)
             if self.osk:
                 self.osk.draw(screen)
-            else:
-                self._content_group.draw(screen, focused=self._focus_content)
         elif name == "Steuerung":
             theme.text(screen, tr("Tastatur & Maus"), theme.HEADER, theme.TEXT, (560, 168))
             for i, r in enumerate(self._bind_rects()):
@@ -1177,7 +1235,7 @@ class SettingsPage(Page):
                     max_widget_bottom = max(max_widget_bottom, w.rect.bottom)
             y = max_widget_bottom + 24  # Add margin below last widget
             for hinweis in (tr("Änderungen werden erst mit SPEICHERN übernommen."),
-                            tr("Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler)."),
+                            tr("Texturqualität: Hoch = schärfer in der Ferne, Niedrig = schneller (ab dem nächsten Rennen)."),
                             tr("Grafik wirkt sofort; Gelände, Gras und Deko ab dem nächsten Rennen.")):
                 for zeile in _umbrechen(hinweis, theme.HINT, 500):
                     theme.text(screen, zeile, theme.HINT, theme.TEXT_FAINT, (560, y))

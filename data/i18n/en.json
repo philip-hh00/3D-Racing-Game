@@ -149,6 +149,9 @@
   "Höchstens {n} Zeichen.": "At most {n} characters.",
   "Nur Buchstaben, Zahlen und Unterstrich.": "Only letters, numbers and underscore.",
   "Dieser Name ist nicht erlaubt.": "This name isn't allowed.",
+  "Dein Name ist nicht erlaubt. Bitte wähle im Profil einen anderen Namen.": "Your name isn't allowed. Please choose a different name in your profile.",
+  "Dieser Lobbyname ist nicht erlaubt.": "This lobby name isn't allowed.",
+  "Dieser Streckenname ist nicht erlaubt.": "This track name isn't allowed.",
   "FAHRZEUGAUSWAHL": "SELECT VEHICLE",
   "SPIELER 1 WÄHLT — {n}": "PLAYER 1 PICKS — {n}",
   "SPIELER 2 WÄHLT — {n}": "PLAYER 2 PICKS — {n}",
@@ -509,7 +512,8 @@
   "Werkzeug abbrechen": "Cancel tool",
   "wählen / platzieren": "select / place",
   "auswählen / Name bearbeiten": "select / edit name",
-  "Texturqualität: Hoch = weiche Skalierung, Niedrig = schneller (weniger Mikroruckler).": "Texture quality: High = smooth scaling, Low = faster (fewer micro-stutters).",
+  "Texturqualität: Hoch = schärfer in der Ferne, Niedrig = schneller (ab dem nächsten Rennen).": "Texture quality: High = sharper in the distance, Low = faster (from the next race).",
+  "Nativ": "native",
   "Fahrzeuge (inkl. beide)": "Vehicles (incl. both)",
   "Steuerung Spieler 1": "Controls Player 1",
   "Steuerung Spieler 2": "Controls Player 2",
@@ -970,5 +974,7 @@
   "Danke – {n} wurde gemeldet.": "Thanks – {n} has been reported.",
   "Meldung nicht möglich – keine Verbindung.": "Report not possible – no connection.",
   "Gemeldet": "Reported",
-  "ungültig": "invalid"
+  "ungültig": "invalid",
+  "Werkstatt / Weiter": "Workshop / Continue",
+  "Eigenschaften": "Properties"
 }

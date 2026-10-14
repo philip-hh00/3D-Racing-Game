@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import functools
 import hmac
 import json
 import logging
@@ -179,13 +180,13 @@ _ABSAGE_TEXT = {
 def saeubere_name(roh) -> str:
     """Einen Spielernamen auf unbedenkliche Zeichen bringen (H2.13).
 
-    Der Namensfilter des Spiels (``name_blacklist.json``) laeuft nur im Client;
+    Der Namensfilter (``name_blacklist.json``) lief anfangs nur im Client;
     der Server nahm ``str(msg["name"])[:20]`` ungeprueft und zeigte ihn allen.
     Damit konnte ein veraenderter Client Steuerzeichen, Zeilenumbrueche oder
     Zeichen aus der Rechts-nach-links-Ecke in jede fremde Lobbyliste schreiben.
 
-    Geprueft wird **nicht** gegen eine Wortliste — das bleibt Sache des Clients.
-    Hier geht es nur um die Zeichen selbst: Buchstaben und Ziffern in jeder
+    Gegen die Wortliste prueft :func:`name_gesperrt` (siehe Namensfilter unten);
+    hier geht es nur um die Zeichen selbst: Buchstaben und Ziffern in jeder
     Sprache bleiben (``isalnum``, also auch Umlaute und kyrillisch), dazu
     :data:`NAME_EXTRA`. Alles andere fliegt raus.
     """
@@ -193,6 +194,305 @@ def saeubere_name(roh) -> str:
     sauber = "".join(z for z in text if z.isalnum() or z in NAME_EXTRA)
     sauber = " ".join(sauber.split())[:20].strip()
     return sauber or "Spieler"
+
+
+# ── Namensfilter (Plan 1.1.0) ─────────────────────────────────────────────────
+#
+# Der Relay setzt die Sperrliste durch: Spielername (HOST/JOIN), Lobbyname
+# (HOST, SET_LOBBY_INFO) und Streckenname (TRACK_UPLOAD) werden abgelehnt, wenn
+# sie gegen ``name_blacklist.json`` verstossen. Die Antwort traegt den Code
+# ``BAD_NAME`` und ``field`` = ``player`` | ``lobby`` | ``track``; das Spiel
+# uebersetzt den Satz selbst.
+#
+# **Der Block zwischen den Marken ist buchstabengleich mit
+# ``src/core/namensfilter.py`` im Spiel** (Test: ``test_namensfilter``). Er
+# steht hier und nicht in einem Modul, weil der Relay als einzelne Datei auf den
+# Server kopiert wird. Die Liste liegt neben dieser Datei
+# (``server/name_blacklist.json``, wie ``live_config.json``) und wird neu
+# gelesen, sobald sie sich aendert - ein Neustart ist nicht noetig.
+
+# --- NAMENSFILTER BEGIN ---
+import re as _nf_re
+import unicodedata as _nf_ud
+
+_NF_LEET = {"0": "o", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a",
+            "$": "s", "+": "t", "(": "c", chr(0x20AC): "e"}
+_NF_EINS = "1!|"
+_NF_GLYPHEN = {
+    # kyrillisch -> lateinisch (gleiches Aussehen); Schluessel sind Codepunkte; Schluessel sind Codepunkte
+    0x0430: "a", 0x0432: "b", 0x0435: "e", 0x0451: "e", 0x043A: "k",
+    0x043C: "m", 0x043D: "h", 0x043E: "o", 0x0440: "p", 0x0441: "c",
+    0x0442: "t", 0x0443: "y", 0x0445: "x", 0x0456: "i", 0x0458: "j",
+    0x0455: "s", 0x0491: "r",
+    # griechisch
+    0x03B1: "a", 0x03B2: "b", 0x03B5: "e", 0x03B9: "i", 0x03BA: "k",
+    0x03BD: "v", 0x03BF: "o", 0x03C1: "p", 0x03C4: "t", 0x03C5: "u",
+    0x03C7: "x", 0x03C9: "w",
+}
+_NF_KYRILLISCH = {
+    0x0430: "a", 0x0431: "b", 0x0432: "v", 0x0433: "g", 0x0434: "d",
+    0x0435: "e", 0x0451: "e", 0x0436: "zh", 0x0437: "z", 0x0438: "i",
+    0x0439: "y", 0x043A: "k", 0x043B: "l", 0x043C: "m", 0x043D: "n",
+    0x043E: "o", 0x043F: "p", 0x0440: "r", 0x0441: "s", 0x0442: "t",
+    0x0443: "u", 0x0444: "f", 0x0445: "kh", 0x0446: "ts", 0x0447: "ch",
+    0x0448: "sh", 0x0449: "shch", 0x044A: "", 0x044B: "y", 0x044C: "",
+    0x044D: "e", 0x044E: "yu", 0x044F: "ya", 0x0456: "i", 0x0491: "g",
+    0x0454: "e", 0x0457: "yi",
+}
+_NF_SONDER = {"ß": "ss", "æ": "ae", "œ": "oe", "ø": "o",
+              "đ": "d", "ð": "d", "ł": "l", "ı": "i",
+              "þ": "th"}
+_NF_UMLAUTE = {"ä": "a", "ö": "o", "ü": "u"}
+
+
+def _nf_buchstaben(text: str, ausschreiben: bool) -> str:
+    """Akzente weg; ``ä ö ü`` als ``a o u`` oder (ausschreiben) ``ae oe ue``."""
+    aus = []
+    for z in text:
+        if z in _NF_UMLAUTE:
+            aus.append(_NF_UMLAUTE[z] + ("e" if ausschreiben else ""))
+        elif z in _NF_SONDER:
+            aus.append(_NF_SONDER[z])
+        elif z.isascii():
+            aus.append(z)
+        else:
+            aus.append("".join(c for c in _nf_ud.normalize("NFKD", z)
+                               if not _nf_ud.combining(c)))
+    return "".join(aus)
+
+
+def _nf_lesarten(text: str) -> list:
+    """Alle Lesarten von *text* als ``(streng, Ansicht)``.
+
+    ``Ansicht`` besteht nur aus ``a-z``, ``0-9`` und Leerzeichen (Trenner).
+    ``streng`` ist wahr, wenn keine Leetspeak-Ersetzung stattfand.
+    """
+    t = _nf_ud.normalize("NFKC", text).lower()
+    t = "".join(z for z in t if _nf_ud.category(z) != "Cf")
+    skripte = [t.translate(_NF_GLYPHEN)]
+    if any(0x0400 <= ord(z) <= 0x04FF for z in t):
+        skripte.append("".join(_NF_KYRILLISCH.get(ord(z), z) for z in t))
+    aus = []
+    gesehen = set()
+    for s in skripte:
+        for ausschreiben in (False, True):
+            u = _nf_buchstaben(s, ausschreiben)
+            for modus in (0, 1, 2):
+                if modus == 0:
+                    v = u
+                else:
+                    ein = "i" if modus == 1 else "l"
+                    v = "".join(ein if z in _NF_EINS else _NF_LEET.get(z, z)
+                                for z in u)
+                v = _nf_re.sub(r"[^a-z0-9]+", " ", v).strip()
+                if (modus == 0, v) not in gesehen:
+                    gesehen.add((modus == 0, v))
+                    aus.append((modus == 0, v))
+    return aus
+
+
+def _nf_camel(text: str) -> str:
+    """Trenner an Grossbuchstaben-Wechseln: ``ServerAdmin`` -> ``Server Admin``."""
+    aus = []
+    for i, z in enumerate(text):
+        if i and z.isupper() and text[i - 1].isalpha():
+            if text[i - 1].islower() or (i + 1 < len(text) and text[i + 1].islower()):
+                aus.append(" ")
+        aus.append(z)
+    return "".join(aus)
+
+
+def _nf_rle(s: str) -> tuple:
+    """``'fuuck'`` -> ``('fuck', (1, 2, 1, 1))``: Buchstaben und Wiederholungen."""
+    buchstaben, zaehler = [], []
+    for z in s:
+        if buchstaben and buchstaben[-1] == z:
+            zaehler[-1] += 1
+        else:
+            buchstaben.append(z)
+            zaehler.append(1)
+    return "".join(buchstaben), tuple(zaehler)
+
+
+def _nf_eintrag(wort) -> str:
+    w = _nf_ud.normalize("NFKD", str(wort).lower())
+    w = "".join(z for z in w if not _nf_ud.combining(z))
+    return "".join(z for z in w if z.isascii() and z.isalnum())
+
+
+def nf_kompiliere(enthalten, ganzes_wort) -> dict:
+    """Die Listen in eine Form bringen, in der ein Name schnell geprueft wird."""
+    teil, ganz, ziffern = {}, {}, {"teil": {}, "ganz": {}}
+    for gruppe, wort in ([("teil", w) for w in enthalten]
+                         + [("ganz", w) for w in ganzes_wort]):
+        w = _nf_eintrag(wort)
+        if not w:
+            continue
+        ziel = ziffern[gruppe] if any(z.isdigit() for z in w) else \
+            (teil if gruppe == "teil" else ganz)
+        buchstaben, zaehler = _nf_rle(w)
+        # Gedehnte Buchstaben (``fuuuck``) zaehlen bei Teilwoertern und bei
+        # ganzen Woertern ab 5 Zeichen; ein kurzes ganzes Wort muss genau
+        # stimmen, sonst waere ``Boot`` ein ``bot`` und ``Mood`` ein ``mod``.
+        exakt = gruppe == "ganz" and len(w) < 5
+        ziel.setdefault(buchstaben, []).append((zaehler, exakt))
+    laengen = {"teil": sorted({len(k) for k in teil}),
+               "ziffern": sorted({len(k) for k in ziffern["teil"]})}
+    return {"teil": teil, "ganz": ganz, "ziffern": ziffern, "laengen": laengen}
+
+
+def _nf_zaehler_passt(eintrag, vorhanden) -> bool:
+    gefordert, exakt = eintrag
+    if exakt:
+        return tuple(vorhanden) == tuple(gefordert)
+    return all(v >= g for g, v in zip(gefordert, vorhanden))
+
+
+def _nf_teil(rle: tuple, tabelle: dict, laengen, mindest: int = 0) -> bool:
+    """Ob ein Eintrag der Tabelle als Teilstueck in *rle* steckt. *mindest* ist
+    die Zeichenzahl, die der Eintrag haben muss, um zu zaehlen."""
+    buchstaben, zaehler = rle
+    for n in laengen:
+        for i in range(len(buchstaben) - n + 1):
+            for gefordert in tabelle.get(buchstaben[i:i + n], ()):
+                if sum(gefordert[0]) >= mindest and _nf_zaehler_passt(
+                        gefordert, zaehler[i:i + n]):
+                    return True
+    return False
+
+
+def _nf_ganz(wort: str, tabelle: dict) -> bool:
+    buchstaben, zaehler = _nf_rle(wort)
+    return any(_nf_zaehler_passt(g, zaehler) for g in tabelle.get(buchstaben, ()))
+
+
+def _nf_zusammenziehen(woerter: list) -> list:
+    """Drei oder mehr Einzelbuchstaben hintereinander -> ein Wort (``f u c k``)."""
+    aus, lauf = [], []
+    for w in woerter + [""]:
+        if len(w) == 1 and w.isalpha():
+            lauf.append(w)
+            continue
+        if len(lauf) >= 3:
+            aus.append("".join(lauf))
+        lauf = []
+    return aus
+
+
+#: Ab so vielen Buchstaben darf ein ``enthalten``-Wort auch ueber Leerzeichen
+#: und Satzzeichen hinweg treffen (``schwanz lutscher``). Kuerzer waere das
+#: Risiko zu gross, dass zwei harmlose Woerter zusammen eines ergeben.
+_NF_ZUSAMMEN_AB = 6
+
+
+def nf_gesperrt(text, kompiliert: dict) -> bool:
+    """Ob *text* gegen die Sperrliste verstoesst. ``kompiliert`` kommt von
+    :func:`nf_kompiliere`."""
+    roh = str(text or "")[:120]
+    if not roh.strip():
+        return False
+    teil, ganz, zif = kompiliert["teil"], kompiliert["ganz"], kompiliert["ziffern"]
+    l_teil, l_zif = kompiliert["laengen"]["teil"], kompiliert["laengen"]["ziffern"]
+    for mit_camel in (False, True):
+        quelle = _nf_camel(roh) if mit_camel else roh
+        for streng, ansicht in _nf_lesarten(quelle):
+            woerter = ansicht.split()
+            buchstabenwoerter = _nf_re.findall(r"[a-z]+", ansicht)
+            zus = _nf_zusammenziehen(woerter)
+            for w in buchstabenwoerter + zus:
+                if _nf_ganz(w, ganz):
+                    return True
+            if streng:
+                for w in woerter:
+                    if _nf_ganz(w, zif["ganz"]):
+                        return True
+            if mit_camel:
+                continue
+            # Teilzeichenketten: nur die Lesart ohne Grossbuchstaben-Trenner,
+            # sonst traefe ein Wort, das ueber eine Grenze hinweg entsteht.
+            for w in woerter + zus:
+                rle = _nf_rle(w)
+                if _nf_teil(rle, teil, l_teil):
+                    return True
+                if streng and _nf_teil(rle, zif["teil"], l_zif):
+                    return True
+            zusammen = "".join(woerter)
+            if len(woerter) > 1 and len(zusammen) >= _NF_ZUSAMMEN_AB:
+                rle = _nf_rle(zusammen)
+                if _nf_teil(rle, teil, l_teil, _NF_ZUSAMMEN_AB):
+                    return True
+                if streng and _nf_teil(rle, zif["teil"], l_zif):
+                    return True
+    return False
+# --- NAMENSFILTER END ---
+
+_NAMENSLISTE_PFADE = (
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "name_blacklist.json"),
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir,
+                 "data", "settings", "name_blacklist.json"),
+)
+_namensliste = {"pfad": None, "stand": None, "kompiliert": None, "stempel": 0,
+                "gemeldet": False}
+NAME_ABSAGE_TEXT = "Dieser Name ist nicht erlaubt."
+
+
+def _namensliste_holen() -> dict:
+    """Die kompilierte Sperrliste; liest die Datei neu, wenn sie sich geaendert hat."""
+    for pfad in _NAMENSLISTE_PFADE:
+        try:
+            stand = os.stat(pfad).st_mtime_ns
+        except OSError:
+            continue
+        n = _namensliste
+        if n["pfad"] == pfad and n["stand"] == stand and n["kompiliert"] is not None:
+            return n["kompiliert"]
+        try:
+            with open(pfad, encoding="utf-8") as f:
+                daten = json.load(f)
+            if isinstance(daten, dict):
+                enthalten = [str(w) for w in daten.get("enthalten", []) if w]
+                ganz = [str(w) for w in daten.get("ganzes_wort", []) if w]
+            else:
+                enthalten, ganz = [str(w) for w in daten if w], []
+            kompiliert = nf_kompiliere(enthalten, ganz)
+        except Exception as exc:
+            log.error(f"Namensliste {pfad} unlesbar: {exc}")
+            continue
+        n.update(pfad=pfad, stand=stand, kompiliert=kompiliert,
+                 stempel=n["stempel"] + 1, gemeldet=False)
+        _name_geprueft.cache_clear()
+        log.info(f"Namensliste geladen: {pfad} ({len(enthalten)} enthalten, "
+                 f"{len(ganz)} ganzes Wort)")
+        return kompiliert
+    if _namensliste["kompiliert"] is not None:
+        return _namensliste["kompiliert"]      # Datei verschwunden: die alte gilt weiter
+    if not _namensliste["gemeldet"]:
+        _namensliste["gemeldet"] = True
+        log.error("Keine name_blacklist.json gefunden - der Namensfilter ist AUS. "
+                  "Die Datei gehoert neben server.py.")
+    return nf_kompiliere([], [])
+
+
+@functools.lru_cache(maxsize=4096)
+def _name_geprueft(text: str, stempel: int) -> bool:
+    return nf_gesperrt(text, _namensliste["kompiliert"])
+
+
+def name_gesperrt(*texte) -> bool:
+    """Ob einer der Texte gegen die Sperrliste verstoesst (leere zaehlen nicht)."""
+    _namensliste_holen()
+    stempel = _namensliste["stempel"]
+    for t in texte:
+        if t is None or t == "":
+            continue
+        if _name_geprueft(str(t)[:120], stempel):
+            return True
+    return False
+
+
+def namens_absage(feld: str) -> dict:
+    """Die Antwort auf einen verbotenen Namen (``field``: player/lobby/track)."""
+    return {"code": "BAD_NAME", "field": feld, "reason": NAME_ABSAGE_TEXT}
 
 
 def _settings_groesse(werte: dict) -> int:
@@ -833,6 +1133,10 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             if absage is not None:
                 await _send(writer, absage)
                 return
+            # Verbotener Spielername: wer so heisst, spielt nicht online.
+            if name_gesperrt(msg.get("name"), name):
+                await _send(writer, dict(namens_absage("player"), type="JOIN_FAIL"))
+                return
             # Aufnahmesperre: **HOST ja, JOIN nein** (H2.14). Eine neue Lobby
             # ist der teure Vorgang; einem Freund den Beitritt in eine schon
             # laufende Lobby zu verweigern waere die falsche Sparsamkeit — der
@@ -853,8 +1157,7 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             try:
                 angaben = lobby_angaben(msg, name)
             except _LobbyFehler as f:
-                await _send(writer, {"type": "JOIN_FAIL", "code": f.code,
-                                     "reason": f.reason})
+                await _send(writer, dict(f.antwort(), type="JOIN_FAIL"))
                 return
             lobby = _registry.create()
             lobby.inhalt = inhalt
@@ -891,6 +1194,9 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             absage = schutz.dateien_pruefen(msg, client_v, ip)
             if absage is not None:
                 await _send(writer, absage)
+                return
+            if name_gesperrt(msg.get("name"), name):
+                await _send(writer, dict(namens_absage("player"), type="JOIN_FAIL"))
                 return
             lid = str(msg.get("lobby_id", "")).upper().strip()
             if lid[:1] != SERVER_TAG:
@@ -1795,15 +2101,17 @@ _STRECKEN_TEXT = {
     "RATE":        "Zu viele Anfragen. Bitte einen Moment warten.",
     "SERVER_BUSY": "Server ist gerade ausgelastet — versuch es in ein paar Minuten noch einmal.",
     "ERROR":       "Der Server konnte die Anfrage nicht bearbeiten.",
+    "BAD_NAME":    "Dieser Name ist nicht erlaubt.",
 }
 
 
 class _StreckenFehler(Exception):
     """Eine Absage mit Kennung; ``reason`` bekommt der Spieler zu lesen."""
 
-    def __init__(self, code: str, text: str = "") -> None:
+    def __init__(self, code: str, text: str = "", feld: str = "") -> None:
         super().__init__(code)
         self.code = code
+        self.feld = feld
         self.reason = text or _STRECKEN_TEXT.get(code, _STRECKEN_TEXT["ERROR"])
 
 
@@ -1811,9 +2119,8 @@ def saeubere_text(roh, laenge: int, vorgabe: str, extra: str = NAME_EXTRA) -> st
     """Wie :func:`saeubere_name`, aber mit eigener Laenge und Vorgabe.
 
     Buchstaben und Ziffern jeder Sprache bleiben, dazu *extra*; Steuerzeichen,
-    Zeilenumbrueche und alles andere fliegen raus. Eine Wortliste gibt es hier
-    nicht — das bleibt Sache des Clients, der Anzeigen mit gesperrten Woertern
-    ausblendet.
+    Zeilenumbrueche und alles andere fliegen raus. Die Wortliste prueft der
+    Aufrufer mit :func:`name_gesperrt`.
     """
     text = str(roh)[:laenge * 2]
     sauber = "".join(z for z in text if z.isalnum() or z in extra)
@@ -2221,6 +2528,16 @@ class StreckenSpeicher:
 
     # -- Lesen ---------------------------------------------------------------
     @staticmethod
+    def _erlaubt(t: dict) -> bool:
+        """Ob Name und Autor die aktuelle Sperrliste bestehen.
+
+        Strecken, die vor dem Filter (oder vor einer Erweiterung der Liste)
+        hochgeladen wurden, bleiben auf der Platte, tauchen aber weder in der
+        Liste auf noch lassen sie sich laden.
+        """
+        return not name_gesperrt(t.get("name", ""), t.get("author", ""))
+
+    @staticmethod
     def _oeffentlich(t: dict) -> dict:
         return {k: t[k] for k in ("id", "name", "author", "theme", "difficulty",
                                   "length", "pieces", "outline", "created")
@@ -2232,6 +2549,7 @@ class StreckenSpeicher:
         je_seite = max(1, min(STRECKEN_SEITE_MAX, int(je_seite)))
         suche = suche.strip().lower()[:30]
         treffer = [t for t in self.tracks.values() if not t.get("hidden")
+                   and self._erlaubt(t)
                    and (not suche or suche in str(t.get("name", "")).lower()
                         or suche in str(t.get("author", "")).lower())]
         if sortierung == "downloads":
@@ -2248,7 +2566,7 @@ class StreckenSpeicher:
     def holen(self, tid: str) -> dict:
         self._frisch()
         t = self.tracks.get(tid)
-        if t is None or t.get("hidden"):
+        if t is None or t.get("hidden") or not self._erlaubt(t):
             raise _StreckenFehler("NOT_FOUND")
         try:
             with open(self._datei(tid), encoding="utf-8") as f:
@@ -2338,12 +2656,22 @@ async def _strecken_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) ->
             if msg.get("name"):
                 entwurf["name"] = saeubere_text(msg["name"], 40, entwurf["name"])
             autor = saeubere_name(msg.get("author", "Spieler"))
+            # Verbotene Namen: Strecke und Beschreibung gehen an alle, die sie
+            # laden - roh und gesaeubert pruefen (die Saeuberung entfernt
+            # Zeichen, die einen Namen zerlegen koennten).
+            if name_gesperrt(roh.get("name") if isinstance(roh, dict) else None,
+                             roh.get("description") if isinstance(roh, dict) else None,
+                             msg.get("name"), entwurf["name"], entwurf["description"]):
+                raise _StreckenFehler("BAD_NAME", feld="track")
+            if name_gesperrt(msg.get("author"), autor):
+                raise _StreckenFehler("BAD_NAME", feld="player")
             meta = speicher.hochladen(entwurf, angaben, autor, schluessel, faktor)
             log.info(f"Strecke hochgeladen: {meta['id']} '{meta['name']}' von '{autor}'")
             await _send(writer, {"type": "TRACK_UPLOAD_OK", "id": meta["id"],
                                  "name": meta["name"]})
     except _StreckenFehler as f:
-        await _send(writer, {"type": "TRACK_ERROR", "code": f.code, "reason": f.reason})
+        await _send(writer, dict({"type": "TRACK_ERROR", "code": f.code, "reason": f.reason},
+                                 **({"field": f.feld} if f.feld else {})))
     except Exception as exc:
         log.error(f"Streckenanfrage {t} fehlgeschlagen: {exc}", exc_info=True)
         try:
@@ -2409,6 +2737,7 @@ _LOBBY_TEXT = {
     "BAD_VISIBILITY":      "Ungültige Sichtbarkeit.",
     "BAD_PASSWORD_FORMAT": f"Das Passwort muss {PW_MIN} bis {PW_MAX} Zeichen lang sein.",
     "RATE":                "Zu viele Anfragen. Bitte einen Moment warten.",
+    "BAD_NAME":            "Dieser Name ist nicht erlaubt.",
 }
 
 
@@ -2445,10 +2774,18 @@ def _absender_schluessel(ip: str, msg: dict) -> tuple:
 class _LobbyFehler(Exception):
     """Eine Absage mit Kennung; ``reason`` bekommt der Spieler zu lesen."""
 
-    def __init__(self, code: str, text: str = "") -> None:
+    def __init__(self, code: str, text: str = "", feld: str = "") -> None:
         super().__init__(code)
         self.code = code
+        self.feld = feld
         self.reason = text or _LOBBY_TEXT.get(code, "Fehler.")
+
+    def antwort(self) -> dict:
+        """Code, Begruendung und (falls gesetzt) das Feld, das abgelehnt wurde."""
+        a = {"code": self.code, "reason": self.reason}
+        if self.feld:
+            a["field"] = self.feld
+        return a
 
 
 # -- Passwort -----------------------------------------------------------------
@@ -2576,6 +2913,11 @@ def lobby_angaben(msg: dict, hostname: str, alt: Optional[Lobby] = None) -> tupl
     if not isinstance(sicht, str) or sicht not in SICHTBARKEITEN:
         raise _LobbyFehler("BAD_VISIBILITY")
     name = _lobby_text(name_roh, LOBBYNAME_MAX, vorgabe_name) if name_roh else vorgabe_name
+    # Nur ein Name, den der Host selbst schickt, wird geprueft: der Vorgabename
+    # besteht aus seinem (schon geprueften) Spielernamen. Eine Aenderung ohne
+    # ``lobby_name`` laesst den bisherigen Namen stehen.
+    if "lobby_name" in msg and name_roh and name_gesperrt(name_roh, name):
+        raise _LobbyFehler("BAD_NAME", feld="lobby")
     pw = None
     if sicht == SICHT_PASSWORT:
         if msg.get("password") not in (None, ""):
@@ -2613,7 +2955,7 @@ async def _lobby_info_aendern(lobby: Lobby, conn: ClientConn, msg: dict) -> None
     try:
         sicht, name, pw = lobby_angaben(msg, conn.name, alt=lobby)
     except _LobbyFehler as f:
-        await _send(conn.writer, {"type": "ERROR", "code": f.code, "reason": f.reason})
+        await _send(conn.writer, dict(f.antwort(), type="ERROR"))
         return
     if pw is not None:
         lobby.pw_geaendert = time.monotonic()

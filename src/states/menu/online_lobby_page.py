@@ -738,6 +738,9 @@ class OnlineLobbyPage(Page):
             elif data.get("code") in ("MODIFIED_FILES", "KICKED", "WRONG_GAME"):
                 self._msg = self._schutz_text(data.get("code"), data.get("reason"),
                                               "Beitritt fehlgeschlagen.")
+            elif data.get("code") == "BAD_NAME":
+                from src.net import servertext
+                self._msg = servertext.name_absage(data.get("field"))
             elif data.get("code") == "VERSION_MISMATCH":
                 req = data.get("required_version", "?")
                 from src.core.version import VERSION
@@ -1017,6 +1020,9 @@ class OnlineLobbyPage(Page):
                 self._melde(tr("Während des Rennens kann niemand entfernt werden."))
             elif str(data.get("code", "")).startswith("KICK_"):
                 self._melde(tr("Der Spieler konnte nicht entfernt werden."))
+            elif data.get("code") == "BAD_NAME":
+                from src.net import servertext
+                self._msg = servertext.name_absage(data.get("field"))
             else:
                 self._msg = self._servertext(data.get("reason"), "Server-Fehler.")
 

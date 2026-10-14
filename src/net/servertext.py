@@ -125,3 +125,21 @@ def saeubere_ankuendigung(roh) -> dict | None:
     if not any(aus["title"].values()) and not any(aus["text"].values()):
         return None
     return aus
+
+
+def name_absage(feld: str = "") -> str:
+    """Der Satz zur Absage ``BAD_NAME`` des Relays, uebersetzt.
+
+    Der Relay setzt die Sperrliste durch (``name_blacklist.json``) und nennt in
+    ``field``, welcher Name es war: ``player``, ``lobby`` oder ``track``. Der
+    Satz kommt aus dem Spiel, nicht vom Relay - so steht er in der Sprache des
+    Spielers, und ein Relay kann an dieser Stelle keinen eigenen Text einblenden.
+    """
+    from src.core.i18n import tr
+    if feld == "player":
+        return tr("Dein Name ist nicht erlaubt. Bitte wähle im Profil einen anderen Namen.")
+    if feld == "lobby":
+        return tr("Dieser Lobbyname ist nicht erlaubt.")
+    if feld == "track":
+        return tr("Dieser Streckenname ist nicht erlaubt.")
+    return tr("Dieser Name ist nicht erlaubt.")

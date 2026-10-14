@@ -766,7 +766,7 @@ def test_namen_werden_auf_unbedenkliche_zeichen_gebracht(roh, erwartet):
 def test_ein_name_mit_steuerzeichen_landet_nicht_in_der_lobbyliste(relay):
     wirt, ok = _host(relay)
     try:
-        d, _ok2 = _join(relay, ok["lobby_id"], name="Ha\x00ck\ner\x1b[0m")
+        d, _ok2 = _join(relay, ok["lobby_id"], name="Ma\x00ri\ne\x1b[0m")
         try:
             zustand = wirt.warten_auf("LOBBY_STATE")
             assert zustand is not None

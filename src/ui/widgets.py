@@ -682,6 +682,13 @@ class OnScreenKeyboard:
             list(letters[20:26]) + ["a/A", "_", "0", "1", "2"],
             ["3", "4", "5", "6", "7", "8", "9", "Leer", "Löschen", "Fertig"]
         ]
+        # Sonderzeichen nur, wo das Feld sie annimmt. Ein Passwort darf jedes
+        # druckbare Zeichen enthalten, ein Lobbyname Bindestrich, Punkt und
+        # Apostroph (der Vorgabename „X's Lobby" hat einen) — ohne diese Reihen
+        # liesse sich beides am Controller nicht eintippen oder aendern.
+        if getattr(self.target, "allowed", None) is None:
+            self.layout.append(list("-.',:;!?@#"))
+            self.layout.append(list("$%&*+=()/~"))
 
     def update(self, dt: float) -> None:
         self._cursor_timer += dt
@@ -775,7 +782,7 @@ class OnScreenKeyboard:
     def draw(self, screen: pygame.Surface) -> None:
         w, h = screen.get_size()
         panel_w = 720
-        panel_h = 240
+        panel_h = 60 * len(self.layout)
         panel_x = w // 2 - panel_w // 2
         panel_y = h - panel_h - 40
         rect = pygame.Rect(panel_x, panel_y, panel_w, panel_h)

@@ -70,6 +70,7 @@ def text_fuer(code: str, vom_server: str = "") -> str:
         "RATE":        tr("Zu viele Anfragen. Bitte einen Moment warten."),
         "SERVER_BUSY": tr("Server ist gerade ausgelastet — versuch es in ein paar Minuten noch einmal."),
         "ERROR":       tr("Der Server konnte die Anfrage nicht bearbeiten."),
+        "BAD_NAME":    tr("Dieser Name ist nicht erlaubt."),
         "ANTWORT":     tr("Unerwartete Antwort vom Server."),
     }
     return tabelle.get(code) or vom_server or tabelle["ERROR"]
@@ -141,6 +142,11 @@ def anfrage(sd: ServerDef, msg: dict, timeout: float = TIMEOUT) -> dict:
         raise StreckenFehler("ANTWORT")
     if antwort.get("type") == "TRACK_ERROR":
         code = str(antwort.get("code", "ERROR"))
+        if code == "BAD_NAME":
+            # Der Relay prueft Streckenname und Autor gegen die Sperrliste;
+            # ``field`` sagt, welcher von beiden es war.
+            from src.net import servertext
+            raise StreckenFehler(code, servertext.name_absage(antwort.get("field")))
         raise StreckenFehler(code, text_fuer(code, str(antwort.get("reason", ""))))
     return antwort
 

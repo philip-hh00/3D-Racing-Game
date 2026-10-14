@@ -500,6 +500,23 @@ def alpha_mipstufen(alpha: np.ndarray, schwelle: float) -> list[np.ndarray]:
     return stufen
 
 
+def textur_anisotropie() -> float:
+    """Anisotrope Filterung der Texturen nach der Einstellung „Texturqualität".
+
+    Hoch = 8×: Asphalt und Randstreifen bleiben auch weit voraus scharf.
+    Niedrig = 1× (nur trilinear): weniger Texturzugriffe auf schwachen
+    Grafikkarten, die Strecke verwischt in der Ferne früher. Wirkt für Texturen,
+    die danach geladen werden, also ab dem nächsten Rennen.
+    """
+    try:
+        from src.core import profile
+        if getattr(profile.current(), "texture_quality", "Hoch") != "Hoch":
+            return 1.0
+    except Exception:                                # pragma: no cover - ohne Profil
+        pass
+    return 8.0
+
+
 def textur_hochladen(ctx: "moderngl.Context", bild: "Image.Image | None",
                      wiederholen: bool = True, schwelle: float | None = None):
     """Ein PIL-Bild als ModernGL-Textur hochladen, mit Mipmaps.
@@ -529,7 +546,7 @@ def textur_hochladen(ctx: "moderngl.Context", bild: "Image.Image | None",
     textur.repeat_x = wiederholen
     textur.repeat_y = wiederholen
     try:
-        textur.anisotropy = 8.0
+        textur.anisotropy = textur_anisotropie()
     except Exception:                                # pragma: no cover - Treiber
         pass
     return textur

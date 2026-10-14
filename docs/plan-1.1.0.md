@@ -141,3 +141,44 @@ braucht dieselbe Änderung, dann Version 1.1.0 für beide Spiele.
 - Nicht gemacht: Tropfen auf der Frontscheibe im Cockpit.
 - Gefunden: `ctx.depth_mask = …` ist in moderngl wirkungslos (siehe `VEREINBARUNGEN.md`).
 
+## Namensfilter (Relay setzt ihn durch)
+
+Die Sperrliste (`name_blacklist.json`, `enthalten` und `ganzes_wort`) gilt jetzt
+auch auf dem Relay, nicht nur im Client. Alte 1.0.x-Clients kommen ohnehin nicht
+mehr an den Relay (Pflichtversion 1.1.0).
+
+- **Liste:** vier gleiche Kopien: `data/settings/name_blacklist.json` und
+  `server/name_blacklist.json` in 3D-Spiel **und** 2D-Spiel. Der Relay liest
+  `name_blacklist.json` neben `server.py` (die Unit startet
+  `racing-server/server/server.py`, also liegt die Datei in
+  `racing-server/server/`), sonst `../data/settings/`. Er liest die Datei neu,
+  sobald sie sich ändert; ein Neustart ist nicht nötig. Fehlt sie, steht im
+  Journal „Namensfilter ist AUS".
+- **Prüfung:** `src/core/namensfilter.py` (nur Standardbibliothek). Der Block
+  zwischen `NAMENSFILTER BEGIN/END` steht buchstabengleich in
+  `server/server.py`; `tests/test_namensfilter.py` vergleicht beide und pinnt
+  den Listeninhalt mit `LISTEN_HASH` (in beiden Repos gleich).
+- **Lesarten:** Groß/Klein, Akzente, `ä ö ü` als `a o u` und als `ae oe ue`,
+  `ß`, Voll- und Sonderbreite, kyrillische/griechische Doppelgänger,
+  Kyrillisch als Umschrift, Leetspeak (`0 3 4 5 7 @ $ + (`, `1 ! |` als i und l),
+  Trenner (`f.u.c.k`, `f u c k`), gedehnte Buchstaben (`fuuuck`), Wörter ab
+  6 Buchstaben auch über Leerzeichen, Großbuchstaben-Wechsel (`ServerAdmin`).
+  Kurze `ganzes_wort`-Einträge müssen genau stimmen (`Boot` ist kein `bot`).
+- **Zahlencodes:** `1488` überall, `88` nur als eigene Zahl (`Hans_88`, nicht
+  `Hans88`), `hh88`; `HH` allein bleibt erlaubt (Hamburg).
+- **Ablehnung:** `BAD_NAME` mit `field` = `player` (HOST, JOIN, Autor beim
+  Hochladen), `lobby` (HOST, `SET_LOBBY_INFO`) oder `track` (`TRACK_UPLOAD`: Name
+  und Beschreibung). Bei HOST/JOIN kommt `JOIN_FAIL`, bei `SET_LOBBY_INFO`
+  `ERROR`, bei Strecken `TRACK_ERROR`. Der Vorgabename „<Name>'s Lobby" wird
+  nicht geprüft (er besteht aus dem schon geprüften Spielernamen).
+- **Gespeicherte Strecken:** mit verbotenem Namen oder Autor tauchen sie weder
+  in `TRACK_LIST` auf noch lassen sie sich mit `TRACK_GET` laden.
+- **Spiel:** `servertext.name_absage(feld)` liefert den übersetzten Satz; der
+  `reason` des Relays wird bei `BAD_NAME` nicht angezeigt.
+- **Neue Wörter:** in `ganzes_wort`, wenn sie als Silbe in normalen Namen
+  vorkommen können. Danach `tests/test_namensfilter.py` laufen lassen (Liste
+  harmloser Namen), `LISTEN_HASH` in beiden Repos nachziehen, die vier Dateien
+  kopieren und die Datei auf dem Relay ersetzen (kein Neustart).
+- **Relay-Kopien:** `server/server.py` des 3D-Repos wird von den 3D-Tests
+  (`tests/strecken_hilfe.py`) geladen und ist bis auf `inhalt`/`DATA_MISMATCH`
+  gleich zum Relay im 2D-Repo, der live läuft. Änderungen am Filter in beide.

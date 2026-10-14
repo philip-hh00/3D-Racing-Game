@@ -449,7 +449,7 @@ def _maske_hochladen(ctx, maske: np.ndarray):
     textur.repeat_x = False
     textur.repeat_y = True
     try:
-        textur.anisotropy = 8.0
+        textur.anisotropy = mesh.textur_anisotropie()
     except Exception:                                # pragma: no cover - Treiber
         pass
     return textur

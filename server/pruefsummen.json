@@ -1,6 +1,38 @@
 {
  "format": 1,
  "spiele": {
+  "2d": {
+   "1.1.0": {
+    "summen": [
+     "c35f9b7b109728e78a706f5cbcd045b10dbcd438d8d3b762a3f75752261f21df"
+    ],
+    "dateien": 23,
+    "fahrzeuge": {
+     "drifter": 723.472,
+     "drifter_2": 723.472,
+     "drifter_3": 723.472,
+     "electric": 666.111,
+     "electric_2": 666.111,
+     "electric_3": 596.666,
+     "limousine": 983.888,
+     "limousine_2": 949.166,
+     "limousine_3": 983.888,
+     "rookie": 886.111,
+     "rookie_2": 851.389,
+     "rookie_3": 886.111,
+     "supercar": 983.888,
+     "supercar_2": 914.444,
+     "supercar_3": 983.888
+    },
+    "strecken": {
+     "city": 7994.2,
+     "desert": 7136.4,
+     "gp": 7636.4,
+     "mountain": 8668.6,
+     "oval": 6597.1
+    }
+   }
+  },
   "3d": {
    "1.1.0": {
     "summen": [
