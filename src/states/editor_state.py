@@ -1020,6 +1020,23 @@ class EditorState(BaseState):
             self._props_focused = False
             return
 
+        # Zeile wechseln und Werte verstellen. Das ging bis dahin nur mit der Maus
+        # (oder dem virtuellen Zeiger des Controllers): im Fokus der Leiste blieb
+        # ``_props_field`` auf dem Namen stehen, Breite, Hintergrund,
+        # Schwierigkeit, Speichern, Veroeffentlichen, Abbrechen und Loeschen
+        # waren per Steuerkreuz nicht zu erreichen.
+        if e.key in (pygame.K_UP, pygame.K_DOWN):
+            n = len(self._props_layout_rects())
+            self._props_field = (self._props_field + (1 if e.key == pygame.K_DOWN else -1)) % n
+            return
+        if self._props_field in (1, 2, 3):
+            if e.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                self._trigger_props_step(self._props_field,
+                                         -1 if e.key == pygame.K_LEFT else 1)
+            elif e.key == pygame.K_RETURN:
+                self._trigger_props_step(self._props_field, 1)
+            return
+
         if self._props_field == 0:              # name text input
             if e.key == pygame.K_RETURN and gamepad.using_pad():
                 self.osk = OnScreenKeyboard(DraftNameWrapper(self))
@@ -1418,6 +1435,7 @@ class EditorState(BaseState):
                 (tr("D-Pad O/U"), tr("Kurvenradius ändern")),
                 (tr("LB / RB"), tr("Teil wechseln")),
                 (tr("Taste B"), tr("Werkzeug abbrechen")),
+                (tr("Start"), tr("Eigenschaften")),
             ]
         else:
             rows = [

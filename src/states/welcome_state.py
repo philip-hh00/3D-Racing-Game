@@ -30,6 +30,7 @@ from src.core.settings import SCREEN_WIDTH, SCREEN_HEIGHT
 from src.core import profile, gamepad
 from src.ui import theme
 from src.ui.widgets import TextInput, Button, OnScreenKeyboard
+from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 
 if TYPE_CHECKING:
@@ -83,6 +84,9 @@ class WelcomeState(BaseState):
         self._t = 0.0
         self.schritt = SCHRITT_NAME
         self.weiter: Button | None = None
+        #: Namensfeld und „Los geht's" in einer Fokusgruppe: Hoch/Runter wechselt,
+        #: damit der Knopf auch am Controller ein Ziel ist und nicht nur ein Bild.
+        self.gruppe = FocusGroup([])
 
     def enter(self, **kwargs) -> None:
         w = 640
@@ -98,6 +102,7 @@ class WelcomeState(BaseState):
         )
         col.add(self.input)
         col.add(self.ok)
+        self.gruppe = FocusGroup([self.input, self.ok])
         
         self.weiter = Button(
             pygame.Rect(SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT - 190, 300, 60),
@@ -120,15 +125,19 @@ class WelcomeState(BaseState):
                     self.osk = None
                 continue
             if e.type == pygame.KEYDOWN:
+                im_feld = self.gruppe.focused is not self.ok
                 if e.key == pygame.K_RETURN:
                     # Controller: A opens the on-screen keyboard; keyboard: submit.
-                    if gamepad.using_pad():
+                    # Auf dem Knopf bestaetigt A immer.
+                    if gamepad.using_pad() and im_feld:
                         self.osk = OnScreenKeyboard(self.input, on_done=self._confirm)
                     else:
                         self._confirm()
                 elif e.key == pygame.K_ESCAPE:
                     pass
-                else:
+                elif e.key in (pygame.K_UP, pygame.K_DOWN):
+                    self.gruppe.handle_event(e)
+                elif im_feld:
                     self.input.handle_key(e.key, e.unicode)
                     self.error = ""
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
@@ -209,12 +218,12 @@ class WelcomeState(BaseState):
         theme.text(screen, tr("Wähle deinen Fahrernamen"), theme.HEADER, theme.TEXT,
                    (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 140), center=True)
 
-        self.input.draw(screen, focused=True)
+        self.input.draw(screen, focused=self.gruppe.focused is self.input)
 
         if self.osk:
             self.osk.draw(screen)
         else:
-            self.ok.draw(screen, focused=True)
+            self.ok.draw(screen, focused=self.gruppe.focused is self.ok)
 
         if self.error:
             # Shift error position slightly depending on keyboard presence

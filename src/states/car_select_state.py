@@ -146,6 +146,12 @@ class CarSelectState(BaseState):
         #: an (aus der Lobby, aus der Werkstatt), und dann waere der erste Klick
         #: gleich der zweite. -1 heisst: in diesem Besuch noch nichts geklickt.
         self._klick_gewaehlt = -1
+        #: Welcher der beiden Knoepfe unter der Liste den Fokus hat: "" (die
+        #: Liste), "werkstatt" oder "weiter". Mit Rechts von der Liste aus
+        #: erreichbar, wie der Knopf „Online-Strecken" in der Streckenwahl. Der
+        #: Werkstatt-Knopf hatte bis dahin nur die Taste L und die Maus — am
+        #: Controller kam man nicht hin.
+        self._knopf_fokus = ""
         #: Kachel unter dem Zeiger — nur Anzeige, keine Auswahl.
         self._hover_index = -1
 
@@ -263,7 +269,12 @@ class CarSelectState(BaseState):
                     self.car_scroll = max(0, min(max_scroll, getattr(self, "car_scroll", 0) - event.y))
             elif event.type == pygame.KEYDOWN:
                 from src.core import keybindings as kb
-                if event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
+                if self._knopf_fokus:
+                    self._knopf_taste(event)
+                    continue
+                if event.key in (pygame.K_RIGHT, pygame.K_d):
+                    self._knopf_fokus = "werkstatt" if self._werkstatt_frei() else "weiter"
+                elif event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
                     self.selected_index = (self.selected_index - 1) % len(self.car_keys)
                     self._car_ensure_visible()
                 elif event.key in (pygame.K_DOWN, pygame.K_s, kb.get("brake")):
@@ -275,6 +286,35 @@ class CarSelectState(BaseState):
                     self._werkstatt_oeffnen()
                 elif event.key == pygame.K_ESCAPE:
                     self._zurueck()
+
+    def _werkstatt_frei(self) -> bool:
+        """Ob der Werkstatt-Knopf fuer das gewaehlte Fahrzeug etwas tut."""
+        from src.core import lack
+        key = self.car_keys[self.selected_index] if self.car_keys else ""
+        return bool(key) and lack.lackierbar(key)
+
+    def _knopf_taste(self, event: pygame.event.Event) -> None:
+        """Tasten, solange einer der Knoepfe unter der Liste den Fokus hat.
+
+        Rechts/Links wechselt zwischen Werkstatt und Weiter, Hoch/Runter geht
+        zurueck in die Liste, ENTER/A loest den Knopf aus, ESC/B geht zurueck.
+        """
+        if event.key == pygame.K_RETURN:
+            if self._knopf_fokus == "werkstatt":
+                self._werkstatt_oeffnen()
+            else:
+                self._confirm()
+        elif event.key == pygame.K_ESCAPE:
+            self._zurueck()
+        elif event.key in (pygame.K_RIGHT, pygame.K_d):
+            self._knopf_fokus = "weiter"
+        elif event.key in (pygame.K_LEFT, pygame.K_a):
+            if self._knopf_fokus == "weiter" and self._werkstatt_frei():
+                self._knopf_fokus = "werkstatt"
+            else:
+                self._knopf_fokus = ""
+        elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_w, pygame.K_s):
+            self._knopf_fokus = ""
 
     def _zurueck(self) -> None:
         """Eine Ebene hoch — dorthin, wo die Fahrzeugwahl geoeffnet wurde.
@@ -380,7 +420,8 @@ class CarSelectState(BaseState):
         # Draw footer controls hints
         if self.hint_font:
             from src.ui import hints
-            hint_str = hints.bar(("confirm", tr("Wählen")), ("back", tr("Zurück")))
+            hint_str = hints.bar(("confirm", tr("Wählen")), ("nav_h", tr("Werkstatt / Weiter")),
+                                 ("back", tr("Zurück")))
             hint_surf = self.hint_font.render(hint_str, True, (150, 150, 160))
             hint_rect = hint_surf.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 50))
             screen.blit(hint_surf, hint_rect)
@@ -541,11 +582,12 @@ class CarSelectState(BaseState):
         from src.core import display
         from src.ui import theme as _th
         r = self._weiter_rect()
-        hover = r.collidepoint(display.mouse_pos())
+        fokus = self._knopf_fokus == "weiter"
+        hover = r.collidepoint(display.mouse_pos()) or fokus
         fill = (58, 44, 16) if hover else (44, 34, 14)
         zeichnen.rect(screen, fill, r, border_radius=6)
-        zeichnen.rect(screen, _th.ACCENT_HOT if hover else _th.ACCENT, r, 2,
-                         border_radius=6)
+        zeichnen.rect(screen, _th.ACCENT_HOT if hover else _th.ACCENT, r,
+                         3 if fokus else 2, border_radius=6)
         _th.text_fit(screen, self._weiter_beschriftung() + "  ›", _th.BODY,
                      _th.ACCENT_HOT if hover else _th.ACCENT,
                      r.inflate(-24, 0), center=True)
@@ -556,7 +598,8 @@ class CarSelectState(BaseState):
         r = self._werkstatt_rect()
         key = self.car_keys[self.selected_index] if self.car_keys else ""
         an = bool(key) and lack.lackierbar(key)
-        hover = an and r.collidepoint(display.mouse_pos())
+        fokus = an and self._knopf_fokus == "werkstatt"
+        hover = an and (r.collidepoint(display.mouse_pos()) or fokus)
         if not an:
             fill, border, txt = (26, 28, 36), _th.DISABLED, _th.DISABLED
         else:
@@ -564,7 +607,7 @@ class CarSelectState(BaseState):
             border = _th.ACCENT_HOT if hover else _th.BORDER_LIGHT
             txt = _th.TEXT
         zeichnen.rect(screen, fill, r, border_radius=8)
-        zeichnen.rect(screen, border, r, 2, border_radius=8)
+        zeichnen.rect(screen, border, r, 3 if fokus else 2, border_radius=8)
         # „Werkstatt" und nicht „Lackieren": der Knopf fuehrt in die Werkstatt,
         # und dort steht mehr als nur die Lackwahl (gemeldet 03.08.2026). Ein
         # Knopf soll heissen, wohin er fuehrt.

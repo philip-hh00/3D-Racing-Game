@@ -53,6 +53,9 @@ class ResultsPage(Page):
         self.shell = shell
         self._dialog = None
         self._scroll = 0
+        #: Wie weit die Sektorenliste rollen kann (setzt das Zeichnen). Am
+        #: Controller rollen Hoch/Runter sie, solange es etwas zu rollen gibt.
+        self._scroll_max = 0
         self._rematch_sent = False
         self._status_msg = ""
         self._status_until = 0.0
@@ -234,6 +237,13 @@ class ResultsPage(Page):
             self._scroll += 1 if event.button == 5 else -1
         elif event.type == pygame.MOUSEWHEEL:
             self._scroll -= event.y
+        elif (event.type == pygame.KEYDOWN and self._scroll_max > 0
+              and event.key in (pygame.K_UP, pygame.K_DOWN)):
+            # Die Knoepfe stehen in einer Reihe, Hoch/Runter haben dort ohnehin
+            # nichts zu tun — also rollen sie die Sektorenliste.
+            self._scroll = max(0, min(self._scroll_max,
+                                      self._scroll + (1 if event.key == pygame.K_DOWN else -1)))
+            return
 
         action = self.group.handle_event(event)
         if action == "again":
@@ -596,7 +606,8 @@ class ResultsPage(Page):
             visible_top = list_top
             visible_bottom = total_y - 40
             max_visible = max(1, (visible_bottom - visible_top) // row_h)
-            self._scroll = max(0, min(self._scroll, max(0, num_sectors - max_visible)))
+            self._scroll_max = max(0, num_sectors - max_visible)
+            self._scroll = max(0, min(self._scroll, self._scroll_max))
 
             if self._scroll > 0:
                 theme.text(screen, "...", theme.BODY, theme.TEXT_DIM, (420, visible_top - 30))
@@ -659,7 +670,8 @@ class ResultsPage(Page):
             visible_top = list_top
             visible_bottom = total_y - 40
             max_visible = max(1, (visible_bottom - visible_top) // row_h)
-            self._scroll = max(0, min(self._scroll, max(0, num_sectors - max_visible)))
+            self._scroll_max = max(0, num_sectors - max_visible)
+            self._scroll = max(0, min(self._scroll, self._scroll_max))
 
             if self._scroll > 0:
                 theme.text(screen, "...", theme.BODY, theme.TEXT_DIM, (380, visible_top - 30))
