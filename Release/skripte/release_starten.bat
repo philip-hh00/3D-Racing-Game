@@ -126,6 +126,12 @@ if defined TAG_DA (
     pause & exit /b 1
 )
 
+:: Der Relay laesst nur Spieler mit der Dateisumme herein, die er fuer diese
+:: Version kennt ^(server\pruefsummen.json^). Stimmt die Datei nicht zum Stand, kaeme
+:: aus dem fertigen Build niemand mehr online herein.
+"%PY%" tools\pruefsummen.py --pruefen
+if errorlevel 1 ( echo          Abhilfe: tools\pruefsummen.py --eintragen, committen, pushen. & pause & exit /b 1 )
+
 set /p ANTWORT="Tag !TAG! setzen und pushen? [j/N] "
 if /i not "!ANTWORT!"=="j" ( echo Abgebrochen. & exit /b 0 )
 

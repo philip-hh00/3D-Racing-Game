@@ -170,6 +170,12 @@ class NetworkClient:
             # Spieler mit gleichen Fahrwerten zusammen fahren.
             from src.core import integritaet
             msg["inhalt"] = integritaet.stand().digest
+        if msg.get("type") in ("HOST", "JOIN") and "files" not in msg:
+            # Pruefsumme der Spieldateien und welches Spiel das ist: der Relay
+            # laesst nur unveraenderte Dateien herein (server/schutz.py).
+            from src.core import integritaet
+            msg["game"] = integritaet.SPIEL
+            msg["files"] = integritaet.stand().digest
         body = json.dumps(msg, ensure_ascii=False).encode()
         packet = LEN_PREFIX.pack(len(body)) + body
         with self._lock:

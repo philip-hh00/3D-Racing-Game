@@ -37,6 +37,14 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple, Set
 
+# Schutz vor Schummeln (Plan 1.1.0): Dateipruefsumme, Plausibilitaet, Rauswurf,
+# Meldungen. Reine Logik in schutz.py; hier hingen nur Aufrufe (Block weiter
+# unten: „Schutz").
+try:
+    import schutz
+except ImportError:                      # als Paket geladen
+    from . import schutz                 # type: ignore
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -272,6 +280,9 @@ class ClientConn:
     #: Fenster fuer die UDP-Rate je Slot (H2.7): Beginn und Zaehler.
     udp_fenster: float = field(default_factory=time.monotonic)
     udp_pakete: int = 0
+    #: Kennung des Spielers (``cid``, zufaellig vom Client erzeugt) - fuer den
+    #: Rauswurf, siehe schutz.py.
+    cid: str = ""
 
     def udp_erlaubt(self) -> bool:
         """Ob dieser Slot noch senden darf. Ein Sekundenfenster je Slot; wer
@@ -333,6 +344,9 @@ class Lobby:
     pw_salt: bytes = b""
     pw_hash: bytes = b""
     pw_geaendert: float = 0.0        # monotonic; bremst Passwortwechsel
+    #: Plausibilitaet, Rauswurfliste, Verdachtsmarken (schutz.LobbySchutz). Wird
+    #: ueber :func:`schutz_von` angelegt.
+    schutz: Optional["schutz.LobbySchutz"] = None
 
     @property
     def host(self) -> Optional[ClientConn]:
@@ -815,6 +829,10 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     "required_version": required,
                 })
                 return
+            absage = schutz.dateien_pruefen(msg, client_v, ip)
+            if absage is not None:
+                await _send(writer, absage)
+                return
             # Aufnahmesperre: **HOST ja, JOIN nein** (H2.14). Eine neue Lobby
             # ist der teure Vorgang; einem Freund den Beitritt in eine schon
             # laufende Lobby zu verweigern waere die falsche Sparsamkeit — der
@@ -845,10 +863,14 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             slot  = 0
             conn  = ClientConn(slot=slot, name=name, reader=reader,
                                writer=writer, is_host=True, tcp_ip=ip,
-                               token=secrets.token_hex(8))
+                               token=secrets.token_hex(8), cid=schutz.cid_von(msg))
             lobby.clients[slot] = conn
             lobby.host_slot     = slot
             lobby.next_slot     = 1
+            lobby.schutz = schutz.LobbySchutz(
+                lobby.lobby_id, str(msg.get("game", "")), client_v)
+            lobby.schutz.teilnehmer_merken(slot, name, conn.cid, ip,
+                                           _Wache.unterscheidbar(ip))
             await _send(writer, {"type": "JOIN_OK", "slot": slot,
                                  "lobby_id": lobby.lobby_id, "is_host": True,
                                  "udp_token": conn.token, **lobby_info(lobby)})
@@ -866,6 +888,10 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     "required_version": required,
                 })
                 return
+            absage = schutz.dateien_pruefen(msg, client_v, ip)
+            if absage is not None:
+                await _send(writer, absage)
+                return
             lid = str(msg.get("lobby_id", "")).upper().strip()
             if lid[:1] != SERVER_TAG:
                 # Code belongs to a different relay — the client routes by the
@@ -880,6 +906,12 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             # Passwort **vor** allen weiteren Auskuenften ueber die Lobby (voll,
             # laeuft schon): wer es nicht kennt, erfaehrt davon nichts.
             absage = passwort_beitritt(lobby, msg, ip)
+            if absage is not None:
+                await _send(writer, absage)
+                return
+            # Anderes Spiel / vom Host entfernt (nach dem Passwort: wer es nicht
+            # kennt, erfaehrt auch das nicht).
+            absage = _schutz_beitritt(lobby, msg, name, ip)
             if absage is not None:
                 await _send(writer, absage)
                 return
@@ -918,7 +950,10 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             # OBJECTS, so slot reuse stays safe.)
             slot = min(set(range(MAX_SLOTS)) - set(lobby.clients.keys()))
             conn = ClientConn(slot=slot, name=name, reader=reader, writer=writer,
-                              tcp_ip=ip, token=secrets.token_hex(8))
+                              tcp_ip=ip, token=secrets.token_hex(8),
+                              cid=schutz.cid_von(msg))
+            schutz_von(lobby).teilnehmer_merken(slot, name, conn.cid, ip,
+                                                _Wache.unterscheidbar(ip))
             # Put the new player on whichever side has fewer HUMANS (counting AI
             # here would be wrong: the AI slots are about to shrink by one, and
             # normalize_ai_teams redistributes them right after anyway).
@@ -1236,6 +1271,7 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 
             # ── Any client: pause / resume ready ───────────────────────────
             elif t == "PAUSE" and lobby.state == "racing":
+                schutz_von(lobby).pause(time.monotonic(), True)
                 lobby.paused_by = conn.slot
                 lobby.resume_ready.clear()
                 await _broadcast(lobby, {
@@ -1259,6 +1295,7 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     ]
                 })
                 if set(lobby.clients.keys()).issubset(lobby.resume_ready):
+                    schutz_von(lobby).pause(time.monotonic(), False)
                     lobby.paused_by = None
                     lobby.resume_ready.clear()
                     # Reset UDP timeout for everyone to prevent disconnection during/after pause
@@ -1286,13 +1323,24 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
                     # Clamp only against broken/hostile values, not the rule:
                     # 10 min is far beyond any real lap, 1 s guards against 0.
                     grace = max(1.0, min(float(msg.get("slowest_lap", 0) or 0), 600.0))
+                    # Glaubhaft? Eine erfundene Meldung wuerde allen anderen die
+                    # Schonfrist abkuerzen (schutz.erster_im_ziel).
+                    glaubhaft, grace = schutz_von(lobby).erster_im_ziel(
+                        conn.slot, grace, time.monotonic())
+                    if not glaubhaft:
+                        lobby.first_finish_seen = False
+                        continue
                     lobby.finish_timer = asyncio.ensure_future(_force_finish_after(lobby, grace))
                     log.info(f"Lobby {lobby.lobby_id}: first finish → DNF grace {grace:.1f}s")
 
             # ── Any client: finished its local race, reports results ────────
             elif t == "RACE_RESULT":
                 if lobby.state == "racing":
-                    lobby.results_rows.extend(msg.get("rows", []))
+                    # Zeilen bereinigen und pruefen (schutz.zeilen_aufnehmen):
+                    # nur bekannte Felder, nur eigene Zeilen, unmoegliche Zeiten
+                    # gekennzeichnet.
+                    lobby.results_rows.extend(schutz_von(lobby).zeilen_aufnehmen(
+                        conn.slot, conn.is_host, msg.get("rows"), time.monotonic()))
                     lobby.reported.add(conn.slot)
                     await _maybe_finalize_results(lobby)
 
@@ -1320,6 +1368,13 @@ async def _handle_tcp(reader: asyncio.StreamReader, writer: asyncio.StreamWriter
             elif t == "RESULTS_LEAVE":
                 conn.on_results = False
                 await _broadcast(lobby, _lobby_state(lobby))
+
+            # ── Host: Spieler entfernen / Spieler melden (Schutz) ──────────
+            elif t == "KICK" and conn.is_host:
+                await _kick_anfrage(lobby, conn, msg)
+
+            elif t == "REPORT_PLAYER":
+                await _spieler_melden(lobby, conn, msg)
 
             # ── Client: text chat relay ────────────────────────────────────
             elif t == "CHAT":
@@ -1364,6 +1419,8 @@ async def _do_start(lobby: Lobby):
     lobby.paused_by = None
     lobby.resume_ready.clear()
     lobby.race_start_ts = time.time()
+    schutz_von(lobby).rennen_neu(lobby.settings, lobby.map_buffer,
+                                 str(lobby.map_meta.get("track_name", "")))
     for conn in lobby.clients.values():
         conn.last_udp = time.monotonic()
         conn.on_results = False   # fresh rematch-presence state for the next results screen
@@ -1406,6 +1463,7 @@ async def _maybe_race_go(lobby: Lobby):
         return
     # GO liegt RACE_GO_COUNTDOWN_MS nach dem Absenden; jeder Client rechnet vom
     # Eintreffen seine Laufzeit ab (Feld optional, aeltere Clients nehmen 3,5 s).
+    schutz_von(lobby).go(time.monotonic(), RACE_GO_COUNTDOWN_MS)
     await _broadcast(lobby, {"type": "RACE_GO", "countdown_ms": RACE_GO_COUNTDOWN_MS})
     log.info(f"Lobby {lobby.lobby_id}: RACE_GO (all {len(lobby.loaded)} loaded)")
 
@@ -1425,11 +1483,14 @@ async def _finalize_results(lobby: Lobby):
         return
     lobby.state = "lobby"
     _cancel_finish_timer(lobby)   # results are out; the grace timer is moot
-    rows = list(lobby.results_rows)
-    # Sort: finishers by time ascending, DNF last; assign positions.
+    # Verdaechtige und unmoegliche Zeilen als "invalid" kennzeichnen (Schutz).
+    rows = schutz_von(lobby).bewerten(list(lobby.results_rows))
+    # Sort: finishers by time ascending, DNF next, invalid rows last; assign
+    # positions.
     def _key(r):
         ft = r.get("finish_time")
-        return (1 if r.get("dnf") or ft is None else 0, ft if ft is not None else 9e9)
+        return (2 if r.get("invalid") else 1 if r.get("dnf") or ft is None else 0,
+                ft if ft is not None else 9e9)
     rows.sort(key=_key)
     for i, r in enumerate(rows):
         r["position"] = i + 1
@@ -1573,6 +1634,9 @@ class _UDPRelay(asyncio.DatagramProtocol):
             # Peers weiterverteilt.
             if not conn.udp_erlaubt():
                 return
+            # Plausibilitaet des Positionsstroms (schutz.paket wirft nie).
+            if lobby.state == "racing":
+                schutz_von(lobby).paket(sender_slot, data, time.monotonic())
             if self.transport:
                 for slot, ziel in lobby.clients.items():
                     if slot != sender_slot and ziel.udp_addr:
@@ -2629,6 +2693,151 @@ async def _lobbyliste_anfrage(writer: asyncio.StreamWriter, msg: dict, ip: str) 
         return
     await _send(writer, {"type": "LOBBY_LIST", "server_tag": SERVER_TAG,
                          "lobbies": lobby_liste()})
+
+
+# ── Schutz (Plan 1.1.0) ────────────────────────────────────────────────────────
+#
+# Rauswurf durch den Host, Meldungen, Beitrittspruefungen. Die Logik steht in
+# schutz.py; hier nur, was Netz braucht. Nachrichten:
+#
+#   Host -> Relay   KICK {slot}
+#   Relay -> Opfer  KICKED {by}          dann wird die Verbindung geschlossen
+#   Relay -> Host   ERROR {code}         KICK_BUSY (Rennen laeuft), KICK_UNKNOWN,
+#                                        KICK_SELF
+#   JOIN_FAIL       KICKED               wer entfernt wurde, kommt nicht wieder
+#   JOIN_FAIL       MODIFIED_FILES       Dateipruefsumme passt nicht
+#   JOIN_FAIL       WRONG_GAME           2D-Spieler in einer 3D-Lobby und umgekehrt
+#   Spieler -> Relay REPORT_PLAYER {slot, name, reason}
+#   Relay -> Spieler REPORT_OK / ERROR {code: REPORT_*}
+
+_SCHUTZ_TEXT = {
+    "KICK_BUSY":    "Während des Rennens kann niemand entfernt werden.",
+    "KICK_UNKNOWN": "Diesen Spieler gibt es nicht (mehr).",
+    "KICK_SELF":    "Du kannst dich nicht selbst entfernen.",
+}
+
+
+def schutz_von(lobby: Lobby) -> "schutz.LobbySchutz":
+    """Der Schutz einer Lobby; fehlt er (Lobby ohne HOST angelegt), entsteht er hier."""
+    if lobby.schutz is None:
+        lobby.schutz = schutz.LobbySchutz(lobby.lobby_id)
+    return lobby.schutz
+
+
+def _schutz_beitritt(lobby: Lobby, msg: dict, name: str, ip: str) -> Optional[dict]:
+    """``None`` = darf herein, sonst die ``JOIN_FAIL``-Nachricht."""
+    s = schutz_von(lobby)
+    if not s.spiel_passt(msg):
+        return {"type": "JOIN_FAIL", "code": schutz.CODE_SPIEL,
+                "reason": schutz.TEXT[schutz.CODE_SPIEL]}
+    if s.gesperrt(name, schutz.cid_von(msg), ip, _Wache.unterscheidbar(ip)):
+        log.info(f"Lobby {lobby.lobby_id}: entfernter Spieler '{name}' abgewiesen")
+        return {"type": "JOIN_FAIL", "code": schutz.CODE_GESPERRT,
+                "reason": schutz.TEXT[schutz.CODE_GESPERRT]}
+    return None
+
+
+async def _kick_anfrage(lobby: Lobby, host: ClientConn, msg: dict) -> None:
+    """``KICK`` des Hosts: Spieler entfernen und fuer diese Lobby sperren.
+
+    Erlaubt in der Lobby und zwischen den Rennen (auch in der Grand-Prix-
+    Uebersicht, dort steht die Lobby auf ``lobby``). Nicht waehrend eines Rennens
+    oder des Starts: dann haengen Ladeabgleich, Ergebnisse und Rennstand an allen
+    Teilnehmern, und ein Rauswurf mitten darin liesse sie warten.
+    """
+    async def fehler(code: str) -> None:
+        await _send(host.writer, {"type": "ERROR", "code": code,
+                                  "reason": _SCHUTZ_TEXT[code]})
+
+    slot = msg.get("slot")
+    if isinstance(slot, bool) or not isinstance(slot, int):
+        return await fehler("KICK_UNKNOWN")
+    if slot == host.slot:
+        return await fehler("KICK_SELF")
+    ziel = lobby.clients.get(slot)
+    if ziel is None:
+        return await fehler("KICK_UNKNOWN")
+    if lobby.state != "lobby" or lobby.starting:
+        return await fehler("KICK_BUSY")
+    schutz_von(lobby).sperren(ziel.name, ziel.cid, ziel.tcp_ip,
+                              _Wache.unterscheidbar(ziel.tcp_ip))
+    log.info(f"Lobby {lobby.lobby_id}: Host '{host.name}' entfernt '{ziel.name}' (Slot {slot})")
+    try:
+        await _send(ziel.writer, {"type": "KICKED", "by": host.name})
+    except Exception:
+        pass
+    # Seinen Platz sauber austragen (PLAYER_LEFT, LOBBY_STATE an die Uebrigen).
+    _on_disconnect(lobby, ziel)
+    if slot in lobby.offers:
+        lobby.offers.pop(slot, None)
+        await _broadcast(lobby, {"type": "OFFER_LIST", "offers": offer_list(lobby)})
+    try:
+        ziel.writer.close()
+    except Exception:
+        pass
+
+
+_meldungen: Optional["schutz.MeldungsSpeicher"] = None
+
+
+def meldungen_speicher() -> "schutz.MeldungsSpeicher":
+    global _meldungen
+    if _meldungen is None:
+        _meldungen = schutz.MeldungsSpeicher(schutz.MELDUNGEN_DIR)
+    return _meldungen
+
+
+def _melder_schluessel(lobby: Lobby, conn: ClientConn) -> str:
+    """Wer meldet: die Adresse, hinter einem Tunnel die Kennung, zuletzt der Name."""
+    if _Wache.unterscheidbar(conn.tcp_ip):
+        return f"ip:{conn.tcp_ip}"
+    if conn.cid:
+        return f"cid:{conn.cid}"
+    return f"name:{lobby.lobby_id}:{conn.name}"
+
+
+async def _spieler_melden(lobby: Lobby, conn: ClientConn, msg: dict) -> None:
+    """``REPORT_PLAYER``: ein Spieler meldet einen anderen."""
+    async def antwort(code: str) -> None:
+        await _send(conn.writer, {"type": "ERROR", "code": code,
+                                  "reason": schutz.MELDUNGEN_TEXT.get(code, "Fehler.")})
+    try:
+        s = schutz_von(lobby)
+        slot = msg.get("slot")
+        name = saeubere_name(msg.get("name", "")) if msg.get("name") else ""
+        ziel: Optional[dict] = None
+        c = lobby.clients.get(slot) if isinstance(slot, int) and not isinstance(slot, bool) else None
+        if c is not None and (not name or c.name == name):
+            ziel = {"name": c.name, "cid": c.cid, "ip": s.teilnehmer.get(c.name, {}).get("ip_kurz", "")}
+        elif name and name in s.teilnehmer:
+            t = s.teilnehmer[name]
+            ziel = {"name": name, "cid": t.get("cid", ""), "ip": t.get("ip_kurz", "")}
+        if ziel is None:
+            return await antwort("REPORT_UNKNOWN")
+        if ziel["name"] == conn.name or (c is not None and c is conn):
+            return await antwort("REPORT_SELF")
+        schluessel = _melder_schluessel(lobby, conn)
+        bisher = s.meldungen_von.setdefault(schluessel, set())
+        if ziel["name"] not in bisher and len(bisher) >= 5:
+            return await antwort("REPORT_RATE")
+        marken = list(s.marken_von(ziel["name"]))
+        if c is not None:
+            for g in s.gruende.get(c.slot, []):
+                if g not in marken:
+                    marken.append(g)
+        try:
+            meldungen_speicher().melden(
+                melder_schluessel=schluessel, melder_name=conn.name, melder_cid=conn.cid,
+                ziel_name=ziel["name"], ziel_cid=ziel["cid"], ziel_ip_kurz=ziel["ip"],
+                lobby=lobby.lobby_id, spiel=s.spiel, version=s.version,
+                grund=str(msg.get("reason", "other")), marken=marken)
+        except schutz.MeldungsFehler as f:
+            return await antwort(f.code)
+        bisher.add(ziel["name"])
+        await _send(conn.writer, {"type": "REPORT_OK", "name": ziel["name"]})
+    except Exception as exc:
+        log.error(f"Meldung fehlgeschlagen: {exc}", exc_info=True)
+        await antwort("REPORT_OFF")
 
 
 # ── Entry point ────────────────────────────────────────────────────────────────

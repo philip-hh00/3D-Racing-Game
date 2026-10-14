@@ -27,7 +27,8 @@ import pygame
 
 from src.states.menu.page import Page
 from src.ui import theme
-from src.ui.widgets import Button, Stepper, TextInput, OnScreenKeyboard, ServerRow, ZahnradKnopf
+from src.ui.widgets import (Button, Stepper, TextInput, OnScreenKeyboard, ServerRow,
+                            ZahnradKnopf, KreuzKnopf)
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.net import payload
@@ -91,6 +92,8 @@ _ROSTER_SIZE = 4    # total vehicle slots (host + remote players + AI) — modul
                     # state fed from LOBBY_STATE (see §1 of online_team_tt_plan.md)
 _RX          = 960  # right panel x origin
 _GEAR_SIZE   = 44   # Zahnradknopf fuer Sichtbarkeit & Name (Host)
+_KICK_SIZE   = 44   # Kreuzknopf: Spieler entfernen (Host), rechts neben der Zeile
+_KICK_X      = 862  # relativ zu _RX; 960 + 862 + 44 = 1866 < 1920
 # Row layout constants (derived from right-panel header geometry)
 _ROW_H       = 56
 _ROW_GAP     = 12
@@ -166,6 +169,11 @@ class OnlineLobbyPage(Page):
         # the team stepper only exists while self._selected_mode == "Team-Zeitfahren".
         self._roster_ai_widgets: list[tuple[Stepper, Stepper, Stepper | None]] = []
         self._roster_free_slots: list[int] = []
+        #: Kreuzknoepfe "Spieler entfernen" (Host), einer je anderem Menschen.
+        self._kick_buttons: list[KreuzKnopf] = []
+        self._kick_ziel: tuple[int, str] | None = None   # (Slot, Name) der Rueckfrage
+        #: Antwort auf eine Meldung (REPORT_OK / Fehler), fuer die Ergebnisseite.
+        self.report_ergebnis: tuple[str, str] | None = None
         self._team_stepper: Stepper | None = None   # own player's team stepper (roster row)
 
         # Selections
@@ -639,6 +647,25 @@ class OnlineLobbyPage(Page):
         sauber = servertext.saeubern(roh, 200, zeilen=False)
         return tr(sauber) if sauber else tr(vorgabe)
 
+    #: Die Saetze zu den Codes des Online-Schutzes (server/schutz.py). Der Relay
+    #: schickt zusaetzlich einen deutschen Satz; massgeblich ist der Code, damit
+    #: die Meldung in der Sprache des Spielers steht.
+    _SCHUTZ_TEXTE = {
+        "MODIFIED_FILES": "Deine Spieldateien sind verändert oder veraltet. Online geht es "
+                          "nur mit dem unveränderten Spiel – bitte neu installieren.",
+        "KICKED": "Du wurdest aus dieser Lobby entfernt.",
+        "WRONG_GAME": "Diese Lobby gehört zum anderen Spiel (2D/3D).",
+        "REPORT_UNKNOWN": "Diesen Spieler gibt es nicht (mehr).",
+        "REPORT_SELF": "Du kannst dich nicht selbst melden.",
+        "REPORT_REASON": "Ungültiger Meldegrund.",
+        "REPORT_RATE": "Du hast zu viele Spieler gemeldet. Versuch es später noch einmal.",
+        "REPORT_OFF": "Meldungen sind auf diesem Server gerade nicht möglich.",
+    }
+
+    def _schutz_text(self, code, reason, vorgabe: str) -> str:
+        text = self._SCHUTZ_TEXTE.get(str(code))
+        return tr(text) if text else self._servertext(reason, vorgabe)
+
     def _on_net(self, evt: dict) -> None:
         src  = evt.get("source")
         data = evt.get("data", {})
@@ -708,6 +735,9 @@ class OnlineLobbyPage(Page):
             if data.get("code") == "DATA_MISMATCH":
                 self._msg = tr("Deine Spieldateien passen nicht zur Lobby. "
                                "Bitte das Spiel neu installieren.")
+            elif data.get("code") in ("MODIFIED_FILES", "KICKED", "WRONG_GAME"):
+                self._msg = self._schutz_text(data.get("code"), data.get("reason"),
+                                              "Beitritt fehlgeschlagen.")
             elif data.get("code") == "VERSION_MISMATCH":
                 req = data.get("required_version", "?")
                 from src.core.version import VERSION
@@ -892,6 +922,16 @@ class OnlineLobbyPage(Page):
             self._view = _BROWSER
             self._cleanup_net()
 
+        elif t == "KICKED":
+            # Der Host hat uns entfernt; der Relay trennt gleich. Zurueck zur
+            # Lobbyliste, mit einer Meldung, die sagt, was passiert ist.
+            self._msg = tr("Du wurdest vom Host aus der Lobby entfernt.")
+            self._view = _BROWSER
+            self._cleanup_net()
+
+        elif t == "REPORT_OK":
+            self.report_ergebnis = ("ok", str(data.get("name", "")))
+
         elif t == "PLAYER_LEFT":
             slot = data.get("slot")
             old_slots = frozenset(p["slot"] for p in self._players)
@@ -970,6 +1010,13 @@ class OnlineLobbyPage(Page):
                 # translatable instead of arriving pre-formatted in German.
                 self._msg = tr("Teams nicht ausgeglichen (A: {a}, B: {b}).").format(
                     a=data.get("a", "?"), b=data.get("b", "?"))
+            elif str(data.get("code", "")).startswith("REPORT_"):
+                self.report_ergebnis = ("fehler", self._schutz_text(
+                    data.get("code"), data.get("reason"), "Meldung nicht möglich."))
+            elif data.get("code") == "KICK_BUSY":
+                self._melde(tr("Während des Rennens kann niemand entfernt werden."))
+            elif str(data.get("code", "")).startswith("KICK_"):
+                self._melde(tr("Der Spieler konnte nicht entfernt werden."))
             else:
                 self._msg = self._servertext(data.get("reason"), "Server-Fehler.")
 
@@ -1058,6 +1105,19 @@ class OnlineLobbyPage(Page):
             )
         else:
             self._team_stepper = None
+
+        self._kick_buttons = []
+        if self._is_host:
+            for p in self._players:
+                sl = p.get("slot")
+                if sl is None or sl == my_slot or p.get("is_host"):
+                    continue
+                b = KreuzKnopf(
+                    pygame.Rect(_RX + _KICK_X, _ROW_START_Y + sl * _ROW_STRIDE
+                                + (_ROW_H - _KICK_SIZE) // 2, _KICK_SIZE, _KICK_SIZE),
+                    "Spieler entfernen", f"kick_{sl}")
+                b.spieler_name = str(p.get("name", "?"))
+                self._kick_buttons.append(b)
 
         if not self._is_host:
             return
@@ -1230,6 +1290,7 @@ class OnlineLobbyPage(Page):
                 self._btn_lobbyinfo,        # rechts oben, nach dem Lobby-Code
                 *flat_ai,
                 *own_team_widget,
+                *self._kick_buttons,
             ], keep_focus=True)
         else:
             self._laps_stepper.enabled   = False
@@ -2153,6 +2214,8 @@ class OnlineLobbyPage(Page):
                 self._dialog = None
                 if aktion == "lobby_leave":
                     self._confirm_leave_lobby()
+                elif aktion == "kick":
+                    self._kick_senden()
                 else:
                     self._confirm_leave_gp()
                 # Wer die Rueckfrage ausgeloest hat, wollte meist noch woanders
@@ -2716,6 +2779,38 @@ class OnlineLobbyPage(Page):
         # zurueck - sonst startet jemand eine Strecke, die er nie gesehen hat.
         self._push_settings()
 
+    def _kick_fragen(self, action: str) -> None:
+        """Rueckfrage vor dem Entfernen eines Spielers (nur Host, nur in der Lobby).
+
+        Entfernt wird ueber den Relay (``KICK``): er schickt dem Spieler
+        ``KICKED``, trennt ihn und laesst ihn in diese Lobby nicht wieder
+        hinein, bis sie geschlossen wird.
+        """
+        try:
+            slot = int(action.split("_", 1)[1])
+        except ValueError:
+            return
+        name = next((str(p.get("name", "?")) for p in self._players
+                     if p.get("slot") == slot), "")
+        if not name:
+            return
+        from src.ui.widgets import Dialog
+        self._kick_ziel = (slot, name)
+        self._dialog_aktion = "kick"
+        self._dialog = Dialog(
+            tr("Spieler entfernen?"),
+            tr("{n} wird aus der Lobby entfernt und kann ihr nicht wieder beitreten.").format(n=name),
+            [(tr("Ja"), "ok"), (tr("Nein"), "cancel")])
+
+    def _kick_senden(self) -> None:
+        ziel, self._kick_ziel = self._kick_ziel, None
+        if ziel is None or not self._is_host:
+            return
+        from src.net import session
+        net = session.get()
+        if net:
+            net.send_tcp({"type": "KICK", "slot": ziel[0]})
+
     def _ask_leave_lobby(self) -> None:
         """Rueckfrage vor dem Verlassen der Lobby.
 
@@ -2886,6 +2981,10 @@ class OnlineLobbyPage(Page):
 
         if action == "toggle_ready":
             self._toggle_ready()
+            return
+
+        if action and action.startswith("kick_") and self._is_host:
+            self._kick_fragen(action)
             return
 
         if action == "start" and self._is_host:
@@ -3367,6 +3466,10 @@ class OnlineLobbyPage(Page):
                         theme.text(screen, _team_label(ai_team), theme.BODY,
                                    _team_color(ai_team), (rx + _COL_TEAM, text_y))
 
+        # Kreuzknoepfe zum Entfernen (Host): rechts neben der Zeile des Spielers.
+        for b in self._kick_buttons:
+            b.draw(screen, focused is b)
+
         # Horizontal dividers between rows (skip first — col-header line covers it)
         for i in range(1, self._roster_size + 1):
             div_y = _ROW_START_Y + i * _ROW_STRIDE - 4
@@ -3410,6 +3513,9 @@ class OnlineLobbyPage(Page):
         if self._is_host:
             self._btn_lobbyinfo.hinweis_zeichnen(
                 screen, focused is self._btn_lobbyinfo, rechts=rx + 850, oben=ry + 118)
+        for b in self._kick_buttons:
+            b.hinweis_zeichnen(screen, focused is b,
+                               rechts=b.rect.right, oben=b.rect.bottom + 4)
 
     def _draw_gp_standings(self, screen: pygame.Surface, x: int, y: int) -> None:
         """Zwischenstand der Serie.

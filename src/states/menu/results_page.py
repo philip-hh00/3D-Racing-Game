@@ -9,7 +9,7 @@ from src.states.menu.page import Page
 from src.states.menu_shell_state import TAB_RENNEN
 from src.core import race_setup
 from src.ui import theme
-from src.ui.widgets import Button
+from src.ui.widgets import Button, FlaggenKnopf
 from src.ui.focus import FocusGroup
 from src.core.i18n import tr
 from src.ui import zeichnen, leinwand
@@ -136,6 +136,111 @@ class ResultsPage(Page):
             ], vertical=False)
             self.group.index = 1
 
+        self._melden_bauen()
+
+    # ── Spieler melden (Online-Schutz) ───────────────────────────────────────
+    #
+    # Neben jeder Zeile eines anderen Menschen steht eine Fahne. Ein Klick fragt
+    # nach dem Grund und schickt REPORT_PLAYER an den Relay; der legt die
+    # Meldung samt dem, was er im Rennen beobachtet hat, ab (server/schutz.py).
+
+    #: Gruende, in der Reihenfolge des Dialogs. Die Schluessel kennt der Relay.
+    MELDEGRUENDE = (("Schummeln", "cheating"), ("Unsportlich", "griefing"),
+                    ("Name", "name"), ("Sonstiges", "other"))
+
+    def _melden_bauen(self) -> None:
+        self._melde_dialog = None
+        self._melde_ziel = None
+        self._gemeldet: set = set()
+        self._melde_knoepfe: list = []
+        if not self.meta.get("is_online"):
+            return
+        from src.net import payload, session
+        if session.get() is None:
+            return
+        for i, row in enumerate(payload.dict_entries(self.rows)):
+            slot = row.get("online_slot", -1)
+            if (not isinstance(slot, int) or slot < 0 or row.get("is_player")
+                    or row.get("ai_takeover")):
+                continue
+            b = FlaggenKnopf(pygame.Rect(0, 0, 44, 44), "Spieler melden", f"report_{i}")
+            b.zeile = row
+            self._melde_knoepfe.append(b)
+        if self._melde_knoepfe:
+            self.group.set_widgets([*self.group.widgets, *self._melde_knoepfe],
+                                   keep_focus=True)
+            self._melden_layout()
+
+    def _melden_layout(self) -> None:
+        """Die Fahnen neben ihre Zeilen setzen. Die Zeilen stehen je Darstellung
+        woanders (breit, neben der Serienwertung, Team-Zeitfahren), und die
+        Darstellung kann sich aendern, waehrend die Seite offen ist."""
+        if not getattr(self, "_melde_knoepfe", None):
+            return
+        eng = bool(self._gp_view)
+        if self.meta.get("is_team_zeitfahren") and not eng:
+            ya = yb = 280 + 130
+            ort = {}
+            for r in sorted(self.rows, key=lambda r: r.get("score_time", 9999.0)):
+                if r.get("team", "A") == "A":
+                    ort[id(r)] = (220 + 706, ya)
+                    ya += 56
+                else:
+                    ort[id(r)] = (1000 + 706, yb)
+                    yb += 56
+            for b in self._melde_knoepfe:
+                x, y = ort.get(id(b.zeile), (-100, -100))
+                b.rect.topleft = (x, y - 1)
+        else:
+            x = 1100 if eng else 1810
+            for b in self._melde_knoepfe:
+                i = int(b.action.split("_", 1)[1])
+                b.rect.topleft = (x, 280 + 50 + 62 * i + 4)
+
+    def _melden_fragen(self, action: str) -> None:
+        b = next((b for b in self._melde_knoepfe if b.action == action), None)
+        if b is None or action in self._gemeldet:
+            return
+        from src.ui.widgets import Dialog
+        self._melde_ziel = b
+        name = str(b.zeile.get("name", "?"))
+        self._melde_dialog = Dialog(
+            tr("Spieler melden"), tr("{n} melden – warum?").format(n=name),
+            [(tr(t), k) for t, k in self.MELDEGRUENDE] + [(tr("Abbrechen"), "cancel")])
+
+    def _melden_senden(self, grund: str) -> None:
+        b, self._melde_ziel = self._melde_ziel, None
+        if b is None:
+            return
+        from src.net import session
+        net = session.get()
+        if net is None:
+            self._set_status(tr("Meldung nicht möglich – keine Verbindung."))
+            return
+        net.send_tcp({"type": "REPORT_PLAYER", "slot": b.zeile.get("online_slot", -1),
+                      "name": str(b.zeile.get("name", "")), "reason": grund})
+        self._gemeldet.add(b.action)
+        b.enabled = False
+        b.focusable = False
+        self._set_status(tr("Meldung wird gesendet …"))
+
+    def _melden_antwort(self, lp) -> None:
+        """Die Antwort des Relays auf die letzte Meldung abholen."""
+        erg = getattr(lp, "report_ergebnis", None)
+        if erg is None:
+            return
+        lp.report_ergebnis = None
+        art, text = erg
+        if art == "ok":
+            self._set_status(tr("Danke – {n} wurde gemeldet.").format(n=text))
+        else:
+            self._set_status(text)
+            # Nicht angenommen: die Fahnen wieder freigeben.
+            for b in self._melde_knoepfe:
+                b.enabled = True
+                b.focusable = True
+            self._gemeldet.clear()
+
     def _gp_seconds_left(self) -> int:
         rest = self._gp_wait_until - time.time()
         return max(0, int(rest) + 1) if rest > 0 else 0
@@ -156,6 +261,8 @@ class ResultsPage(Page):
                 ansicht = getattr(lp, "_gp_view", None)
                 if isinstance(ansicht, dict) and ansicht.get("gp_active"):
                     self._gp_view = ansicht
+                self._melden_antwort(lp)
+        self._melden_layout()
 
         # Grand Prix online: das Ergebnis bleibt kurz stehen und wechselt dann
         # von selbst weiter. Sonst haengt die ganze Runde daran, dass jeder
@@ -215,6 +322,15 @@ class ResultsPage(Page):
         self._status_until = time.time() + 4.0
 
     def handle_event(self, event: pygame.event.Event) -> None:
+        if getattr(self, "_melde_dialog", None) is not None:
+            res = self._melde_dialog.handle_event(event)
+            if res is not None:
+                self._melde_dialog = None
+                if res == "cancel":
+                    self._melde_ziel = None
+                else:
+                    self._melden_senden(res)
+            return
         if self._dialog is not None:
             res = self._dialog.handle_event(event)
             if res == "ok":
@@ -236,6 +352,9 @@ class ResultsPage(Page):
             self._scroll -= event.y
 
         action = self.group.handle_event(event)
+        if action and action.startswith("report_"):
+            self._melden_fragen(action)
+            return
         if action == "again":
             s = race_setup.current()
             if self.meta.get("is_online"):
@@ -418,6 +537,7 @@ class ResultsPage(Page):
             self._draw_normal(screen, area)
             self._draw_gp_online(screen, area)
             self.group.draw(screen)
+            self._melden_zeichnen(screen)
             return
         if self.meta.get("is_grand_prix"):
             self._draw_grand_prix(screen, area)
@@ -428,8 +548,22 @@ class ResultsPage(Page):
         else:
             self._draw_normal(screen, area)
 
+        self._melden_zeichnen(screen)
         if self._dialog is not None:
             self._dialog.draw(screen)
+
+    def _melden_zeichnen(self, screen: pygame.Surface) -> None:
+        """Hinweis zu den Fahnen (zuletzt, damit nichts darueber liegt) und der
+        Grunddialog."""
+        focused = self.group.focused
+        for b in getattr(self, "_melde_knoepfe", ()):
+            if b.action in self._gemeldet:
+                theme.text(screen, tr("Gemeldet"), theme.SMALL, theme.TEXT_FAINT,
+                           (b.rect.centerx, b.rect.bottom + 2), midtop=True)
+            else:
+                b.hinweis_zeichnen(screen, focused is b)
+        if getattr(self, "_melde_dialog", None) is not None:
+            self._melde_dialog.draw(screen)
 
     #: Wertungsspalte des Online-Grand-Prix. Sie steht rechts fest, damit die
     #: Rennergebnistabelle links davon ihre Breite kennt.
@@ -501,8 +635,12 @@ class ResultsPage(Page):
             name = str(row.get("name", ""))
             if row.get("ai_takeover") and not name.endswith(tr(" (KI)")) and "(KI)" not in name:
                 name += f" {tr('(KI)')}"
-            theme.text(screen, "DNF" if dnf else str(pos), theme.BODY,
-                       theme.DANGER if dnf else pcol, (cols[0][1], y))
+            if row.get("invalid"):
+                theme.text(screen, tr("ungültig"), theme.LABEL, theme.DANGER,
+                           (cols[0][1], y + 4))
+            else:
+                theme.text(screen, "DNF" if dnf else str(pos), theme.BODY,
+                           theme.DANGER if dnf else pcol, (cols[0][1], y))
             theme.text_fit(screen, name, theme.BODY,
                            hl if hl is not None else theme.TEXT,
                            pygame.Rect(cols[1][1], y, name_w, 36))
@@ -798,6 +936,8 @@ class ResultsPage(Page):
             time_str = "DNF" if dnf else _fmt(row.get("finish_time"))
             if dnf:
                 time_str = f"DNF ({_fmt(row.get('score_time'))})"
+            if row.get("invalid"):
+                time_str = tr("ungültig")
             
             theme.text(screen, time_str, theme.BODY, theme.DANGER if dnf else theme.TEXT, (tx + 540, ty))
 
