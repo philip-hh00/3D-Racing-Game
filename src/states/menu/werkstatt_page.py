@@ -149,6 +149,12 @@ class WerkstattPage(Page):
         #: Fokuselemente zu den gezeichneten Flaechen; gefuellt in _widgets_bauen.
         self._farb_felder: list[_Feld] = []
         self._kachel_felder: list[_Feld] = []
+        #: Die Pfeile (Drehen, Blaettern) sind gezeichnete Flaechen wie die
+        #: Farbfelder; damit auch der Controller sie erreicht, haben sie ebenfalls
+        #: ein Fokuselement. Ohne sie liessen sich Fahrzeuge ausserhalb des
+        #: sichtbaren Streifens nur mit der Maus erreichen.
+        self._dreh_felder: list[_Feld] = []
+        self._blatt_felder: list[_Feld] = []
         self._dreh_rects: tuple[pygame.Rect, pygame.Rect] | None = None
         self._blatt_rects: tuple[pygame.Rect, pygame.Rect] | None = None
         self._leiste_rect: pygame.Rect | None = None
@@ -328,10 +334,13 @@ class WerkstattPage(Page):
         # gerade sichtbar sind, traegt das Zeichnen nach (``_felder_nachfuehren``).
         self._farb_felder = [_Feld(f"farbe_{i}") for i in range(len(lack.farben()))]
         self._kachel_felder = [_Feld(f"kachel_{i}") for i in range(len(self.fahrzeuge))]
+        self._dreh_felder = [_Feld("dreh_-1"), _Feld("dreh_1")]
+        self._blatt_felder = [_Feld("blatt_-1"), _Feld("blatt_1")]
         self._gruppe.set_widgets([
             self._knopf_zurueck, self._finish_stepper, self._knopf_ansicht,
             self._knopf_werkslack, self._knopf_speichern,
-            *self._farb_felder, *self._kachel_felder,
+            *self._dreh_felder, *self._farb_felder,
+            *self._blatt_felder, *self._kachel_felder,
         ])
         self._knoepfe_richten()
 
@@ -505,6 +514,12 @@ class WerkstattPage(Page):
             return True
         if aktion == "speichern":
             self._speichern()
+            return True
+        if aktion and aktion.startswith("dreh_"):
+            self._drehen(15.0 * int(aktion[len("dreh_"):]))
+            return True
+        if aktion and aktion.startswith("blatt_"):
+            self._blaettern(KACHELN * int(aktion[len("blatt_"):]))
             return True
         if aktion and aktion.startswith("farbe_"):
             self._farbe_waehlen(int(aktion[len("farbe_"):]))
@@ -771,8 +786,9 @@ class WerkstattPage(Page):
         links = pygame.Rect(r.x + 44, dy, 58, 54)
         rechts = pygame.Rect(r.x + 110, dy, 58, 54)
         self._dreh_rects = (links, rechts)
-        self._pfeilknopf(screen, links, "‹")
-        self._pfeilknopf(screen, rechts, "›")
+        self._felder_nachfuehren([(0, links), (1, rechts)], self._dreh_felder)
+        self._pfeilknopf(screen, links, "‹", self._dreh_felder[0])
+        self._pfeilknopf(screen, rechts, "›", self._dreh_felder[1])
         self._knopf_ansicht.rect = pygame.Rect(r.x + 182, dy, 200, 54)
         self._knopf_werkslack.rect = pygame.Rect(r.x + 394, dy, 200, 54)
         self._knopf_speichern.rect = pygame.Rect(r.x + 606, dy, 200, 54)
@@ -826,11 +842,15 @@ class WerkstattPage(Page):
             center=(kasten.centerx - 8, kasten.centery + 14)))
         screen.blit(img, img.get_rect(center=kasten.center))
 
-    def _pfeilknopf(self, screen, r: pygame.Rect, glyph: str) -> None:
-        hover = r.collidepoint(display.mouse_pos())
+    def _fokus_auf(self, feld) -> bool:
+        return feld is not None and self._gruppe.focused is feld
+
+    def _pfeilknopf(self, screen, r: pygame.Rect, glyph: str, feld=None) -> None:
+        fokus = self._fokus_auf(feld)
+        hover = r.collidepoint(display.mouse_pos()) or fokus
         zeichnen.rect(screen, (46, 50, 62) if hover else (32, 36, 46), r, border_radius=8)
         zeichnen.rect(screen, theme.ACCENT_HOT if hover else theme.BORDER_LIGHT,
-                         r, 2, border_radius=8)
+                         r, 3 if fokus else 2, border_radius=8)
         theme.text(screen, glyph, theme.HEADER,
                    theme.ACCENT_HOT if hover else theme.ACCENT, r.center, center=True)
 
@@ -886,7 +906,9 @@ class WerkstattPage(Page):
             kasten = pygame.Rect(x, y, bw, bh)
             self._farb_rects.append((i, kasten))
             self._farbfeld(screen, kasten, f["rgb"], gewaehlt=(i == aktiv_farbe),
-                           frei=self._frei(f["key"]))
+                           frei=self._frei(f["key"]),
+                           fokus=self._fokus_auf(self._farb_felder[i]
+                                                 if i < len(self._farb_felder) else None))
         self._felder_nachfuehren(
             self._farb_rects, self._farb_felder,
             gesperrt={i for i, f in sichtbar if not self._frei(f["key"])})
@@ -904,7 +926,7 @@ class WerkstattPage(Page):
                        (r.x + 20, r.bottom - 26), max_w=r.width - 40)
 
     def _farbfeld(self, screen, r: pygame.Rect, rgb, *, gewaehlt: bool,
-                  frei: bool = True) -> None:
+                  frei: bool = True, fokus: bool = False) -> None:
         flaeche = leinwand.flaeche(r.size, pygame.SRCALPHA)
         zeichnen.rect(flaeche, (*(rgb if frei else _ausgegraut(rgb)), 255),
                          (0, 0, r.width, r.height), border_radius=8)
@@ -915,6 +937,10 @@ class WerkstattPage(Page):
             hover = r.collidepoint(display.mouse_pos())
             zeichnen.rect(screen, theme.BORDER_LIGHT if hover else theme.BORDER,
                              r, 2 if hover else 1, border_radius=8)
+        if fokus:
+            # Fokus (Tastatur/Controller): ein heller Rahmen ausserhalb der
+            # Auswahlmarke, damit beides nebeneinander lesbar bleibt.
+            zeichnen.rect(screen, theme.TEXT, r.inflate(14, 14), 3, border_radius=12)
         if not frei:
             self._schloss(screen, (r.right - 22, r.y + 16), 1.4)
 
@@ -963,10 +989,12 @@ class WerkstattPage(Page):
             rechts = pygame.Rect(r.right - knopf_b - 14, innen.centery - 48,
                                  knopf_b, 96)
             self._blatt_rects = (links, rechts)
-            self._pfeilknopf(screen, links, "‹")
-            self._pfeilknopf(screen, rechts, "›")
+            self._felder_nachfuehren([(0, links), (1, rechts)], self._blatt_felder)
+            self._pfeilknopf(screen, links, "‹", self._blatt_felder[0])
+            self._pfeilknopf(screen, rechts, "›", self._blatt_felder[1])
         else:
             self._blatt_rects = None
+            self._felder_nachfuehren([], self._blatt_felder)
 
         kb = max(120, (innen.width - (KACHELN - 1) * 14) // KACHELN)
         schritt = kb + 14
@@ -1031,3 +1059,7 @@ class WerkstattPage(Page):
         theme.text_fit(screen, lack.anzeigename(kenn), theme.SMALL,
                        theme.ACCENT if gewaehlt else theme.TEXT_FAINT,
                        pygame.Rect(r.x + 6, r.bottom - 22, r.width - 12, 18), center=True)
+        if i < len(self._kachel_felder) and self._fokus_auf(self._kachel_felder[i]):
+            # Fokus (Tastatur/Controller): heller Rahmen, auch wenn die Kachel
+            # schon die gewaehlte ist.
+            zeichnen.rect(screen, theme.TEXT, r.inflate(-2, -2), 3, border_radius=6)

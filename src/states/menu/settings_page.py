@@ -201,6 +201,9 @@ class SettingsPage(Page):
         self._issues_rect: pygame.Rect | None = None
         self._crash_rect: pygame.Rect | None = None
         self._lizenz_rect: pygame.Rect | None = None
+        #: Welcher der Links unter „Info" der Controller/die Tastatur gewaehlt hat
+        #: (Index in ``_info_links``).
+        self._info_link = 0
         self._advanced_graphics: _AdvancedGraphicsView | None = None
 
     @property
@@ -290,7 +293,10 @@ class SettingsPage(Page):
             # heraus verlassen kann, ohne erst eine Ebene hoch zu muessen.
             quit_btn = Button(pygame.Rect(0, 0, 500, 60), tr("Spiel beenden"), "quit_game")
             col.add(quit_btn)
-            self._content_group = FocusGroup([lang_step, quit_btn])
+            # Das Namensfeld gehoert in die Gruppe: sonst schluckte es jede Taste
+            # und Sprache und Beenden blieben der Maus vorbehalten. Hoch/Runter
+            # verlassen das Feld, Links/Rechts bleiben im Text.
+            self._content_group = FocusGroup([self._name_input, lang_step, quit_btn])
         elif name == "Fahrhilfen":
             from src.states.menu import fahrhilfen_seite
             self._content_group = fahrhilfen_seite.bauen(self)
@@ -607,21 +613,11 @@ class SettingsPage(Page):
                 # Die Tab-Leiste gehoert der Shell; die fragt vorher bei
                 # verlassen_erlaubt() nach, ob hier noch etwas offen ist.
                 return None
-            if (self.categories[self.cat] == "Info" and self._issues_rect
-                    and self._issues_rect.collidepoint(event.pos)):
-                import webbrowser
-                webbrowser.open(_ISSUES_URL)
-                return True
-            if (self.categories[self.cat] == "Info" and self._crash_rect
-                    and self._crash_rect.collidepoint(event.pos)):
-                from src.core import absturz
-                absturz.oeffnen()
-                return True
-            if (self.categories[self.cat] == "Info" and self._lizenz_rect
-                    and self._lizenz_rect.collidepoint(event.pos)):
-                from src.core import paths
-                paths.datei_oeffnen(paths.bundle_dir() / "assets" / "LIZENZEN.md")
-                return True
+            if self.categories[self.cat] == "Info":
+                for kennung, rect in self._info_links():
+                    if rect.collidepoint(event.pos):
+                        self._info_link_oeffnen(kennung)
+                        return True
             for i, r in enumerate(self._cat_rects()):
                 if r.collidepoint(event.pos):
                     self.cat = i
@@ -719,17 +715,21 @@ class SettingsPage(Page):
             self._build_content()
 
     def _content_key(self, name: str, event: pygame.event.Event) -> None:
-        if name == "Allgemein" and self._name_input:
-            if event.key == pygame.K_RETURN:
-                # Controller: A opens the on-screen keyboard; keyboard: save.
+        if name == "Allgemein" and self._name_input and self._content_group:
+            gruppe = self._content_group
+            im_feld = gruppe.focused is self._name_input
+            if im_feld and event.key == pygame.K_RETURN:
+                # Controller: A oeffnet die Bildschirmtastatur; Tastatur: speichern.
                 if gamepad.using_pad() and self.osk is None:
                     self.osk = OnScreenKeyboard(self._name_input, on_done=self._save_name)
                 else:
                     self._save_name()
+                return
+            aktion = gruppe.handle_event(event)
+            if aktion == "edit" and im_feld:
+                self._save_name()
             else:
-                self._name_input.handle_key(event.key, getattr(event, "unicode", ""))
-                self._pending["username"] = self._name_input.text
-                self.msg = ""
+                self._dispatch(aktion)
         elif name == "Steuerung":
             rows = self._steuerung_rows
             if event.key in (pygame.K_UP, pygame.K_w, kb.get("throttle")):
@@ -756,11 +756,40 @@ class SettingsPage(Page):
             elif event.key in (pygame.K_DOWN, pygame.K_s, kb.get("brake")):
                 self._info_scroll = min(getattr(self, "_info_max_scroll", 0),
                                         self._info_scroll + _INFO_SCROLL_STEP)
+            elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
+                # Die Links unter dem Kasten waehlen — vorher gab es am Controller
+                # nur den ersten (Bugs melden); Absturzbericht und Lizenzen
+                # erreichte nur die Maus.
+                links = self._info_links()
+                if links:
+                    d = -1 if event.key == pygame.K_LEFT else 1
+                    self._info_link = (self._info_link + d) % len(links)
             elif event.key == pygame.K_RETURN:
-                import webbrowser
-                webbrowser.open(_ISSUES_URL)
+                links = self._info_links()
+                if links:
+                    self._info_link_oeffnen(links[self._info_link % len(links)][0])
         elif self._content_group:
             self._dispatch(self._content_group.handle_event(event))
+
+    def _info_links(self) -> list[tuple[str, pygame.Rect]]:
+        """Die Links unter „Info", die gerade da sind, in Zeichenreihenfolge."""
+        aus = []
+        for kennung, rect in (("issues", self._issues_rect), ("crash", self._crash_rect),
+                              ("lizenz", self._lizenz_rect)):
+            if rect is not None:
+                aus.append((kennung, rect))
+        return aus
+
+    def _info_link_oeffnen(self, kennung: str) -> None:
+        if kennung == "issues":
+            import webbrowser
+            webbrowser.open(_ISSUES_URL)
+        elif kennung == "crash":
+            from src.core import absturz
+            absturz.oeffnen()
+        elif kennung == "lizenz":
+            from src.core import paths
+            paths.datei_oeffnen(paths.bundle_dir() / "assets" / "LIZENZEN.md")
 
     def _draw_info(self, screen: pygame.Surface) -> None:
         from src.core import version as ver
@@ -930,6 +959,12 @@ class SettingsPage(Page):
         else:
             self._lizenz_rect = None
 
+        # Fokusrahmen um den gewaehlten Link (Tastatur/Controller).
+        links = self._info_links()
+        if self._focus_content and links:
+            rect = links[self._info_link % len(links)][1]
+            zeichnen.rect(screen, theme.ACCENT_HOT, rect.inflate(12, 4), 2, border_radius=6)
+
     def _draw_controller_info(self, screen: pygame.Surface) -> None:
         """Two controller slots (pad0/pad1) with a vibration identify action."""
         x, y = 1320, 168
@@ -980,7 +1015,11 @@ class SettingsPage(Page):
     def _save_name(self) -> None:
         # Buffer the edited name; the "Ungespeicherte Änderungen" hint above the
         # Save button already signals the pending state, so no extra message.
-        self._pending["username"] = self._name_input.text
+        # Steht wieder der gespeicherte Name im Feld, ist nichts mehr offen.
+        if self._name_input.text == profile.current().username:
+            self._pending.pop("username", None)
+        else:
+            self._pending["username"] = self._name_input.text
         self.msg = ""
 
     def _dispatch(self, action) -> None:
@@ -1144,11 +1183,9 @@ class SettingsPage(Page):
         name = self.categories[self.cat]
         if name == "Allgemein":
             theme.text(screen, tr("Benutzername"), theme.BODY, theme.TEXT_DIM, (560, 210))
-            self._name_input.draw(screen, focused=self._focus_content)
+            self._content_group.draw(screen, focused=self._focus_content)
             if self.osk:
                 self.osk.draw(screen)
-            else:
-                self._content_group.draw(screen, focused=self._focus_content)
         elif name == "Steuerung":
             theme.text(screen, tr("Tastatur & Maus"), theme.HEADER, theme.TEXT, (560, 168))
             for i, r in enumerate(self._bind_rects()):
