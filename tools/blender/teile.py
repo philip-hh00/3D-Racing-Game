@@ -1347,6 +1347,9 @@ def auspuffblende(name, r, laenge, mats, art="rund"):
 #: sie an, wenn ``td["_knoten"]`` gesetzt ist.
 SPIEGELGLAS: list = []
 
+#: Tiefe des Gehäuses hinter der Mitte (Anteil an ``lang``): Rückwand mit dem Glas.
+RUECK = 0.25
+
 
 def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
     """Außenspiegel: schlankes, nach hinten gepfeiltes Tropfengehäuse,
@@ -1386,7 +1389,7 @@ def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
             if cx >= 0:
                 ex = sp(cx, 0.8) * lang / 2          # runde Front
             else:
-                ex = -lang * 0.18 * abs(cx) ** 0.25  # flache Glasseite, Ecken gerundet
+                ex = -lang * RUECK * abs(cx) ** 0.4  # Glasseite, Ecken rund (nicht wie halbiert)
             ez = sp(cz, 0.6) * hoch / 2
             if cz > 0:
                 ez *= 1.08                           # oben etwas voller als unten
@@ -1395,11 +1398,15 @@ def spiegel(x, z, spitze, y_wand, seite, groesse, mats, d, td):
         ringe.append(ring)
     teile.append(netz_aus_ringen("spiegel", ringe, kappe, kappen=True))
     # Glas mit schwarzem Rahmen, auf der flachen Rückseite
-    x_glas = x - lang * 0.18 - pfeil * 0.5 - 0.004
+    # Die Rückwand des Gehäuses ist um die Pfeilung nach hinten geneigt (Außenende hinten,
+    # ``pfeil`` auf ``tief``); Rahmen und Glas müssen genauso stehen. Mit festen 9° passte das
+    # nur für 0,035 m — bei den Electric-Autos (0,08 bis 0,1 m) steckte die halbe Glasplatte
+    # im Gehäuse und der Spiegel sah halbiert aus.
+    x_glas = x - lang * RUECK - pfeil * 0.545 - 0.004
     rahmen = platte("spiegelrahmen", tief * 0.8, hoch * 0.78, 0.006,
                     (mats["kunststoff"], mats["kunststoff"]), rundung=3.0)
     ort = Vector((x_glas, seite * (yc + 0.01), z + 0.004))
-    yaw = math.radians(180 - 9 * seite)
+    yaw = math.radians(180) - math.atan2(pfeil, tief) * seite
     if td.get("_knoten"):
         # Cockpit: das Glas ist ein eigener Knoten (``spiegel_l``/``spiegel_r``, Material
         # ``spiegel``) und sitzt 1,5 mm vor dem schwarzen Rahmen. Es blickt zum Fahrer,

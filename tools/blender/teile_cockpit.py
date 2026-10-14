@@ -430,15 +430,17 @@ def _kranz(r: float, kleinr: float, n_gross: int, n_klein: int, mat, phi0=0.0, p
 def lenkrad_bauen(pl: Plan, mats):
     """Lenkrad als eigener Knoten (siehe Kopf der Datei)."""
     R = pl.kranz_r
-    leder = mats.get("leder", mats["innenraum"])
+    # Kranz und Speichen in der Hauptfarbe des Wagens (Material ``lack``, die Werkstatt
+    # färbt es um); Nabe, Prallplatte und Säulenstummel bleiben Innenraum.
+    lack = mats["lack"]
     im = mats["innenraum"]
-    teile = [_kranz(R, 0.017, 32, 8, leder)]
+    teile = [_kranz(R, 0.017, 32, 8, lack)]
     # helle Markierung oben (12 Uhr), 24° Bogen
     teile.append(_kranz(R, 0.0185, 6, 8, mats["dekor_weiss"], math.radians(78), math.radians(102), offen=True))
     # drei Speichen: links, rechts, unten (lokal: ±Y, -Z)
-    teile.append(t.kasten("speiche", (0, 0.5 * R, 0), (0.012, R - 0.02, 0.03), im, fase=0.004))
-    teile.append(t.kasten("speiche", (0, -0.5 * R, 0), (0.012, R - 0.02, 0.03), im, fase=0.004))
-    teile.append(t.kasten("speiche", (0, 0, -0.5 * R), (0.012, 0.03, R - 0.02), im, fase=0.004))
+    teile.append(t.kasten("speiche", (0, 0.5 * R, 0), (0.012, R - 0.02, 0.03), lack, fase=0.004))
+    teile.append(t.kasten("speiche", (0, -0.5 * R, 0), (0.012, R - 0.02, 0.03), lack, fase=0.004))
+    teile.append(t.kasten("speiche", (0, 0, -0.5 * R), (0.012, 0.03, R - 0.02), lack, fase=0.004))
     # Nabe mit Prallplatte zum Fahrer hin, Säulenstummel nach vorn
     teile.append(t.zylinder_x("nabe", (0.016, 0, 0), 0.052, 0.045, mats["zierteil"], segmente=20))
     teile.append(t.zylinder_x("nabenring", (0.0385, 0, 0), 0.040, 0.004, mats["chrom"], segmente=20))

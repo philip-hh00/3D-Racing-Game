@@ -170,3 +170,22 @@ def test_lod1_ohne_cockpitknoten(key):
     kn = _knoten(_gltf(lod))
     for name in KNOTEN:
         assert name not in kn, name
+
+
+def _materialnamen(kopf: dict, knoten: dict) -> set:
+    netz = kopf["meshes"][knoten["mesh"]]
+    return {kopf["materials"][prim["material"]]["name"] for prim in netz["primitives"]}
+
+
+@pytest.mark.parametrize("key", ALLE)
+def test_lenkradkranz_traegt_den_hauptlack(key):
+    """Kranz und Speichen haben das Material ``lack`` (Werkstattlack färbt es um), Nabe und
+    Prallplatte bleiben Innenraum; Nadeln und Spiegelglas haben nie Wagenfarbe."""
+    kopf, _t = _lade(key)
+    kn = _knoten(kopf)
+    lenkrad = _materialnamen(kopf, kn["lenkrad"])
+    assert "lack" in lenkrad, f"{key}: Lenkradkranz ohne Hauptlack ({sorted(lenkrad)})"
+    assert "lack2" not in lenkrad
+    assert {"zierteil", "innenraum"} & lenkrad, f"{key}: Nabe fehlt ({sorted(lenkrad)})"
+    for name in ("nadel_tacho", "nadel_drehzahl", "spiegel_innen", "spiegel_l", "spiegel_r"):
+        assert not {"lack", "lack2"} & _materialnamen(kopf, kn[name]), name

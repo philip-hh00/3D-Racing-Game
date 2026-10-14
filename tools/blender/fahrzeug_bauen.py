@@ -637,10 +637,50 @@ def kappe_tangential(bm, ring, vorher, richtung: int, buckel: float, kennung: in
 ACHSEN = tb.ACHSEN
 
 
+def ecke_bogen(roh, d: dict, ms: Masse):
+    """Eine scharfe Ecke im Umriss (Ansicht ``oben``) durch einen weichen Bogen ersetzen.
+
+    ``d``: ``{"kopf": i, "saeule": j, "kopf_m": a, "saeule_m": b}``. Die Kante
+    ``roh[i] -> roh[i+1]`` (Dachkante der Frontscheibe) und die Kante
+    ``roh[j-1] -> roh[j]`` (A-Säule) werden bis zu ihrem Schnittpunkt verlängert;
+    die Punkte dazwischen ersetzt ein quadratischer Bézier-Bogen, der ``a``
+    Meter vor dem Schnittpunkt auf der Dachkante beginnt und ``b`` Meter danach
+    auf der Säule endet. So läuft die Säule in einer Linie in die Dachkante,
+    statt kurz vor dem Dach seitlich zu springen. Gerechnet wird in Metern
+    (``u`` und ``v`` haben verschiedene Maßstäbe).
+    """
+    i, j = d["kopf"], d["saeule"]
+    m = [(ms.x(q[0]), ms.y(q[1])) for q in roh]
+    p0, p1 = m[i], m[i + 1]
+    q0, q1 = m[j - 1], m[j]
+    d1 = (p1[0] - p0[0], p1[1] - p0[1])
+    d2 = (q1[0] - q0[0], q1[1] - q0[1])
+    det = d1[0] * d2[1] - d1[1] * d2[0]
+    if abs(det) < 1e-9:
+        return roh
+    t = ((q0[0] - p0[0]) * d2[1] - (q0[1] - p0[1]) * d2[0]) / det
+    X = (p0[0] + d1[0] * t, p0[1] + d1[1] * t)
+    l1, l2 = math.hypot(*d1), math.hypot(*d2)
+    a = min(d.get("kopf_m", 0.3), 0.9 * math.hypot(X[0] - p0[0], X[1] - p0[1]))
+    b = min(d.get("saeule_m", 0.5), 0.9 * math.hypot(q1[0] - X[0], q1[1] - X[1]))
+    A = (X[0] - d1[0] / l1 * a, X[1] - d1[1] / l1 * a)
+    B = (X[0] + d2[0] / l2 * b, X[1] + d2[1] / l2 * b)
+    bogen = []
+    n = d.get("punkte", 7)
+    for k in range(n + 1):
+        s = k / n
+        w = ((1 - s) ** 2 * A[0] + 2 * s * (1 - s) * X[0] + s * s * B[0],
+             (1 - s) ** 2 * A[1] + 2 * s * (1 - s) * X[1] + s * s * B[1])
+        bogen.append([ms.u(w[0]), w[1] / (ms.breite_gesamt / 2)])
+    return roh[:i + 1] + bogen + roh[j:]
+
+
 def zone_polygone(z: dict, ms: Masse):
     """Die Polygone einer Zone in Weltkoordinaten ihrer Ansicht."""
     ansicht = z["ansicht"]
     roh = [list(map(float, q)) for q in z["punkte"]]
+    if z.get("ecke_bogen"):
+        roh = ecke_bogen(roh, z["ecke_bogen"], ms)
     if z.get("symmetrisch"):
         roh = roh + [[a, -b] for a, b in reversed(roh) if abs(b) > 1e-6]
     listen = []
@@ -1178,7 +1218,8 @@ def glaszonen(p) -> list:
     if "frontscheibe" in k:
         zonen.append({"ansicht": "oben", "punkte": k["frontscheibe"], "symmetrisch": True,
                       "mat": "glas", "nur_gh": True, "n_min": 0.05,
-                      "segmente": [SEG_FENSTER, SEG_DACH], "stufen": rahmen})
+                      "segmente": [SEG_FENSTER, SEG_DACH], "stufen": rahmen,
+                      **({"ecke_bogen": k["fs_ecke"]} if "fs_ecke" in k else {})})
     if "heckscheibe" in k:
         zonen.append({"ansicht": "oben", "punkte": k["heckscheibe"], "symmetrisch": True,
                       "mat": "glas", "nur_gh": True, "n_min": 0.05,
