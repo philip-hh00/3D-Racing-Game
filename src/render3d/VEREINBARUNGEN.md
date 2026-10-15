@@ -129,7 +129,7 @@ Fahrzeugmitte am Boden):
 | Knoten | Ursprung | Bewegung |
 |---|---|---|
 | `augpunkt` | Augenmitte des Fahrers (leeres Objekt) | keine; Cockpitkamera, Blick nach +X |
-| `lenkrad` | Mitte des Lenkradkranzes auf der Lenksäulenachse | dreht um die **lokale X-Achse** (= Lenksäule, zeigt zum Fahrer hin geneigt); + = links |
+| `lenkrad` | Mitte des Lenkradkranzes auf der Lenksäulenachse | dreht um die **lokale X-Achse** (= Lenksäule, zeigt zum Fahrer hin geneigt); + = links. Kranz und Speichen tragen das Material `lack` (siehe Ausnahme unten) |
 | `nadel_tacho` `nadel_drehzahl` | Drehpunkt der Nadel | drehen um die **lokale X-Achse** (Blickrichtung ins Instrument); in Ruhe zeigt die Nadel auf den Skalenanfang |
 | `spiegel_innen` `spiegel_l` `spiegel_r` | Mitte der Spiegelfläche | starr; Spiegelglas als eigenes Netz mit Material `spiegel`, UV 0..1 über die Fläche (U nach rechts, wie der Fahrer hineinschaut) |
 
@@ -154,7 +154,13 @@ Renderer ohne (alte GLBs bleiben gültig).
 **Sicht aus dem Augpunkt** (geprüft von `tests/test_cockpit_sicht.py`, Strahlen
 gegen die Karosserie): Vom Auge aus sieht man im Innenraum nur Innenraummaterial
 (`innenraum`, `carbon`, `zierteil`, `kunststoff`, `leder`, `anzeige` …) — nie
-`lack`/`lack2` auf dem Armaturenbrett, an der Konsole oder an der Tür. Der
+`lack`/`lack2` auf dem Armaturenbrett, an der Konsole oder an der Tür.
+**Ausnahme Lenkrad:** Kranz und Speichen des Knotens `lenkrad` (nicht Nabe,
+Prallplatte, Säulenstummel, Zifferblätter oder Bildschirm) tragen das Material
+`lack`, also immer die Hauptfarbe des Wagens — die Werkstattlackierung färbt sie
+mit um (`rennszene.fahrzeugteile_zeichnen` setzt `lack` in jedem Knoten, nicht
+nur an der `karosserie`). `lack2` bleibt dort tabu; die Prüfung der Sicht gilt
+nur für den Knoten `karosserie`, das Lenkrad liegt außerhalb davon. Der
 Bildschirm der Mittelkonsole sitzt in der Rückwand des Armaturenbretts, seine
 Oberkante liegt unter der Armaturenoberkante (hinter ihm liegt kein Glas). Der
 Dachhimmel (`innenraum`) schließt lückenlos, auch unter Schiebe- und Glasdach.

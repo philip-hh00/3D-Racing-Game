@@ -227,6 +227,12 @@
    ]
   ],
   "basis_v": 0.8,
+  "fs_ecke": {
+   "kopf": 1,
+   "saeule": 4,
+   "kopf_m": 0.3,
+   "saeule_m": 0.55
+  },
   "frontscheibe": [
    [
     0.574,
