@@ -41,6 +41,8 @@ from src.core import integritaet  # noqa: E402
 from src.core.version import VERSION  # noqa: E402
 
 _LEN = struct.Struct("!I")
+SPIEL = integritaet.SPIEL                       # "3d" bzw. "2d" - dieselbe Datei in beiden Repos
+FREMD = "2d" if SPIEL == "3d" else "3d"         # das jeweils andere Spiel
 
 
 # ══ Kanonische Summe ═════════════════════════════════════════════════════════
@@ -156,6 +158,26 @@ def test_stand_liefert_dieselbe_summe_wie_digest():
     assert integritaet.stand().digest == integritaet.digest(bundle_dir())
 
 
+def test_gepacktes_spiel_rechnet_dieselbe_summe(tmp_path, monkeypatch):
+    """PyInstaller legt die Dateien unter ``sys._MEIPASS`` ab (Windows wie macOS),
+    und ein Windows-Checkout hat CRLF: die Summe darf sich nicht aendern."""
+    import shutil
+    ziel = tmp_path / "MEIPASS"
+    for sub in ("data/vehicles", "data/tracks", "data/ai_settings"):
+        quelle = Path(_ROOT, sub)
+        if quelle.is_dir():
+            shutil.copytree(quelle, ziel / sub, ignore=shutil.ignore_patterns("*.png"))
+    for p in ziel.rglob("*.json"):
+        roh = p.read_bytes().replace(b"\r\n", b"\n")
+        p.write_bytes(roh.replace(b"\n", b"\r\n"))
+    monkeypatch.setattr(sys, "_MEIPASS", str(ziel), raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(integritaet, "_stand", None)
+    from src.core.paths import bundle_dir
+    assert Path(bundle_dir()) == ziel
+    assert integritaet.stand().digest == integritaet.digest(_ROOT)
+
+
 # ══ tools/pruefsummen.py ═════════════════════════════════════════════════════
 
 def _werkzeug():
@@ -179,14 +201,14 @@ def test_werkzeug_eintragen_ersetzt_nur_den_eigenen_eintrag(tmp_path, monkeypatc
     t = _werkzeug()
     ziel = tmp_path / "pruefsummen.json"
     ziel.write_text(json.dumps({"format": 1, "spiele": {
-        "2d": {"1.1.0": {"summen": ["f" * 64]}}, "3d": {"1.0.1": {"summen": ["e" * 64]}}}}),
+        FREMD: {"1.1.0": {"summen": ["f" * 64]}}, SPIEL: {"1.0.1": {"summen": ["e" * 64]}}}}),
         encoding="utf-8")
     eintrag = {"summen": ["a" * 64], "dateien": 1, "fahrzeuge": {}, "strecken": {}}
     t.eintragen(ziel, eintrag)
     d = json.loads(ziel.read_text(encoding="utf-8"))
-    assert d["spiele"]["2d"]["1.1.0"]["summen"] == ["f" * 64]            # fremdes Spiel unberuehrt
-    assert d["spiele"]["3d"]["1.0.1"]["summen"] == ["e" * 64]            # alte Version bleibt
-    assert d["spiele"]["3d"][VERSION]["summen"] == ["a" * 64]
+    assert d["spiele"][FREMD]["1.1.0"]["summen"] == ["f" * 64]            # fremdes Spiel unberuehrt
+    assert d["spiele"][SPIEL]["1.0.1"]["summen"] == ["e" * 64]            # alte Version bleibt
+    assert d["spiele"][SPIEL][VERSION]["summen"] == ["a" * 64]
     # Ein zweiter Lauf aendert die Datei nicht.
     vorher = ziel.read_bytes()
     t.eintragen(ziel, eintrag)
@@ -203,7 +225,7 @@ def test_werkzeug_pruefen_meldet_abweichungen(tmp_path, capsys, monkeypatch):
     t.eintragen(ziel, t.integritaet.server_eintrag(None))
     assert t.main(["--pruefen", str(ziel)]) == 0
     d = json.loads(ziel.read_text(encoding="utf-8"))
-    d["spiele"]["3d"][VERSION]["summen"] = ["b" * 64]
+    d["spiele"][SPIEL][VERSION]["summen"] = ["b" * 64]
     ziel.write_text(json.dumps(d), encoding="utf-8")
     assert t.main(["--pruefen", str(ziel)]) == 1
     assert "Summe passt nicht" in capsys.readouterr().err
@@ -215,7 +237,7 @@ def test_werkzeug_eintragen_in_mehrere_dateien(tmp_path):
     assert t.main(["--eintragen", str(a), str(b)]) == 0
     for p in (a, b):
         d = json.loads(p.read_text(encoding="utf-8"))
-        assert d["spiele"]["3d"][VERSION]["summen"] == [integritaet.digest(_ROOT)]
+        assert d["spiele"][SPIEL][VERSION]["summen"] == [integritaet.digest(_ROOT)]
 
 
 def test_bauskripte_und_pipeline_rufen_die_pruefung_auf():
@@ -277,7 +299,7 @@ def test_client_schickt_spiel_und_summe_bei_host_und_join():
     for art in ("HOST", "JOIN"):
         roh = _client_paket({"type": art, "name": "Anna"})
         msg = json.loads(roh[4:])
-        assert msg["game"] == "3d" and msg["files"] == integritaet.stand().digest
+        assert msg["game"] == SPIEL and msg["files"] == integritaet.stand().digest
         assert msg["version"] == VERSION
     anderes = json.loads(_client_paket({"type": "READY"})[4:])
     assert "files" not in anderes and "game" not in anderes
@@ -287,7 +309,7 @@ def test_client_schickt_spiel_und_summe_bei_host_und_join():
 def relay(tmp_path, monkeypatch):
     datei = tmp_path / "pruefsummen.json"
     datei.write_text(json.dumps({"format": 1, "spiele": {
-        "3d": {VERSION: {"summen": [integritaet.stand().digest]}}}}), encoding="utf-8")
+        SPIEL: {VERSION: {"summen": [integritaet.stand().digest]}}}}), encoding="utf-8")
     monkeypatch.setenv("RACE_PRUEFSUMMEN_DATEI", str(datei))
     monkeypatch.setenv("RACE_FILES_CHECK", "enforce")
     monkeypatch.setattr(srv, "_wache", srv._Wache())
@@ -322,8 +344,7 @@ def test_summe_wirklich_ohne_den_client_zu_senden_wird_abgewiesen(relay):
 
 def test_der_client_kennt_die_fahrzeugnummern_des_relays():
     from src.net import protocol
-    import schutz
-    assert schutz.VEHICLE_TYPES == protocol.VEHICLE_TYPES
+    assert srv.schutz.VEHICLE_TYPES == protocol.VEHICLE_TYPES
 
 
 # ══ Lobbyseite: Entfernen ════════════════════════════════════════════════════

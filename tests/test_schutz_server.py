@@ -621,8 +621,14 @@ def test_erfundenes_first_finish_loest_kein_force_finish_aus(tmp_path):
 # ══ 3. Rauswurf ══════════════════════════════════════════════════════════════
 
 def _tunnel(monkeypatch):
-    """Alle Spieler kommen mit derselben Adresse an (wie hinter dem Tunnel)."""
-    monkeypatch.setattr(srv, "TRUSTED_PROXIES", frozenset({"127.0.0.1"}))
+    """Alle Spieler kommen mit derselben Adresse an (wie hinter dem Tunnel).
+
+    Bewusst ohne ``monkeypatch``: ``Relay`` setzt die Liste beim Start selbst auf
+    leer und stellt beim Ende den Stand davor wieder her. Ein monkeypatch
+    dazwischen merkte sich den leeren Zwischenstand und liesse ihn nach dem Test
+    stehen - verseucht waeren alle Tests danach (test_server_multi_lobby).
+    """
+    srv.TRUSTED_PROXIES = frozenset({"127.0.0.1"})
 
 
 def test_host_entfernt_spieler(monkeypatch, tmp_path):
