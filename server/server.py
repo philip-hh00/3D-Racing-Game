@@ -3061,8 +3061,8 @@ _SCHUTZ_TEXT = {
 
 def schutz_von(lobby: Lobby) -> "schutz.LobbySchutz":
     """Der Schutz einer Lobby; fehlt er (Lobby ohne HOST angelegt), entsteht er hier."""
-    if lobby.schutz is None:
-        lobby.schutz = schutz.LobbySchutz(lobby.lobby_id)
+    if getattr(lobby, "schutz", None) is None:
+        lobby.schutz = schutz.LobbySchutz(getattr(lobby, "lobby_id", "?"))
     return lobby.schutz
 
 
