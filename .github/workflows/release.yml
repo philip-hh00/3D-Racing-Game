@@ -58,6 +58,20 @@ jobs:
               echo "Version stimmt ueberein." ;;
           esac
 
+  pruefsummen-pruefen:
+    # Die Dateisumme, die der Relay fuer diese Version kennt, muss zu den
+    # ausgelieferten Dateien passen (server/pruefsummen.json, erzeugt mit
+    # tools/pruefsummen.py --eintragen). Dasselbe laeuft unten noch einmal auf
+    # Windows und macOS: die Summe ist kanonisch und muss ueberall gleich sein.
+    needs: version-pruefen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python tools/pruefsummen.py --pruefen
+
   # Die 3D-Assets (Fahrzeuge, Umgebung, Texturen, Himmel) liegen nicht im Repo,
   # sie entstehen aus Skripten: CC0-Material von Poly Haven laden, Texturen
   # erzeugen, dann Blender headless. Einmal hier auf Linux, danach bekommen
@@ -115,7 +129,7 @@ jobs:
           retention-days: 3
 
   bauen:
-    needs: [tests, version-pruefen, assets]
+    needs: [tests, version-pruefen, assets, pruefsummen-pruefen]
     strategy:
       fail-fast: false      # ein kaputter macOS-Build soll den Windows-Build nicht verschlucken
       matrix:
@@ -153,6 +167,7 @@ jobs:
         run: |
           python tools/baustempel.py
           python tools/pruefsummen.py
+          python tools/pruefsummen.py --pruefen
 
       - name: Windows — Programm packen
         if: matrix.name == 'windows'

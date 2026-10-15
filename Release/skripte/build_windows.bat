@@ -108,6 +108,11 @@ echo.
 if errorlevel 1 ( echo. & echo [FEHLER] Bauzeit konnte nicht geschrieben werden. & pause & exit /b 1 )
 "%PY%" tools\pruefsummen.py
 if errorlevel 1 ( echo. & echo [FEHLER] Pruefsummen konnten nicht geschrieben werden. & pause & exit /b 1 )
+:: Die Summe, die der Relay fuer diese Version kennt (server\pruefsummen.json),
+:: muss zu dem passen, was gleich ausgeliefert wird - sonst kommt kein Spieler
+:: dieses Builds mehr online herein.
+"%PY%" tools\pruefsummen.py --pruefen
+if errorlevel 1 ( echo. & echo [FEHLER] server\pruefsummen.json passt nicht zu den Spieldateien. & echo          Abhilfe: tools\pruefsummen.py --eintragen, dann committen ^(siehe Kopf der Datei^). & pause & exit /b 1 )
 
 :: === 1) PyInstaller: Programm + Assets packen ===============================
 echo [1/3] PyInstaller...

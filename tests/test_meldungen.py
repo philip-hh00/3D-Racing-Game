@@ -85,6 +85,13 @@ _ZUSTAENDE = {
         "naechsten Tippen geleert",
     "_angaben.meldung":
         "Dasselbe fuer Lobbyname/Passwort beim Erstellen einer Lobby",
+    "_schutz_text":
+        "Absage des Online-Schutzes beim Beitritt (veraenderte Dateien, entfernt, "
+        "anderes Spiel). Der Spieler steht wieder auf der Rollenauswahl und soll "
+        "wissen, warum; die Meldung bleibt, bis er etwas tut",
+    "vom Host aus der Lobby entfernt":
+        "Wer entfernt wurde, steht wieder auf der Rollenauswahl und soll wissen, "
+        "warum",
     "name_absage":
         "Absage des Relays wegen eines verbotenen Namens (BAD_NAME). Der "
         "Spieler muss den Namen aendern; die Meldung bleibt, bis er tippt",

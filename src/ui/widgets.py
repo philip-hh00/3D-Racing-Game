@@ -170,6 +170,56 @@ class ZahnradKnopf(Button):
         theme.text(screen, text, theme.LABEL, theme.TEXT, r.center, center=True)
 
 
+class _SymbolKnopf(ZahnradKnopf):
+    """Quadratischer Knopf mit einem aus Formen gezeichneten Zeichen (wie das
+    Zahnrad: folgt Farbe und Fokus des Themas, bleibt scharf).
+
+    Die Beschriftung erscheint als Hinweis beim Zeigen und beim Fokus
+    (``hinweis_zeichnen``). Nachkommen zeichnen ihr Zeichen in ``_zeichen``.
+    """
+
+    #: Farbe des Zeichens im Ruhezustand.
+    TINTE = theme.ACCENT
+
+    def _zeichen(self, screen, mitte, gross: float, ink) -> None:
+        raise NotImplementedError
+
+    def draw(self, screen, focused=False) -> None:
+        hover = self._hover() and self.enabled
+        if not self.enabled:
+            fill, border, ink = (26, 28, 36), theme.DISABLED, theme.DISABLED
+        elif focused or hover:
+            fill, border, ink = (70, 56, 22), theme.ACCENT_HOT, theme.TEXT
+        else:
+            fill, border, ink = (44, 38, 18), theme.ACCENT, self.TINTE
+        zeichnen.rect(screen, fill, self.rect, border_radius=8)
+        zeichnen.rect(screen, border, self.rect, 2 + (1 if focused else 0), border_radius=8)
+        self._zeichen(screen, self.rect.center, min(self.rect.w, self.rect.h) * 0.5, ink)
+
+
+class KreuzKnopf(_SymbolKnopf):
+    """Ein Kreuz: Spieler aus der Lobby entfernen (nur Host)."""
+    TINTE = theme.DANGER
+
+    def _zeichen(self, screen, mitte, gross, ink) -> None:
+        d = gross * 0.42
+        w = max(3, int(gross * 0.16))
+        zeichnen.line(screen, ink, (mitte[0] - d, mitte[1] - d), (mitte[0] + d, mitte[1] + d), w)
+        zeichnen.line(screen, ink, (mitte[0] - d, mitte[1] + d), (mitte[0] + d, mitte[1] - d), w)
+
+
+class FlaggenKnopf(_SymbolKnopf):
+    """Eine Fahne: Spieler melden."""
+    TINTE = theme.ACCENT
+
+    def _zeichen(self, screen, mitte, gross, ink) -> None:
+        x0, y0 = mitte[0] - gross * 0.28, mitte[1] - gross * 0.45
+        zeichnen.line(screen, ink, (x0, y0), (x0, mitte[1] + gross * 0.48),
+                      max(3, int(gross * 0.13)))
+        zeichnen.polygon(screen, ink, [(x0, y0), (x0 + gross * 0.74, y0 + gross * 0.24),
+                                       (x0, y0 + gross * 0.48)])
+
+
 class ZurueckKnopf(Button):
     """Der Rueckweg als sichtbare Schaltflaeche — auf jedem Bildschirm gleich.
 

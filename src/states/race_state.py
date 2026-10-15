@@ -3538,6 +3538,10 @@ class RaceState(BaseState):
                             "finish_time": r.get("finish_time"),
                             "best_lap": r.get("best_lap"),
                             "dnf": r.get("dnf", False),
+                            # Vom Relay als unmoeglich oder verdaechtig gekennzeichnet
+                            # (server/schutz.py): die Seite zeigt „ungültig".
+                            "invalid": bool(r.get("invalid", False)),
+                            "online_slot": r.get("slot", -1),
                             "is_player": r.get("slot") == self._my_online_slot,
                             "is_player2": False,
                             "sectors": [],

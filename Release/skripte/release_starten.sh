@@ -109,6 +109,14 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null 2>&1 \
   exit 1
 fi
 
+# Der Relay laesst nur Spieler mit der Dateisumme herein, die er fuer diese
+# Version kennt (server/pruefsummen.json). Stimmt die Datei nicht zum Stand, kaeme
+# aus dem fertigen Build niemand mehr online herein.
+"$PY" tools/pruefsummen.py --pruefen || {
+  echo "         Abhilfe: tools/pruefsummen.py --eintragen, committen, pushen."
+  exit 1
+}
+
 read -r -p "Tag $TAG setzen und pushen? [j/N] " ANTWORT
 case "$ANTWORT" in
   j|J) ;;

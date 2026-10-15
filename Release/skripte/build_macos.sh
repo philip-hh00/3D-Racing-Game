@@ -87,6 +87,10 @@ VERSION="$("$VPY" -c 'from src.core import version; print(version.VERSION)')"
 # Tagesdatum als Build-Datum, weil version.py sonst date.today() nimmt.
 "$VPY" tools/baustempel.py
 "$VPY" tools/pruefsummen.py
+# Die Summe, die der Relay fuer diese Version kennt (server/pruefsummen.json),
+# muss zu dem passen, was gleich ausgeliefert wird - und unter macOS dieselbe sein
+# wie unter Windows (kanonische Summe, siehe src/core/integritaet.py).
+"$VPY" tools/pruefsummen.py --pruefen || { echo "[ERROR] server/pruefsummen.json passt nicht zu den Spieldateien (tools/pruefsummen.py --eintragen)."; exit 1; }
 TS="$(date +%Y-%m-%d_%H%M)"
 APPNAME="3D-Racing-Game"
 OUT="Release/ausgabe"

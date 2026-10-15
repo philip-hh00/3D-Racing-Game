@@ -18,6 +18,11 @@ import pytest
 # Vor dem pygame-Import setzen: ohne Fenster und ohne Tonausgabe testen.
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+# Der Relay prueft beim Beitritt die Dateipruefsumme des Clients
+# (server/schutz.py). Die meisten Tests melden sich ohne an; wer die Pruefung
+# testet, schaltet sie selbst ein (monkeypatch.setenv("RACE_FILES_CHECK",
+# "enforce")).
+os.environ.setdefault("RACE_FILES_CHECK", "off")
 # Der Motorklang laeuft im Spiel in einem eigenen Prozess (tonprozess). Tests
 # starten keinen; wer ihn pruefen will, setzt ``tonausgabe.PROZESS`` selbst.
 os.environ.setdefault("RACING_TON_PROZESS", "0")
