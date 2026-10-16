@@ -40,8 +40,9 @@ from src.net.protocol import (
     LEN_PREFIX,
     UDP_PONG, UDP_STATE, UDP_BUMP,
     pack_ping, pack_register, pack_state, pack_bump,
-    unpack_pong, unpack_state, unpack_bump,
+    unpack_pong_ext, unpack_state, unpack_bump,
 )
+from src.net.uhrsync import UhrSync
 
 
 _RECV_BUF    = 8192
@@ -51,6 +52,11 @@ _UDP_TIMEOUT = 0.1                # non-blocking poll interval
 #: TCP-Keepalive: so viele **echte** Sekunden zwischen zwei PINGs. Der Server
 #: wartet in ``_recv`` hoechstens 60 s auf die naechste Nachricht.
 TCP_KEEPALIVE_S = 20.0
+#: Anlauf des Uhrabgleichs: so lange alle UHR_ANLAUF_INTERVALL Sekunden pingen,
+#: bis UHR_ANLAUF_PROBEN Antworten mit Relayzeit da sind.
+UHR_ANLAUF_PROBEN = 8
+UHR_ANLAUF_INTERVALL = 0.25
+UHR_ANLAUF_MAX = 12          # Pings, die hoechstens im schnellen Takt gesendet werden
 
 
 class NetworkClient:
@@ -75,6 +81,10 @@ class NetworkClient:
         # kleinste: Ausreisser durch Warteschlangen machen die Laufzeit nur
         # groesser, nie kleiner als die Leitung wirklich ist.
         self._ping_verlauf: collections.deque = collections.deque(maxlen=8)
+        # Abgleich mit der Uhr des Relays (PONG traegt die Relayzeit): damit
+        # kennt jeder Empfaenger das exakte Alter eines STATE-Pakets.
+        self._uhr = UhrSync()
+        self._anlauf_pings = 0
         # Zeitpunkt (time.monotonic) des letzten TCP-PING bzw. UDP-Pings.
         self._tcp_ping_zuletzt: float = 0.0
         self._udp_ping_zuletzt: float = 0.0
@@ -184,11 +194,18 @@ class NetworkClient:
             except OSError:
                 self._alive = False
 
-    def send_state(self, vehicles: list[dict]):
-        """Send a UDP STATE packet. Caller is responsible for the send throttle."""
+    def send_state(self, vehicles: list[dict], zeit: float | None = None):
+        """Send a UDP STATE packet. Caller is responsible for the send throttle.
+
+        *zeit*: Augenblick (``time.monotonic``), zu dem der Stand der Fahrzeuge
+        gilt (Ende des Physikschritts); ohne Angabe der Augenblick des Sendens.
+        Sie muss von Paket zu Paket wachsen.
+        """
         if not self._udp or not self._lobby_id:
             return
-        data = pack_state(self._lobby_id, self._slot, vehicles, time.monotonic())
+        jetzt = time.monotonic() if zeit is None else zeit
+        data = pack_state(self._lobby_id, self._slot, vehicles, jetzt,
+                          clock_offset=self._uhr.versatz)
         self._udp_send(data)
 
     def send_bump(self, target_slot: int, impulse_x: float, impulse_y: float):
@@ -304,8 +321,14 @@ class NetworkClient:
         if not (self._alive and self._lobby_id):
             return
         jetzt = time.monotonic()
-        if jetzt - self._udp_ping_zuletzt >= self._ping_interval:
+        # Bis der Uhrabgleich steht, dichter pingen (4 je Sekunde): sonst
+        # dauert er im Rennen ein paar Sekunden zu lang. Danach der Takt von 1 s.
+        # Antwortet ein aelterer Relay ohne Relayzeit, bleibt es bei 12 schnellen Pings.
+        schnell = self._uhr.anzahl < UHR_ANLAUF_PROBEN and self._anlauf_pings < UHR_ANLAUF_MAX
+        intervall = UHR_ANLAUF_INTERVALL if schnell else self._ping_interval
+        if jetzt - self._udp_ping_zuletzt >= intervall:
             self._udp_ping_zuletzt = jetzt
+            self._anlauf_pings += 1
             self._ping_sent        = jetzt
             self._udp_send(pack_ping(self._lobby_id, self._slot, self._ping_sent))
 
@@ -326,6 +349,19 @@ class NetworkClient:
         Umlaufzeit der letzten Pings). 0.0, solange noch kein Ping beantwortet ist."""
         werte = [w for w in tuple(self._ping_verlauf) if w > 0.0]
         return min(werte) / 2000.0 if werte else 0.0
+
+    @property
+    def uhr(self) -> UhrSync:
+        """Der Abgleich mit der Relayuhr (``versatz`` = Relayuhr - eigene Uhr)."""
+        return self._uhr
+
+    def alter_von(self, arrival: float, send_time: float, absender_versatz) -> float | None:
+        """Alter (s) einer Lage beim Eintreffen: Empfangszeit minus Sendezeit, beide
+        auf der Relayuhr. None, wenn einer der beiden Uhrabgleiche fehlt."""
+        eigen = self._uhr.versatz
+        if eigen is None or absender_versatz is None or not send_time:
+            return None
+        return (arrival + eigen) - (send_time + absender_versatz)
 
     @property
     def connected(self) -> bool:
@@ -388,10 +424,14 @@ class NetworkClient:
                     continue
                 t = data[0]
                 if t == UDP_PONG:
-                    ts = unpack_pong(data)
-                    if ts is not None:
-                        self._ping_ms = (time.monotonic() - ts) * 1000.0
+                    antwort = unpack_pong_ext(data)
+                    if antwort is not None:
+                        ts, server_zeit = antwort
+                        t3 = time.monotonic()
+                        self._ping_ms = (t3 - ts) * 1000.0
                         self._ping_verlauf.append(self._ping_ms)
+                        if server_zeit is not None:
+                            self._uhr.probe(ts, t3, server_zeit)
                 elif t == UDP_STATE:
                     parsed = unpack_state(data)
                     if parsed:
@@ -399,6 +439,13 @@ class NetworkClient:
                         # clock-offset estimate isn't skewed by however long the
                         # packet then waits in the queue.
                         parsed["arrival"] = time.monotonic()
+                        # Alter der Lage beim Eintreffen auf der gemeinsamen
+                        # Zeitleiste (Relayuhr), sobald beide Seiten abgeglichen
+                        # sind. Ohne: kein Schluessel, der Empfaenger bleibt bei
+                        # der Interpolation.
+                        parsed["alter"] = self.alter_von(parsed["arrival"],
+                                                         parsed["send_time"],
+                                                         parsed.get("clock_offset"))
                         self._q.put({"source": "udp", "data": parsed})
                 elif t == UDP_BUMP:
                     parsed = unpack_bump(data)

@@ -96,6 +96,17 @@ def szenen_kennung(fahrzeug) -> int:
 # regular 1..N range so it can never collide with a locally spawned vehicle.
 TAKEOVER_ID_BASE = 200
 
+def _eingaben(fahrzeug) -> dict:
+    """Lenken, Gas, Bremse, Handbremse eines Fahrzeugs fuer das STATE-Paket: die
+    Gegenstelle rechnet damit die Lage der Gegenwart vor (remote_vehicle.py)."""
+    return {
+        "steer": float(getattr(fahrzeug, "steer_input", 0.0) or 0.0),
+        "throttle": float(getattr(fahrzeug, "throttle", 0.0) or 0.0),
+        "brake": float(getattr(fahrzeug, "brake_input", 0.0) or 0.0),
+        "handbrake": bool(getattr(fahrzeug, "handbrake", False)),
+    }
+
+
 # Online position streaming. A bump is the one moment where the peers' physics
 # disagree hard — each side treats the other's car as immovable — so positions
 # diverge fastest exactly when the correction is most visible. Sending denser
@@ -230,6 +241,8 @@ class RaceState(BaseState):
         self._remote_map: dict = {}
         self._remote_config_keys: dict = {}
         self._send_accum: float = 0.0
+        self._schritt_zeit: float = 0.0     # monotonic nach dem letzten Physikschritt
+        self._gesendet_zeit: float = 0.0    # Stempel des zuletzt gesendeten Pakets
         # Seconds of denser position streaming left after a car-to-car touch.
         self._contact_boost: float = 0.0
         #: Absender-Slot -> Zeitpunkt (monotonic), an dem unser Auto seinen
@@ -2154,6 +2167,11 @@ class RaceState(BaseState):
 
         if self.physics_world:
             self.physics_world.step(dt)
+            # Zeitpunkt, zu dem der Stand der eigenen Autos gilt: darauf werden
+            # gesendete Pakete gestempelt und ferne Autos hochgerechnet
+            # (die Bildverarbeitung bis _update_online dauert einige ms).
+            import time as _tm
+            self._schritt_zeit = _tm.monotonic()
 
         if self.ghost_recorders and self.race_manager and self.race_manager.state == "racing":
             for pid, rec in self.ghost_recorders.items():
@@ -3423,6 +3441,13 @@ class RaceState(BaseState):
         # Der Keepalive laeuft in der Zustandsmaschine (07.08.2026) — hier
         # noch einmal zu ticken hiesse, doppelt so oft zu pingen.
 
+        # Bezugszeit des Bildes: der letzte Physikschritt, solange er frisch ist.
+        import time as _tm
+        jetzt = _tm.monotonic()
+        bezug = self._schritt_zeit if 0.0 < jetzt - self._schritt_zeit < 0.1 else None
+        for rv in self._remote_vehicles:
+            rv.bezug_setzen(bezug)
+
         # ── Drain incoming events ──────────────────────────────────────────
         for evt in nc.poll():
             src = evt.get("source")
@@ -3436,10 +3461,13 @@ class RaceState(BaseState):
                     continue
                 send_time = data.get("send_time", 0.0)
                 arrival = data.get("arrival", 0.0)
+                # Alter der Lage beim Eintreffen (gemeinsame Relayuhr), sonst None:
+                # dann bleibt das Abbild bei der Interpolation.
+                alter = data.get("alter")
                 for snap in vehicles:
                     vid = snap.get("id", sender_slot * 100)
                     rv  = self._get_or_create_remote(sender_slot, vid, snap.get("cfg", "rookie"))
-                    rv.apply_snapshot(snap, send_time, arrival)
+                    rv.apply_snapshot(snap, send_time, arrival, alter)
 
 
             elif src == "udp_bump":
@@ -3596,6 +3624,7 @@ class RaceState(BaseState):
                 "omega": float(b.angular_velocity),
                 "lap": tracker.current_lap if tracker else 0,
                 "wp": int(tracker.waypoint_progress) if tracker else 0,
+                **_eingaben(self.player),
             }]
             # Host also broadcasts AI vehicles so clients see them
             if self._is_online_host():
@@ -3614,8 +3643,11 @@ class RaceState(BaseState):
                             "omega": float(ab.angular_velocity),
                             "lap": ai_tracker.current_lap if ai_tracker else 0,
                             "wp": int(ai_tracker.waypoint_progress) if ai_tracker else 0,
+                            **_eingaben(ai),
                         })
-            nc.send_state(vehicles)
+            stempel = bezug if (bezug is not None and bezug > self._gesendet_zeit) else None
+            self._gesendet_zeit = stempel if stempel is not None else _tm.monotonic()
+            nc.send_state(vehicles, stempel)
 
 
     def _render_ping_overlay(self, screen: pygame.Surface) -> None:

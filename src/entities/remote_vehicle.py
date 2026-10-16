@@ -1,6 +1,23 @@
 """
 RemoteVehicle — kinematic physics body representing a networked opponent.
 
+Zwei Wiedergabearten, automatisch gewaehlt (Stand 1.1.0):
+
+**Vorhersage der Gegenwart** (Standard, wenn beide Seiten mit der Relayuhr
+abgeglichen sind, ``NetworkClient.alter_von``): jedes Paket kennt sein exaktes
+Alter. Das Abbild wird nicht in der Vergangenheit gezeichnet, sondern dort, wo
+der Mitspieler JETZT ist — hochgerechnet vom neuesten Paket um dessen Alter
+(Geschwindigkeit, Gierrate, Beschleunigung aus den letzten Paketen, die
+Eingaben Lenken/Gas/Bremse als Vorwissen, Obergrenze PREDICT_MAX). Ein neues Paket
+verschiebt die hochgerechnete Bahn leicht; der Unterschied wird nicht gesprungen,
+sondern ueber ~0,1-0,2 s abgebaut, nie rueckwaerts (``_versatz_abbauen``).
+Zum Vergleich und als Rueckfall bleibt die Interpolation darunter voll
+erhalten und laeuft mit; ``RACE_NETZ_MODUS=interpolation`` erzwingt sie. Fehlt
+der Uhrabgleich (aelterer Relay, noch kein PONG, unplausibles Alter) oder ist
+die Leitung zu schlecht, blendet ``_w`` weich auf die Interpolation zurueck.
+
+Die folgende Beschreibung gilt fuer diese Interpolation.
+
 Playback uses **snapshot interpolation** (the Valve / Gambetta approach): every
 received snapshot is placed on the SENDER's timeline (its ``send_time``) and
 buffered, and the ghost is drawn at a small adaptive delay *behind* that
@@ -31,6 +48,7 @@ so every client "feels" the bump without needing a shared physics simulation.
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections import deque
 
@@ -39,6 +57,7 @@ import pymunk
 
 from src.entities.components.renderer import VehicleRenderer
 from src.core.settings import COLLISION_TYPE_VEHICLE
+from src.net import vorhersage
 from src.ui import zeichnen
 
 # Visual colors per slot index (slot 0 = local player, so remote starts at 1)
@@ -110,6 +129,10 @@ CORRECTION_RATE      = 10.0
 CORRECTION_SHARE     = 0.5
 CORRECTION_MIN_SPEED = 15.0
 TELEPORT_DISTANCE    = 150.0
+# Unter Vorhersage springt das Bild nur, wenn der Absender selbst gesprungen ist
+# (siehe ``_versatz_aufnehmen``); ein Rueckstand ueber diese Grenze (px, 36 m)
+# wird trotzdem gesetzt statt eingeholt.
+TELEPORT_MAX_FEHLER  = 450.0
 
 # Hermite-Kurven nur ueber kurze Luecken: ueber eine lange (Pause, Verlust)
 # zoege die Geschwindigkeit als Tangente die Kurve weit vom Weg ab.
@@ -130,6 +153,50 @@ _BUFFER_MAX = 32
 # without any per-call overhead in the real game.
 _clock = time.monotonic
 
+# ── Wiedergabeart ──────────────────────────────────────────────────────────────
+MODUS_VORHERSAGE     = "vorhersage"
+MODUS_INTERPOLATION  = "interpolation"
+
+
+def _modus_aus_umgebung() -> str:
+    """``RACE_NETZ_MODUS=vorhersage|interpolation`` (Vorgabe: Vorhersage) — fuer
+    den A/B-Vergleich im Betrieb; die Wahl gilt je Prozess."""
+    wert = os.environ.get("RACE_NETZ_MODUS", "").strip().lower()
+    if wert in ("interpolation", "interp", "alt"):
+        return MODUS_INTERPOLATION
+    return MODUS_VORHERSAGE
+
+
+MODUS = _modus_aus_umgebung()
+
+# Weiter als so viel (s) wird nie vorausgerechnet; ein aelteres Paket heisst
+# Verlust oder Pause, dann bleibt das Abbild auf dem Stand dieser Frist stehen.
+PREDICT_MAX = 0.30
+# Danach klingt das Tempo mit dieser Zeitkonstante ab (s), hoechstens AUSLAUF_MAX
+# Sekunden lang.
+AUSLAUF_TAU = 0.4
+AUSLAUF_MAX = 1.0
+# Ein Alter ausserhalb von [-ALTER_MIN, ALTER_MAX] ist kein Messwert, sondern
+# ein Fehler im Uhrabgleich (Sprung der Relayuhr, kaputter Versatz): das Paket
+# zaehlt dann nicht fuer die Vorhersage. Kleine negative Werte sind Messrauschen
+# (Versatz auf ein paar ms genau) und gelten als Alter null.
+ALTER_MIN = 0.05
+ALTER_MAX = 1.0
+# Gewicht der Vorhersage ``_w`` (0 = Interpolation, 1 = Vorhersage) wandert mit
+# dieser Rate (1/s) zum Ziel: zur Vorhersage langsam, zurueck schneller.
+W_RATE_AUF = 1.0
+W_RATE_AB  = 2.0
+# Hysterese: so viele gueltige (ungueltige) Pakete in Folge, bis die
+# Vorhersage an- (abgeschaltet) wird. Bei 50 Hz ~ 0,2 s bzw. 0,1 s.
+W_PAKETE_AN = 10
+W_PAKETE_AUS = 5
+# Schwankung des Alters (s, geglaettet), ab der die Vorhersage auf die
+# Interpolation zurueckgenommen wird: bei so wildem Takt ist auch ein
+# Paket mit bekanntem Alter oft zu alt, und der Puffer der Interpolation
+# glaettet besser.
+W_SCHWANKUNG_VOLL = 0.10
+W_SCHWANKUNG_NULL = 0.30
+
 
 def _wrap(winkel: float) -> float:
     """Winkel auf (-pi, pi] — fuer den kurzen Weg zwischen zwei Richtungen."""
@@ -137,10 +204,16 @@ def _wrap(winkel: float) -> float:
 
 
 class _Snap:
-    """One state sample, stamped with the SENDER's clock (``t``)."""
-    __slots__ = ("t", "x", "y", "vx", "vy", "angle", "omega")
+    """One state sample, stamped with the SENDER's clock (``t``).
 
-    def __init__(self, t, x, y, vx, vy, angle, omega):
+    ``lt`` ist derselbe Augenblick auf der EIGENEN Uhr (Ankunft minus Alter),
+    ``None`` ohne Uhrabgleich. ``a_s`` die geschaetzte Beschleunigung (px/s^2).
+    """
+    __slots__ = ("t", "x", "y", "vx", "vy", "angle", "omega",
+                 "lt", "a_s", "lenk", "gas", "bremse", "hand", "eing")
+
+    def __init__(self, t, x, y, vx, vy, angle, omega, lt=None, a_s=0.0,
+                 lenk=0.0, gas=0.0, bremse=0.0, hand=False, eing=False):
         self.t = t
         self.x = x
         self.y = y
@@ -148,6 +221,13 @@ class _Snap:
         self.vy = vy
         self.angle = angle
         self.omega = omega
+        self.lt = lt
+        self.a_s = a_s
+        self.lenk = lenk
+        self.gas = gas
+        self.bremse = bremse
+        self.hand = hand
+        self.eing = eing          # Eingaben wurden mitgeschickt
 
 
 class RemoteVehicle:
@@ -173,6 +253,10 @@ class RemoteVehicle:
         # Renderer
         from src.entities.vehicle_factory import VehicleFactory
         cfg     = VehicleFactory.get_config(config_key)
+        # Fahrwerte fuer die Vorhersage (Haftung, Radstand in px).
+        from src.core.settings import M_PER_PX
+        self._grip     = float(getattr(cfg, "grip", 0.85)) if cfg else 0.85
+        self._radstand = float(getattr(cfg, "wheelbase_m", 2.5)) / M_PER_PX if cfg else 32.0
         w       = getattr(cfg, "width_px",    36) if cfg else 36
         h       = getattr(cfg, "height_px",   64) if cfg else 64
         visual  = getattr(cfg, "visual_type", "rookie") if cfg else "rookie"
@@ -233,7 +317,7 @@ class RemoteVehicle:
         self._err_pos:   tuple[float, float] = (0.0, 0.0)
         self._err_angle: float               = 0.0
         # Lage auf dem Wiedergabepfad im letzten Bild (ohne Versatz).
-        self._pfad:      tuple[float, float] = (0.0, 0.0)
+        self._pfad_pos:  tuple[float, float] = (0.0, 0.0)
 
         # Newest accepted raw snapshot — read by the AI takeover.
         self._target_pos:   tuple[float, float] = (0.0, 0.0)
@@ -252,31 +336,49 @@ class RemoteVehicle:
         # Senderuhr -> eigene Uhr: arrival - send_time des schnellsten Pakets.
         self._clock_offset: float | None = None
 
+        # Vorhersage der Gegenwart. ``modus`` gilt je Fahrzeug (Tests, A/B);
+        # ``_w`` ist das Gewicht der Vorhersage im gezeichneten Pfad.
+        self.modus: str = MODUS
+        self._w: float = 0.0
+        self._lt_serie: int = 0            # gueltige (+) / ungueltige (-) Pakete in Folge
+        self._alter_min: float | None = None
+        self._alter_schwankung: float = 0.0
+        self._springt: bool = False        # das letzte Paket war ein Sprung des Absenders
+        # Bezugszeit der Vorhersage (eigene Uhr): ohne Angabe die Uhr selbst. Das
+        # Rennbild setzt hier den Zeitpunkt des letzten Physikschritts, damit die
+        # fernen Autos zur selben Zeit gelten wie das eigene (siehe bezug_setzen).
+        self._bezug: float | None = None
+
         self.lap: int = 0
         self.wp:  int = 0
 
     # ── Network ───────────────────────────────────────────────────────────────
 
     def apply_snapshot(self, snap: dict, send_time: float = 0.0,
-                       arrival: float = 0.0) -> None:
+                       arrival: float = 0.0, alter: float | None = None) -> None:
         """Place a state snapshot on the sender's timeline and buffer it.
 
         ``send_time`` is the sender's monotonic clock (STATE header), ``arrival``
         our own clock when the datagram came in (stamped in the recv thread).
         Without a send_time the arrival time stands in — then late packets
         can't be told from early ones, but nothing breaks.
+
+        ``alter`` — wie alt die Lage beim Eintreffen war (s, gemeinsame
+        Relayuhr; ``NetworkClient.alter_von``). Mit ihm kann das Abbild in der
+        Gegenwart gezeichnet werden; ohne (None) bleibt es bei der Interpolation.
         """
         now = _clock()
         self._last_recv_ts = now
         if arrival <= 0.0:
             arrival = now
+        jetzt = self._bezug if self._bezug is not None else now
 
         x = float(snap["x"]); y = float(snap["y"])
         vx = float(snap["vx"]); vy = float(snap["vy"])
         angle = float(snap["angle"]); omega = float(snap.get("omega", 0.0))
 
         buf = self._buffer
-        vorher = self._sample(self._render_time) if (buf and self._render_time is not None) else None
+        vorher = self._pfad(self._render_time, jetzt) if (buf and self._render_time is not None) else None
         ersetzen = False
 
         if send_time:
@@ -316,20 +418,33 @@ class RemoteVehicle:
         self.lap = int(snap.get("lap", 0))
         self.wp  = int(snap.get("wp", 0))
 
+        neu = self._snap_bauen(t, x, y, vx, vy, angle, omega, snap, arrival, alter,
+                               buf[-1] if (buf and not ersetzen) else None)
         if ersetzen:
-            buf[-1] = _Snap(buf[-1].t, x, y, vx, vy, angle, omega)
+            buf[-1] = neu
         else:
-            buf.append(_Snap(t, x, y, vx, vy, angle, omega))
+            buf.append(neu)
         while len(buf) > _BUFFER_MAX:
             buf.popleft()
 
         if not self._initialized:
             self._pos = (x, y)
-            self._pfad = (x, y)
+            self._pfad_pos = (x, y)
             self._vel = (vx, vy)
             self._angle = angle
             self._omega = omega
             self._initialized = True
+            # Gleich in der Gegenwart anfangen, wenn das Paket sein Alter kennt.
+            if self.modus == MODUS_VORHERSAGE and neu.lt is not None:
+                self._w = 1.0
+                self._lt_serie = W_PAKETE_AN
+                gx, gy, gvx, gvy, gw, gom = vorhersage.hochrechnen(
+                    neu, min(PREDICT_MAX, max(0.0, jetzt - neu.lt)), self._grip, self._radstand)
+                self._pos = (gx, gy)
+                self._pfad_pos = (gx, gy)
+                self._vel = (gvx, gvy)
+                self._angle = gw
+                self._omega = gom
             self._body_setzen()
             return
 
@@ -337,7 +452,56 @@ class RemoteVehicle:
         # der aktuellen Wiedergabezeit. Die gezeichnete Lage bleibt stehen, der
         # Unterschied wird ueber die naechsten Bilder abgebaut.
         if vorher is not None:
-            self._versatz_aufnehmen(vorher, self._sample(self._render_time))
+            self._versatz_aufnehmen(vorher, self._pfad(self._render_time, jetzt),
+                                    self._springt)
+
+    def _snap_bauen(self, t, x, y, vx, vy, angle, omega, snap, arrival, alter, vorgaenger):
+        """Einen Puffereintrag samt Alter, Beschleunigung und Eingaben bauen."""
+        lt = None
+        if alter is not None and math.isfinite(alter) and -ALTER_MIN <= alter <= ALTER_MAX:
+            lt = arrival - alter
+            self._alter_pruefen(alter)
+        else:
+            self._lt_serie = min(self._lt_serie, 0) - 1
+        a_s = 0.0
+        self._springt = False
+        if vorgaenger is not None:
+            abstand = t - vorgaenger.t
+            a_s = vorhersage.beschleunigung(
+                math.hypot(vorgaenger.vx, vorgaenger.vy), math.hypot(vx, vy),
+                abstand, vorgaenger.a_s)
+            if abstand > 0.0:
+                # Sprung des Absenders: der Weg zum letzten Paket passt nicht zu
+                # dem Tempo, mit dem er unterwegs war (Reset auf die Strecke).
+                erwartet_x = 0.5 * (vorgaenger.vx + vx) * abstand
+                erwartet_y = 0.5 * (vorgaenger.vy + vy) * abstand
+                rest = math.hypot(x - vorgaenger.x - erwartet_x, y - vorgaenger.y - erwartet_y)
+                tempo = math.hypot(vx, vy)
+                self._springt = rest > TELEPORT_DISTANCE + 0.1 * tempo * abstand
+        return _Snap(
+            t, x, y, vx, vy, angle, omega, lt, a_s,
+            lenk=float(snap.get("steer", 0.0)), gas=float(snap.get("throttle", 0.0)),
+            bremse=float(snap.get("brake", 0.0)), hand=bool(snap.get("handbrake", False)),
+            eing="steer" in snap)
+
+    def _alter_pruefen(self, alter: float) -> None:
+        """Schwankung des Alters mitschreiben und die Serie gueltiger Pakete zaehlen."""
+        self._lt_serie = max(self._lt_serie, 0) + 1
+        if self._alter_min is None:
+            self._alter_min = alter
+        else:
+            # Kleinster Wert der letzten Zeit: steigt langsam, damit eine
+            # dauerhaft laengere Strecke nicht als Schwankung gilt.
+            self._alter_min = min(alter, self._alter_min + 0.0003)
+        self._alter_schwankung += (max(0.0, alter - self._alter_min)
+                                   - self._alter_schwankung) * 0.1
+
+    def bezug_setzen(self, zeit: float | None) -> None:
+        """Zeitpunkt (eigene Uhr), auf den die Vorhersage zielt. Das eigene Auto
+        gilt zum Ende des Physikschritts, nicht zum Moment des Zeichnens; mit
+        diesem Zeitpunkt liegen ferne Autos im selben Augenblick wie das eigene.
+        None: die Uhr selbst."""
+        self._bezug = zeit
 
     def _neuer_strom(self) -> None:
         """Senderuhr neu: Puffer und alles, was an der alten Uhr hing, vergessen."""
@@ -346,6 +510,9 @@ class RemoteVehicle:
         self._render_time = None
         self._spacing = 0.0
         self._jitter = 0.0
+        self._alter_min = None
+        self._alter_schwankung = 0.0
+        self._lt_serie = 0
 
     def _note_spacing(self, abstand: float) -> None:
         """Spitzenwert des Paketabstands auf der Senderzeitleiste nachfuehren."""
@@ -373,14 +540,16 @@ class RemoteVehicle:
         if not self._initialized or dt <= 0.0 or not self._buffer:
             return
 
-        ziel = _clock() - (self._clock_offset or 0.0) - self._delay
+        now = _clock()
+        ziel = now - (self._clock_offset or 0.0) - self._delay
+        jetzt = self._bezug if self._bezug is not None else now
         r = self._render_time
         if r is None:
             r = ziel
         elif abs(ziel - r) > RENDER_RESYNC:
-            vorher = self._sample(r)
+            vorher = self._pfad(r, jetzt)
             r = ziel
-            self._versatz_aufnehmen(vorher, self._sample(r))
+            self._versatz_aufnehmen(vorher, self._pfad(r, jetzt))
         else:
             # Verglichen wird mit dem Stand NACH diesem Schritt — mit dem alten
             # liefe die Uhr im Gleichgewicht ein ganzes Bild vor ihrem Ziel.
@@ -395,9 +564,10 @@ class RemoteVehicle:
         while len(buf) > 2 and buf[1].t <= r:
             buf.popleft()
 
-        x, y, vx, vy, winkel, omega = self._sample(r)
-        weg = math.hypot(x - self._pfad[0], y - self._pfad[1])
-        self._pfad = (x, y)
+        self._w_nachfuehren(dt)
+        x, y, vx, vy, winkel, omega = self._pfad(r, jetzt)
+        weg = math.hypot(x - self._pfad_pos[0], y - self._pfad_pos[1])
+        self._pfad_pos = (x, y)
         self._versatz_abbauen(weg, dt)
 
         ex, ey = self._err_pos
@@ -408,6 +578,61 @@ class RemoteVehicle:
         self._angle += _wrap(winkel + self._err_angle - self._angle)
         self._omega = omega
         self._body_setzen()
+
+    # ── Vorhersage der Gegenwart ──────────────────────────────────────────────
+
+    def _w_nachfuehren(self, dt: float) -> None:
+        """Gewicht der Vorhersage zum Ziel schieben (weich, mit Hysterese)."""
+        if self.modus != MODUS_VORHERSAGE:
+            ziel = 0.0
+        else:
+            ok = (self._lt_serie > -W_PAKETE_AUS) if self._w > 0.0 else (self._lt_serie >= W_PAKETE_AN)
+            ziel = 1.0 if ok else 0.0
+            if ziel:
+                # Wilde Schwankung des Alters: zurueck zur Interpolation, stufenlos.
+                spanne = W_SCHWANKUNG_NULL - W_SCHWANKUNG_VOLL
+                ziel = max(0.0, min(1.0, (W_SCHWANKUNG_NULL - self._alter_schwankung) / spanne))
+        if ziel > self._w:
+            self._w = min(ziel, self._w + W_RATE_AUF * dt)
+        elif ziel < self._w:
+            self._w = max(ziel, self._w - W_RATE_AB * dt)
+
+    def _gegenwart(self, now: float):
+        """Lage JETZT, vom neuesten Paket hochgerechnet um dessen Alter; None,
+        wenn dieses Paket sein Alter nicht kennt."""
+        neuester = self._buffer[-1]
+        if neuester.lt is None:
+            return None
+        h = max(0.0, now - neuester.lt)
+        if h > PREDICT_MAX:
+            # Ueber die Frist hinaus (Verlust, Pause, Absturz des Gegners) wird
+            # nicht mehr gerechnet, das Abbild laeuft nur noch mit dem Tempo von
+            # damals aus, das mit AUSLAUF_TAU abklingt: kein Stillstand mitten
+            # auf der Geraden, aber auch keine Fahrt durch die ganze Strecke.
+            x, y, vx, vy, winkel, om = vorhersage.hochrechnen(
+                neuester, PREDICT_MAX, self._grip, self._radstand)
+            extra = min(h - PREDICT_MAX, AUSLAUF_MAX)
+            f = math.exp(-extra / AUSLAUF_TAU)
+            weg = AUSLAUF_TAU * (1.0 - f)
+            return (x + vx * weg, y + vy * weg, vx * f, vy * f, winkel + om * weg, om * f)
+        return vorhersage.hochrechnen(neuester, h, self._grip, self._radstand)
+
+    def _pfad(self, r: float, now: float) -> tuple[float, float, float, float, float, float]:
+        """Der Pfad, dem das Abbild folgt: Vorhersage der Gegenwart, Interpolation
+        der Vergangenheit oder (waehrend des Umblendens) beides gemischt."""
+        w = self._w
+        if w <= 0.0:
+            return self._sample(r)
+        p = self._gegenwart(now)
+        if p is None:
+            return self._sample(r)
+        if w >= 1.0:
+            return p
+        q = self._sample(r)
+        v = 1.0 - w
+        return (q[0] * v + p[0] * w, q[1] * v + p[1] * w,
+                q[2] * v + p[2] * w, q[3] * v + p[3] * w,
+                q[4] + _wrap(p[4] - q[4]) * w, q[5] * v + p[5] * w)
 
     def _sample(self, r: float) -> tuple[float, float, float, float, float, float]:
         """Lage auf dem gepufferten Pfad zur Senderzeit *r*:
@@ -450,12 +675,23 @@ class RemoteVehicle:
         omega = s0.omega + (s1.omega - s0.omega) * u
         return (x, y, vx, vy, winkel, omega)
 
-    def _versatz_aufnehmen(self, vorher, nachher) -> None:
-        """Einen Pfadsprung in den Versatz legen, damit das Bild nicht springt."""
-        self._pfad = (nachher[0], nachher[1])
+    def _versatz_aufnehmen(self, vorher, nachher, springt: bool = False) -> None:
+        """Einen Pfadsprung in den Versatz legen, damit das Bild nicht springt.
+
+        ``springt``: der Absender selbst ist gesprungen (Reset auf die Strecke):
+        dann wird gesprungen. Unter Vorhersage allein am Absprung erkannt, nicht
+        an der Entfernung zum Bild — nach einem Funkloch liegt das Bild weit
+        zurueck, obwohl niemand gesprungen ist; das wird eingeholt, nicht
+        uebersprungen (bis TELEPORT_MAX_FEHLER).
+        """
+        self._pfad_pos = (nachher[0], nachher[1])
         ex = self._err_pos[0] + vorher[0] - nachher[0]
         ey = self._err_pos[1] + vorher[1] - nachher[1]
-        if math.hypot(ex, ey) > TELEPORT_DISTANCE:
+        if self._w > 0.0:
+            neu_setzen = springt or math.hypot(ex, ey) > TELEPORT_MAX_FEHLER
+        else:
+            neu_setzen = math.hypot(ex, ey) > TELEPORT_DISTANCE
+        if neu_setzen:
             # Neu gesetzt (Reset, Senderneustart): ehrlich springen.
             self._err_pos = (0.0, 0.0)
             self._err_angle = 0.0

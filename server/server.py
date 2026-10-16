@@ -548,8 +548,12 @@ _S_ID  = struct.Struct("!B 6s B")
 _TOKEN_B = 16
 # PING has extra ts(d) after the id part
 _S_PING = struct.Struct("!B 6s B d")
-# PONG reply: type(B) ts(d)
-_S_PONG = struct.Struct("!B d")
+# PONG reply: type(B) ts(d) server_time(d) -> 17 bytes. ts is the client's PING
+# stamp echoed back; server_time is the relay's own monotonic clock at the moment
+# it answered. With both, a client works out its offset to the relay clock (NTP
+# style) and so the exact age of every STATE packet (remote_vehicle.py). Older
+# clients read only the first 9 bytes and ignore the rest.
+_S_PONG = struct.Struct("!B d d")
 # TCP length prefix
 _LEN   = struct.Struct("!I")
 
@@ -1909,7 +1913,7 @@ class _UDPRelay(asyncio.DatagramProtocol):
             except struct.error:
                 return
             if self.transport:
-                self.transport.sendto(_S_PONG.pack(UDP_PONG, ts), addr)
+                self.transport.sendto(_S_PONG.pack(UDP_PONG, ts, time.monotonic()), addr)
 
         elif t in (UDP_STATE, UDP_BUMP):
             if len(data) < _S_HDR.size:
