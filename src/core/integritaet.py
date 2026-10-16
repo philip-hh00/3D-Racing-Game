@@ -213,5 +213,13 @@ def stand() -> Ergebnis:
     global _stand
     if _stand is None:
         from src.core.paths import bundle_dir
-        _stand = pruefen(bundle_dir())
+        from src.core.version import IS_RELEASE
+        if IS_RELEASE:
+            _stand = pruefen(bundle_dir(), ausgeliefert=True)
+        else:
+            # Aus dem Quelltext zaehlt die signierte Liste nicht: sie ist ein
+            # Bauergebnis (gitignored), bleibt nach einem Build veraltet liegen
+            # und wandert per NAS-Sync mit. Ob der Stand online passt,
+            # entscheidet der Relay anhand des Digests.
+            _stand = Ergebnis(ok=True, digest=digest(bundle_dir()), abweichend=[])
     return _stand
