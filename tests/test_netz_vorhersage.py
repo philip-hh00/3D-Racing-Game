@@ -174,8 +174,8 @@ def test_eingaben_werden_begrenzt_und_unsinn_verdaut():
 def test_relay_schutz_liest_pakete_mit_anhang_wie_vorher():
     """Der Schutz im Relay arbeitet mit 29 Byte je Fahrzeug und liest nur car_count
     Fahrzeuge: Anhang aendert nichts, und ein vorhergesagtes Abbild gibt es dort nie."""
-    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "server"))
-    import schutz
+    from tests.strecken_hilfe import srv
+    schutz = srv.schutz
     assert schutz._STATE_FAHRZEUG.size == protocol.VEHICLE_FMT.size
     s = schutz.LobbySchutz("H1AAAA", "2d", "")
     s.namen[1] = "Ben"
@@ -775,3 +775,25 @@ def test_rennszene_stempelt_pakete_mit_dem_physikschritt(monkeypatch, uhr):
     (_, z1), (_, z2) = nc.gesendet
     assert z1 == pytest.approx(t0 - 0.004)
     assert z2 is None                      # nicht wachsend -> Sender nimmt die Uhr
+
+
+def test_in_der_pause_wird_ein_stehendes_auto_gemeldet(monkeypatch, uhr):
+    """Die Koerper behalten in der Pause ihr Tempo; gesendet wird Stillstand, sonst
+    rechnet die Gegenstelle das Auto Meter nach vorn."""
+    import types
+    rs, nc = _rennstand(monkeypatch)
+    koerper = pymunk.Body(1.0, 1.0)
+    koerper.velocity = (V, 0.0)
+    koerper.angular_velocity = 1.5
+    rs.player = types.SimpleNamespace(id=1, body=koerper, steer_input=1.0, throttle=1.0,
+                                      brake_input=0.0, handbrake=False)
+    rs.paused = True
+    rs._send_accum = 1.0
+    rs._update_online(DT)
+    (fahrzeuge, _), = nc.gesendet
+    f = fahrzeuge[0]
+    assert (f["vx"], f["vy"], f["omega"], f["steer"], f["throttle"]) == (0.0, 0.0, 0.0, 0.0, 0.0)
+    rs.paused = False
+    rs._send_accum = 1.0
+    rs._update_online(DT)
+    assert nc.gesendet[1][0][0]["vx"] == pytest.approx(V)

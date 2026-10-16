@@ -351,7 +351,7 @@ class NetworkClient:
         return min(werte) / 2000.0 if werte else 0.0
 
     @property
-    def uhr(self) -> UhrSync:
+    def relayuhr(self) -> UhrSync:
         """Der Abgleich mit der Relayuhr (``versatz`` = Relayuhr - eigene Uhr)."""
         return self._uhr
 

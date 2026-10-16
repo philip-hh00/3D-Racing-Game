@@ -3645,6 +3645,12 @@ class RaceState(BaseState):
                             "wp": int(ai_tracker.waypoint_progress) if ai_tracker else 0,
                             **_eingaben(ai),
                         })
+            if getattr(self, "paused", False) or getattr(self, "_resume_countdown_timer", 0.0) > 0.0:
+                # Die Welt steht (Pause): die Koerper tragen noch ihr Tempo, die
+                # Gegenstelle rechnete damit ein stehendes Auto Meter nach vorn.
+                for v in vehicles:
+                    v.update(vx=0.0, vy=0.0, omega=0.0, steer=0.0, throttle=0.0,
+                             brake=0.0, handbrake=False)
             stempel = bezug if (bezug is not None and bezug > self._gesendet_zeit) else None
             self._gesendet_zeit = stempel if stempel is not None else _tm.monotonic()
             nc.send_state(vehicles, stempel)
