@@ -101,7 +101,7 @@ class _Relay:
             self._eingang.append({"source": "tcp", "data": {
                 "type": "RACE_RESULTS", "rows": zeilen}})
 
-    def send_state(self, vehicles) -> None:
+    def send_state(self, vehicles, zeit=None) -> None:
         pass
 
     def poll(self):

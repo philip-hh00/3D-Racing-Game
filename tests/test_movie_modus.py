@@ -595,7 +595,7 @@ class _Relay:
     def send_tcp(self, msg: dict) -> None:
         self.gesendet.append(msg)
 
-    def send_state(self, vehicles) -> None:
+    def send_state(self, vehicles, zeit=None) -> None:
         pass
 
     def poll(self):
