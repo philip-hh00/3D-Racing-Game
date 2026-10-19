@@ -367,6 +367,7 @@ class EditorState(BaseState):
         self._geo_dirty = True
 
     def _undo_action(self) -> None:
+        self._moving_idx = None
         if not self._undo:
             return
         self._redo.append(self._snapshot())
@@ -377,6 +378,7 @@ class EditorState(BaseState):
         self._geo_dirty = True
 
     def _redo_action(self) -> None:
+        self._moving_idx = None
         if not self._redo:
             return
         self._undo.append(self._snapshot())
@@ -842,6 +844,8 @@ class EditorState(BaseState):
         self._moving_idx = None
         if idx is None:
             return
+        if not 0 <= idx < len(self.draft.pieces):
+            return
         orig = self.draft.pieces[idx]
         col, row = self._snap_cell(sx, sy)
         moved = Piece(kind=orig.kind, col=col, row=row, rotation=orig.rotation,
@@ -854,6 +858,7 @@ class EditorState(BaseState):
             self._redo.clear()
 
     def _delete_piece(self, idx: int) -> None:
+        self._moving_idx = None
         del self.draft.pieces[idx]
         # keep start_piece_idx valid
         if self.draft.start_piece_idx >= len(self.draft.pieces):
@@ -1250,6 +1255,9 @@ class EditorState(BaseState):
     def _draw_ghost(self, screen: pygame.Surface) -> None:
         mx, my = self._get_cursor_pos()
         gr = self._grid_rect
+
+        if self._moving_idx is not None and not 0 <= self._moving_idx < len(self.draft.pieces):
+            self._moving_idx = None
 
         if self._moving_idx is not None:
             orig = self.draft.pieces[self._moving_idx]
